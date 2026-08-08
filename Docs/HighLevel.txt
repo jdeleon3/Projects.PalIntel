@@ -1,0 +1,71 @@
+High-Level System Architecture & Design: Palworld Voice HUD Co-Pilot
+(Note: Direct file export to Google Drive is not supported natively from this chat interface, but the complete High-Level Design, Data Source Specifications, and Technical Stack documentation below are fully formatted for immediate copy-pasting into Google Docs or Drive).
+1. System Overview & Core Objective
+The Palworld Voice HUD Co-Pilot is a hands-free, event-driven assistant built to answer gameplay questions in real time. It captures audio from a Discord voice channel, transcribes the speech, executes single-digit millisecond vector similarity searches directly against an Amazon DynamoDB table (leveraging native vector search with level and resource filters), and publishes structured visual HUD cards directly to a Discord text channel (#copilot-hud) viewed via the Discord In-Game Overlay.
+ +------------------------+ STT +--------------------------+
+ | Discord Voice Channel | -----------> | Deepgram / OpenAI Whisper|
+ +------------------------+ +--------------------------+
+                                                      | Transcribed Text
+                                                      v
+                                         +--------------------------+
+                                         | Query Embedding Model |
+                                         | (text-embedding-3-small) |
+                                         +--------------------------+
+                                                      | Vector (1536-dim)
+                                                      v
+ +------------------------+ +--------------------------+
+ | Discord #copilot-hud | <----------- | AWS DynamoDB Vector Search|
+ | (In-Game Overlay Card) | Rich Embed | (Native Vector + Filter) |
+ +------------------------+ +--------------------------+
+
+2. Technical Stack Documentation
+| Layer | Component | Selected Technology | Technical Rationale |
+|---|---|---|---|
+| Interface / Ingestion | Discord Voice Capture | Pycord (discord.ext.commands) | Native Discord API wrapper with asynchronous voice buffer streaming support. |
+| Speech-to-Text (STT) | Audio Transcription | Deepgram Nova-2 / OpenAI Whisper | Sub-300ms transcription latency for natural language voice queries. |
+| Embedding Engine | Vector Generation | OpenAI text-embedding-3-small | Generates high-density 1536-dimension vectors at minimal API cost. |
+| Primary Database | Operational & Vector Store | Amazon DynamoDB (On-Demand) | Serves operational attributes and native vector indexes in a single <10ms query with zero CDC sync pipelines. |
+| Orchestration API | Application Service | Python 3.11 / FastAPI / AWS Lambda | Handles event orchestration, database querying, and payload parsing. |
+| Presentation Layer | Display & UI | Discord Webhooks / Embed API | Renders structured visual cards overlaid on the game screen via Discord's native overlay. |
+3. Data Sources & Schema Design
+3.1 Data Sources
+ * Palpagos & Sunreach Coordinates Dataset: Ingame resource node mappings (Ore, Coal, Pure Quartz, Crude Oil, Sulfur) tagged by coordinates, danger rating, and minimum required player levels.
+ * Paldeck & Work Suitability Matrix: Comprehensive Pal statistics (Pals 1–200+) mapping Handiwork, Mining, Kindling, and Transporting levels along with partner skill descriptions.
+ * Genetic Recombination & Breeding Trees: Parent-child breeding combinations, trait inheritance logic (e.g., Artisan, Workslave, Legend), and incubation parameters.
+3.2 DynamoDB Single-Table Schema Blueprint
+| Attribute | DynamoDB Type | Description / Sample Value |
+|---|---|---|
+| PK | String (Partition Key) | Domain identifier (e.g., DOMAIN#PALWORLD) |
+| SK | String (Sort Key) | Unique entity ID (e.g., LOC#COAL_MOUNTAIN_188_37 or PAL#ANUBIS) |
+| entity_type | String | Category filter (location | pal_spec | breeding_route) |
+| min_player_level | Number | Player level requirement filter (e.g., 20) |
+| primary_resource | String | Resource indicator (e.g., Coal) |
+| payload_text | String | Full contextual string used for LLM card generation. |
+| vector_embedding | List (Float) | 1536-dimension float array configured under DynamoDB's VectorIndexes. |
+4. End-to-End Sequence & Execution Flow
+[User Speaks in Discord Voice Channel]
+                  │
+                  ▼
+1. Discord Voice Receiver captures PCM audio stream
+                  │
+                  ▼
+2. Audio sent to STT API ──► "Where is an unraidable coal spot for level 20?"
+                  │
+                  ▼
+3. Query converted to 1536-dimension float array (~90ms)
+                  │
+                  ▼
+4. DynamoDB `search_vectors()` executed with filter `min_player_level <= 20` (<10ms)
+                  │
+                  ▼
+5. LLM formats query result into structured JSON card (~300ms)
+                  │
+                  ▼
+6. Bot posts Rich Embed to Discord `#copilot-hud` channel
+                  │
+                  ▼
+[Card renders instantly on Discord In-Game Overlay without un-focusing Palworld]
+
+5. Deployment & Cost Profile
+ * AWS Database Overhead: DynamoDB on-demand pricing eliminates base monthly server fees. Total AWS database cost for a personal gaming group is <$1.00/month.
+ * API Processing Costs: Average combined API cost per voice query (STT + Embeddings + LLM Card Formatting) is ~$0.0015 per request.
