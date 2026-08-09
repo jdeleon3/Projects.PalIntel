@@ -45,6 +45,12 @@ _LEVEL_WORDS = {
     "ten": 10, "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60,
 }
 
+# Minimum similarity the stub will act on. A model-backed router does not need this -
+# it weighs candidates against sentence context. The stub has no context, so it needs
+# a floor, and the floor belongs here rather than back in the corrector: the corrector
+# still hands every candidate to whichever router is in use.
+MIN_CONFIDENT = 0.78
+
 
 class StubRouter:
     """Deterministic keyword router. No model, no network.
@@ -68,9 +74,23 @@ class StubRouter:
                 reason="no location intent recognised",
                 unrecognized=None)
 
-        # Only resource candidates are meaningful for the one registered tool.
+        # The corrector deliberately ranks without a threshold, leaving the confidence
+        # judgement to the router (ADR-0016). That assumes a router that can reason.
+        # This one cannot, so it applies its own bar - without it, "where can I find
+        # Suzaku" answered with a coal location, because *some* resource always appears
+        # somewhere in a top-10 candidate list.
+        top = candidates[0] if candidates else None
+        if top is not None and top.kind == "pal" and top.score >= MIN_CONFIDENT:
+            # A confidently-matched Pal means the query is about a Pal, and no Pal tool
+            # is registered yet. Say that, rather than reaching for a weak resource.
+            return Decline(
+                reason=f"that looks like a question about {top.canonical}, "
+                       f"and I can only find resources so far",
+                known_options=sorted(self._locatable))
+
         resource = next((c for c in candidates
-                         if c.kind == "resource" and c.canonical in self._resources),
+                         if c.kind == "resource" and c.canonical in self._resources
+                         and c.score >= MIN_CONFIDENT),
                         None)
         if resource is None:
             # Deliberately NOT reporting the top candidate's matched text as the

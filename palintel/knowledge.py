@@ -52,6 +52,11 @@ should so some tell that the their them then there these they this those to us u
 used want was we were what when where which who why will with would you your
 """.split())
 
+# The wake word addresses the assistant; it is never an entity. Left in, it is matched
+# against the lexicon on EVERY utterance - "pal" scores 0.57 against "coal", which was
+# enough to answer a question about a Pal with a coal location.
+WAKE_WORDS = frozenset({"hey", "pal", "palintel", "ok", "okay"})
+
 
 @dataclass(frozen=True)
 class Candidate:
@@ -112,7 +117,10 @@ class Lexicon:
                 # Drop all-stopword n-grams. They cannot name an entity, and their
                 # letter overlap outranks genuine matches: without this, "health
                 # sphere" -> Helzephyr falls out of the top 5 entirely.
-                if all(w in STOPWORDS for w in gram):
+                if all(w in STOPWORDS or w in WAKE_WORDS for w in gram):
+                    continue
+                # A gram containing the wake word is address, not content.
+                if any(w in WAKE_WORDS for w in gram):
                     continue
                 grams.append(" ".join(gram))
         squashed = [(g, squash(g)) for g in grams if squash(g)]

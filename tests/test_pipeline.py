@@ -168,6 +168,25 @@ def test_plain_generic_resource_still_wins_alone(pipe: Pipeline):
     assert pipe.handle("find me an ore spot").call.args["resource"] == "ore"
 
 
+def test_pal_question_declines_instead_of_grabbing_a_weak_resource(pipe: Pipeline):
+    """"Where can I find Suzaku" answered with a coal location.
+
+    Suzaku ranked first at 1.00, but the stub skipped it (Pal, not resource) and took
+    the first resource candidate at any score - coal, matched at 0.57 against the word
+    "pal" in the wake phrase. ADR-0016 moved the confidence judgement to the router;
+    the stub has no context to judge with, so it needs its own floor.
+    """
+    out = pipe.handle("Hey Pal, where can I find Suzaku?")
+    assert isinstance(out.call, Decline)
+    assert "Suzaku" in out.call.reason
+
+
+def test_wake_word_never_matches_an_entity(kb: KnowledgeBase):
+    """"pal" scores 0.57 against "coal" and appears in every single utterance."""
+    ranked = kb.lexicon.rank("hey pal", limit=10)
+    assert not any(c.canonical == "coal" for c in ranked)
+
+
 def test_extracts_numeric_and_worded_levels(pipe: Pipeline):
     assert pipe.handle("find coal for level 25").call.args["max_player_level"] == 25
     assert pipe.handle("find coal for level twenty").call.args["max_player_level"] == 20
