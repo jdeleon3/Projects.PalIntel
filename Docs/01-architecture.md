@@ -328,8 +328,27 @@ Notes:
    Disabling thinking buys ~320ms and costs the correctness guarantee that keeps it on
    (see `routing_anthropic.py`), and the model emitted no thinking content at `low`
    anyway. Roughly 4s is what a frontier model costs for one tool call. Prompt caching
-   was added for the ~8k-token tool schemas — it cuts cost substantially but **not
-   latency**, since time-to-first-token is dominated by generation, not prefill.
+   was added for the tool schemas — it cuts cost substantially but **not latency**, since
+   time-to-first-token is dominated by generation, not prefill.
+
+   **Tool schemas, not tokens of thought, are what a query costs.** The Pal enum is ~2,630
+   tokens, and a tool-per-query-class registry repeats it in every tool that names a Pal:
+
+   | Registered tools | Schema tokens | Enum copies | $/query (cached) |
+   |---|---|---|---|
+   | Q1 only — production today | 852 | 0 | $0.0004 |
+   | Q1 + Q2 | 3,481 | 1 | $0.0017 |
+   | All 7 — what the A5 harness needs | 21,741 | 8 | $0.0109 |
+
+   Completing the query classes therefore makes each query **25× more expensive** before
+   a single extra token is generated, and it is charged on every request forever. In the
+   measured 40-prompt run this was ~80% of total spend; output averaged only ~140 tokens.
+
+   The lever is enum duplication, not the model. A single `answer_query(query_class, pal,
+   resource, …)` tool carries one copy of each enum (~3,500 tokens) instead of eight, at
+   the cost of the per-tool descriptions that currently help the router choose. Whether
+   that trade hurts accuracy is untested, and A5 must be re-measured across the change
+   rather than assumed neutral.
 
    This makes two items that were Phase 2 conveniences into requirements for the voice
    path: the **fast-path matcher** (a confident lexicon match plus a template phrasing

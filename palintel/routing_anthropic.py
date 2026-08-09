@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from dataclasses import dataclass
 from typing import Any
 
 from .knowledge import Candidate, Lexicon
@@ -55,6 +56,49 @@ Do not guess between two plausible entities. A card that confidently answers the
 question is worse than one that admits the miss, because the player acts on it \
 mid-game and cannot tell it was wrong.\
 """
+
+
+# USD per million tokens: (input, output). Cache writes bill at 1.25x input, reads at
+# 0.1x. Kept here so a run can price itself rather than being estimated after the fact.
+PRICES = {
+    "claude-opus-5": (5.0, 25.0),
+    "claude-sonnet-5": (3.0, 15.0),
+    "claude-haiku-4-5": (1.0, 5.0),
+}
+
+
+@dataclass(frozen=True)
+class Usage:
+    """Token counts and cost for one routing call.
+
+    Recorded on every response, including declines. Declines were previously the only
+    path that logged no usage, and they are the *expensive* ones: a decline is what the
+    model produces after thinking hardest about an ambiguous entity. Estimating run cost
+    from the routing calls alone understates it several-fold.
+    """
+    input: int
+    output: int
+    cache_read: int
+    cache_write: int
+    model: str
+
+    @property
+    def usd(self) -> float:
+        inp, out = PRICES.get(self.model, PRICES["claude-opus-5"])
+        return ((self.input * inp + self.cache_write * inp * 1.25
+                 + self.cache_read * inp * 0.1 + self.output * out) / 1e6)
+
+    def __str__(self) -> str:
+        return (f"[in {self.input} +{self.cache_read} cached, out {self.output}, "
+                f"${self.usd:.4f}]")
+
+    @classmethod
+    def of(cls, response: Any, model: str) -> "Usage":
+        u = response.usage
+        return cls(input=u.input_tokens, output=u.output_tokens,
+                   cache_read=getattr(u, "cache_read_input_tokens", 0) or 0,
+                   cache_write=getattr(u, "cache_creation_input_tokens", 0) or 0,
+                   model=model)
 
 
 def pal_spawn_schema(pals: list[str]) -> dict[str, Any]:
@@ -143,6 +187,7 @@ class ClaudeRouter:
         self._model = model
         self.name = f"claude:{model}"
         self._tools = [_tool_schema(self._resources), *(extra_tools or [])]
+        self.last_usage: Usage | None = None
 
     def _user_content(self, utterance: str, candidates: list[Candidate]) -> str:
         if candidates:
@@ -179,6 +224,8 @@ class ClaudeRouter:
         except self._anthropic.APIConnectionError:
             return Decline(reason="router unreachable - check your connection")
 
+        self.last_usage = Usage.of(response, self._model)
+
         # A refusal carries no usable content; check before reading blocks.
         if response.stop_reason == "refusal":
             log.warning("router refused: %s", response.stop_details)
@@ -187,16 +234,15 @@ class ClaudeRouter:
         tool_use = next((b for b in response.content if b.type == "tool_use"), None)
         if tool_use is None:
             said = " ".join(b.text for b in response.content if b.type == "text").strip()
-            log.info("router declined: %s", said or "(no reason given)")
+            log.info("router declined %s: %s", self.last_usage,
+                     said or "(no reason given)")
             return Decline(reason=said or "no matching query type",
                            known_options=self._resources)
 
         # strict:true guarantees the schema, but null-valued optionals still arrive as
         # keys - drop them so the dispatcher's defaults apply.
         args = {k: v for k, v in dict(tool_use.input).items() if v is not None}
-        u = response.usage
-        log.info("router -> %s(%s) [in %s new / %s cached, out %s]", tool_use.name, args,
-                 u.input_tokens, getattr(u, "cache_read_input_tokens", 0), u.output_tokens)
+        log.info("router -> %s(%s) %s", tool_use.name, args, self.last_usage)
         return ToolCall(name=tool_use.name, args=args,
                         rationale=f"{self.name} chose {tool_use.name}")
 

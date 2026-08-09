@@ -29,7 +29,8 @@ sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(Path(__file__).parent))
 
 from palintel.knowledge import KnowledgeBase  # noqa: E402
-from palintel.routing_anthropic import ClaudeRouter, pal_spawn_schema  # noqa: E402
+from palintel.routing_anthropic import (ClaudeRouter,  # noqa: E402
+                                        pal_spawn_schema)
 from _router_tools import eval_tool_schemas  # noqa: E402
 from palintel.tools import Decline  # noqa: E402
 
@@ -92,9 +93,13 @@ def main() -> None:
         else:
             hit = bool(got & expected)
             wrong = bool(got) and not hit
+        u = router.last_usage
         scored.append({"id": r["id"], "heard": heard, "group": r.get("group", "?"),
                        "expected": sorted(expected), "got": sorted(got), "kind": kind,
-                       "hit": hit, "wrong": wrong, "latency_ms": round(latency_ms)})
+                       "hit": hit, "wrong": wrong, "latency_ms": round(latency_ms),
+                       "in_tok": u.input if u else 0, "out_tok": u.output if u else 0,
+                       "cached_tok": u.cache_read if u else 0,
+                       "usd": round(u.usd, 5) if u else 0.0})
 
         mark = "OK  " if hit else ("WRONG" if wrong else "miss ")
         print(f"  {mark} {r['id']}  expected={sorted(expected)}  got={sorted(got) or kind}"
@@ -124,6 +129,7 @@ def main() -> None:
     if controls:
         print("  (controls are a bare noun with no question - declining is correct)")
 
+    all_scored = scored
     scored = utterances or scored
     total = len(scored)
     hits = sum(s["hit"] for s in scored)
@@ -139,6 +145,24 @@ def main() -> None:
           f"(honest miss)")
     print(f"\n  latency  median {lat[len(lat) // 2]}ms   p95 {lat[int(len(lat) * 0.95) - 1]}ms"
           f"   total {time.perf_counter() - t0:.0f}s")
+    # Cost covers every request the run billed, not the scored subset: the controls and
+    # no-entity prompts are billed too. Reported per run because it was previously
+    # estimated, and the estimate was out by 2.5x.
+    spend = sum(s["usd"] for s in all_scored)
+    out_toks = sorted(s["out_tok"] for s in all_scored)
+    schema_tok = max((s["cached_tok"] for s in all_scored), default=0)
+    print(f"  cost     ${spend:.2f} over {len(all_scored)} requests"
+          f"  = ${spend / len(all_scored):.4f}/req")
+    print(f"           tool schemas {schema_tok} tok cached (billed once at 1.25x, "
+          f"then 0.1x)")
+    print(f"           output median {out_toks[len(out_toks) // 2]} tok, "
+          f"max {out_toks[-1]} tok")
+    for k in ("routed", "decline"):
+        g = [s for s in all_scored
+             if (s["kind"] == "decline") == (k == "decline")]
+        if g:
+            m = sorted(x["out_tok"] for x in g)
+            print(f"           {k:<8} n={len(g):<3} median {m[len(m) // 2]:>4} out tok")
     print("=" * 68)
     print(f"\nA5 target: >=95% entity accuracy.  Achieved: {hits / total * 100:.1f}%  "
           f"-> {'PASS' if hits / total >= 0.95 else 'FAIL'}")
