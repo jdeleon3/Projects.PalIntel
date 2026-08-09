@@ -115,7 +115,9 @@ def run() -> None:
         log.info("-> %s", kind)
         await message.channel.send(embed=to_embed(outcome.card))
 
-    client.run(cfg.discord.token, log_handler=None)
+    # No log_handler kwarg here: that is discord.py's API. py-cord forwards run()'s
+    # kwargs straight to start(), which rejects it. Logging is configured above instead.
+    client.run(cfg.discord.token)
 
 
 if __name__ == "__main__":
