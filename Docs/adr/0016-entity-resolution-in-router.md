@@ -24,19 +24,34 @@ to work with.
 Ranking the full lexicon against each transcript instead of thresholding it told a
 different story:
 
-| | |
-|---|---|
-| correct entity ranked 1 | **79.5%** |
-| top-3 | **89.7%** |
-| top-10 | 94.9% |
-| beyond top-10 | 2 of 39 |
+| | threshold accepts | ranked availability |
+|---|---|---|
+| correct entity | 61.5% | **74.4%** at rank 1 |
+| top-3 | — | **79.5%** |
+| top-5 | — | 82.1% |
+| top-10 | — | **92.3%** |
 
-Every example above — *health sphere*, *the nurse I grew down*, *car links*, *Lee's bunk* —
-ranks the correct Pal **first**. They failed scoring because their similarity fell just
-under the 0.78 threshold and the matcher refused to coerce.
+Cases like *"Lee's bunk"* → `Leezpunk` and *"my Korra"* → `Mycora` rank **first**. They
+failed scoring because their similarity fell just under the 0.78 threshold and the
+matcher refused to coerce. **Threshold rejections, not ranking failures.**
 
-**These were threshold rejections, not ranking failures.** The information was present the
-whole time; the layer holding it simply lacked the standing to act on it.
+> **Correction (measured during Phase 1 implementation).** The first version of this ADR
+> claimed 79.5% top-1 and 89.7% top-3. Those figures came from `rank_entities.py`, which
+> stripped *query-template* frame words ("tower", "first", "find", "breed") before
+> building candidate n-grams. That did not make correct entities score better — it
+> starved competitors of material to match against, artificially promoting the right
+> answer.
+>
+> Production cannot do that: it sees arbitrary phrasing and can only filter general
+> English stopwords. Re-measured through the production ranker, top-3 is **79.5%, not
+> 89.7%**. `Helzephyr` sits at rank 7, not rank 1.
+>
+> The decision below is unchanged — 79.5% top-3 and 92.3% top-10 still comfortably beat
+> 61.5% threshold acceptance — but the margin is smaller than first stated, and the
+> candidate count K is set from the corrected numbers.
+>
+> The test suite caught this: an assertion written from the ADR's own claim failed
+> against the production ranker.
 
 ## The layering error
 
@@ -67,7 +82,9 @@ decline decision simply moves to the layer that can make it well.
 Concretely:
 - The corrector's `MATCH_THRESHOLD` is removed from the production path. It stays in the
   evaluation tooling, where measuring the threshold-only baseline is still useful.
-- The corrector supplies K candidates (K ≈ 5 given 89.7% top-3 and 94.9% top-10).
+- The corrector supplies **K = 10** candidates. Set from the corrected measurements:
+  top-5 reaches only 82.1% while top-10 reaches 92.3%, so a smaller K discards
+  recoverable entities before the router ever sees them.
 - Router tool schemas already constrain entity parameters to lexicon-generated enums, so
   no schema change is required.
 - The router receives candidates as a hint, not a restriction — it may still decline.
