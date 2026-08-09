@@ -37,6 +37,20 @@ MODEL = "claude-opus-5"
 EFFORT = "low"
 # Small ceiling: the output is one tool call. Headroom is for thinking, not prose.
 MAX_TOKENS = 4096
+# Pre-4.6 models reject both `adaptive` thinking and `effort` with a 400, and take a fixed
+# token budget instead. Kept as a table rather than a version check so an unknown model
+# fails loudly on the API rather than silently routing without thinking - the comparison
+# is only fair if both models are allowed to think.
+LEGACY_THINKING = {"claude-haiku-4-5": 2048}
+
+
+def _reasoning_params(model: str) -> dict:
+    """Thinking configuration for `model`, in that model's own dialect."""
+    budget = LEGACY_THINKING.get(model)
+    if budget is None:
+        return {"thinking": {"type": "adaptive"},
+                "output_config": {"effort": EFFORT}}
+    return {"thinking": {"type": "enabled", "budget_tokens": budget}}
 
 SYSTEM = """\
 You route Palworld voice and text queries to typed tools. You are one stage in a \
@@ -210,8 +224,7 @@ class ClaudeRouter:
                 # The breakpoint must NOT go on the user turn, which differs every time.
                 system=[{"type": "text", "text": SYSTEM,
                          "cache_control": {"type": "ephemeral"}}],
-                thinking={"type": "adaptive"},
-                output_config={"effort": EFFORT},
+                **_reasoning_params(self._model),
                 tools=self._tools,
                 messages=[{"role": "user",
                            "content": self._user_content(utterance, candidates)}],

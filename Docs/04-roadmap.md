@@ -185,6 +185,52 @@ failure and P06/P15 are genuine ambiguities; winning P23 outright still lands at
 **32/36 = 88.9%**. **Reaching 95% requires corrector recall work (Omascul), not router
 tuning alone** — consistent with the 89.7% top-3 ceiling from Phase 0.
 
+#### Haiku 4.5 comparison — the gap is candidate depth, not accuracy
+
+Same 40 transcripts, `--model claude-haiku-4-5`. Haiku 4.5 predates adaptive thinking and
+`effort` (both 400), so it runs a fixed 2,048-token thinking budget — `LEGACY_THINKING` in
+`routing_anthropic.py`.
+
+| | Opus 5 | Haiku 4.5 |
+|---|---|---|
+| Correct entity | 31/36 = 86.1% | **30/36 = 83.3%** |
+| **Wrong entity** | 0 | **0** |
+| No-entity prompts declined | 3/3 | **3/3** |
+| Cost per 40-prompt run | $0.70 | **$0.19** |
+| Latency median / p95 | 2.9s / 6.6s | 3.6s / 7.6s |
+
+**One utterance apart — inside the ±3.6-point noise band, so the headline numbers are not
+distinguishable.** The composition is, and it falls out along one axis: **how deep in the
+candidate list each model can still find the answer.**
+
+| Prompt | Answer's rank | Opus 5 | Haiku 4.5 |
+|---|---|---|---|
+| P32 breeding pair | 1 + 2 | miss (flake) | **hit** |
+| P23 "my Korra" | 1 | miss (over-conservative) | **hit** |
+| P15 "Snark" | 3 | miss | miss |
+| P11 "healthsphere" | 4 | **hit** | miss |
+| P06 "Piranha" | 8 | miss | miss |
+| P25 "Nakhlim" | 13 | **hit** | miss |
+| P28 "a Moscow" | 47 | miss | miss |
+| P07 "magics" | 115 | **hit** | miss |
+
+**Haiku resolves nothing below rank 2; Opus resolves past rank 100.** Every one of Haiku's
+three extra misses is a prompt whose entity the corrector ranked 4th, 13th, or 115th — and
+every one of them Opus recovered from the tool enum on sentence context alone. In the other
+direction Haiku is *less* conservative: it committed on both rank-1 candidates Opus
+declined or flaked on.
+
+That converges with the recall ceiling above and makes the sequencing concrete: **corrector
+recall work is not just the path to 95%, it is also what would make a 3.7× cheaper model
+viable.** Get the right entity into the top 2–3 and Haiku's deficit disappears; leave it at
+rank 13+ and only a frontier model recovers it.
+
+Two caveats on the secondary numbers. The latency comparison is **not** a clean model
+result — the 2,048-token budget is an untuned choice on my side, and Haiku's 285-token
+median output against Opus's 140 is most of the gap; a smaller budget would likely close
+it. And cost came in 3.7× apart rather than the 5× the price ratio implies, for the same
+reason: Haiku spent about twice the output tokens.
+
 ### Survey outcome (0.5 / 0.7 — complete)
 
 Source survey is **done**; see [ADR-0014](adr/0014-game-files-as-source.md). Structured data
