@@ -73,6 +73,11 @@ def main() -> None:
                              model=args.model.split(":", 1)[1], extra_tools=extra,
                              think=args.think)
         tool_names = router._schema["properties"]["tool"]["enum"]
+    elif args.model.startswith("gemini"):
+        from palintel.routing_gemini import GeminiRouter
+        router = GeminiRouter(kb.lexicon, locatable, model=args.model,
+                              extra_tools=extra)
+        tool_names = router.tool_names
     else:
         router = ClaudeRouter(kb.lexicon, locatable, model=args.model,
                               extra_tools=extra)
@@ -178,10 +183,14 @@ def main() -> None:
         print(f"           tool schemas {schema_tok} tok cached (billed once at 1.25x, "
               f"then 0.1x)")
     else:
-        # The local path has no cached schema block: the enum is in the grammar, so the
-        # prompt carries only the utterance, the tool prose, and the candidate list.
-        print(f"           no cached schema - prompt median {in_toks[len(in_toks) // 2]} "
-              f"tok (enum is in the grammar, not the context)")
+        # No cache does not mean no schema. The local path genuinely keeps the enum out
+        # of context (grammar); Gemini ships it as function declarations and simply is
+        # not billed a separate cache line. Reporting those the same way would hide a
+        # ~30x difference in prompt size.
+        med = in_toks[len(in_toks) // 2]
+        where = ("enum is in the grammar, not the context" if med < 5000
+                 else "enum ships in the tool schemas, uncached")
+        print(f"           no cached schema - prompt median {med} tok ({where})")
     print(f"           output median {out_toks[len(out_toks) // 2]} tok, "
           f"max {out_toks[-1]} tok")
     for k in ("routed", "decline"):

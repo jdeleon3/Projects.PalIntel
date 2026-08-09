@@ -285,6 +285,48 @@ candidate list would need to reach the router already trustworthy rather than me
 ranked. That is the same corrector-recall work the 95% gate needs — it is now blocking
 two things instead of one.
 
+#### Gemini 3.6 Flash — best measured accuracy, but one run
+
+`--model gemini-3.6-flash`, function declarations carrying the same registry and the same
+enums Claude receives, so this arm is like-for-like with the hosted baselines.
+
+| | Opus 5 | Haiku 4.5 | **Gemini 3.6 Flash** | Qwen3 8B *think* |
+|---|---|---|---|---|
+| Correct entity | 86.1% | 83.3% | **91.7%** | 86.1% |
+| **Wrong entity** | **0** | **0** | **1 (2.8%)** | 4 (11.1%) |
+| Invented an entity on a no-entity prompt | 0/3 | 0/3 | **0/3** | 1/3 |
+| Over-named (two Pals where one was meant) | 0 | 0 | **0** | 6 |
+| Latency median / p95 | 2.9s / 6.6s | 3.6s / 7.6s | **2.0s** / 6.3s | 3.8s / 7.4s |
+| Prompt tokens per query | 21,741 *cached* | 18,060 *cached* | **16,489 uncached** | 557 |
+
+**33/36 is the highest number this prompt set has produced — and it is one run.** The
+variance work above puts a single n=36 run at ±3.6 points, so a 5.6-point lead over Opus
+is two utterances and roughly 1.5σ. **Gemini being better than Opus here is suggestive,
+not established**, and it would need repeats to claim otherwise. What *is* clean is the
+company it keeps: zero over-naming, zero invented entities on the no-entity prompts, and
+one wrong entity rather than four.
+
+Its three misses are informative. **P28 (Omascul, rank 47)** is the universal miss — every
+model tested fails it, which is now strong evidence that it is a corrector-recall problem
+and not a router problem. **P06** it got wrong rather than declining (`Pierdon` → `Pyrin`),
+where both Claude models declined; it is marginally less conservative at the boundary.
+**P22** it declined outright — *"where do Grisbolts spawn"*, with Grizzbolt ranked 1 at
+0.94 — which every other model got, and which looks like a flake rather than a pattern.
+
+Two caveats on the economics. Gemini ships the enum as tool schemas like Claude does, but
+**uncached**: 16,489 tokens on every query, 593,609 input tokens across the run, against
+Claude's write-once-then-read-at-0.1× profile. And the run is deliberately reported
+**unpriced** — `routing_gemini.PRICES` is empty rather than populated from memory, because
+this project has already published a cost estimate that was wrong by 2.5×
+([67720b3](#)) and an invented per-token price would repeat that with less excuse.
+
+One Gemini-specific constraint worth recording, since it shapes any future work here:
+**`responseSchema` rejects an enum past roughly 2KB of values** — the 318-name lexicon
+fails with a bare `INVALID_ARGUMENT`, and it is a size rather than a count limit (217 real
+names pass, 218 fail; 300 short synthetic names pass). Function declarations carry the
+identical enum without complaint. Structured-output mode is therefore not usable for
+entity resolution at this vocabulary size; function calling is.
+
 ### Survey outcome (0.5 / 0.7 — complete)
 
 Source survey is **done**; see [ADR-0014](adr/0014-game-files-as-source.md). Structured data
