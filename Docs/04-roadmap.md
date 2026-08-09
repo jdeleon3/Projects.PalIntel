@@ -22,7 +22,7 @@ Throwaway spikes. No production code.
 
 | # | Task | Validates | Kill criterion |
 |---|---|---|---|
-| 0.1 | Post a rich embed; read it in the overlay **while playing** | A1 | Illegible → reduce card density; other viewing surfaces still work. **Not** a project kill. |
+| ~~0.1~~ | ~~Post a rich embed; read it in the overlay **while playing**~~ | ~~A1~~ | **Retired.** Output is Discord cards on a second screen; there is no overlay. See "A1 retired" below. |
 | 0.2 | Capture per-speaker PCM via Pycord; write a WAV | — | Unusable → evaluate alternative Discord libraries |
 | 0.3 | Locate the save directory; parse owned Pals, bases, **and unlocked tech** | A2, A6 | Unparseable → Q3/Q5/Q6 degrade to stateless; revisit [ADR-0005](adr/0005-save-file-player-state.md) |
 | 0.4 | Derive the combination table from ranks; check ≥ 100 known combos | A3 | < 100% agreement outside exceptions → scrape explicit combos |
@@ -30,18 +30,44 @@ Throwaway spikes. No production code.
 | 0.6 | Record 20 utterances with hard Pal names; measure STT raw, with keyterm boosting, with fuzzy correction | A5 | < 95% after both defenses → redesign entity handling first |
 | 0.7 | Survey sources for **licence terms** and structural quality | A7 | No licensable source → Q7 corpus must be hand-written; scope Tier 3 down |
 
-**Exit criteria:** A4 confirmed (v1 depends on it). A1, A2, A3, A5, A6, A7 either confirmed
-or their fallback chosen and recorded as an ADR amendment.
+**Exit criteria:** A4 confirmed (v1 depends on it). A2, A3, A5, A6, A7 either confirmed
+or their fallback chosen and recorded as an ADR amendment. **A1 is retired, not deferred.**
 
-**Progress: A4 ✅ · A6 ✅ · A2 ✅(caveat) · A3 ◐ · A7 ◐ · A1 ⬜ · A5 ❌ (86.1% vs 95%, 0% wrong)**
+**Progress: A4 ✅ · A6 ✅ · A2 ✅(caveat) · A3 ◐ · A7 ◐ · A1 ⊘ retired · A5 ❌ (~90% vs 95%, ~3% wrong)**
 
 Remaining before Phase 1 can start:
 
 | Spike | Blocker |
 |---|---|
-| **0.6 — STT accuracy (A5)** | Model and latency **resolved**; architecture **corrected** ([ADR-0016](adr/0016-entity-resolution-in-router.md)). Verdict measured in Phase 1: **86.1%, misses 95% gate, 0% wrong entities**. |
-| 0.1 — overlay legibility (A1) | Needs a play session. Not a kill criterion; informs card density. |
+| **0.6 — STT accuracy (A5)** | Model and latency **resolved**; architecture **corrected** ([ADR-0016](adr/0016-entity-resolution-in-router.md)). Router measured in Phase 1: **Gemini 3.6 Flash ~90% exact, ~3% wrong**, still under the 95% gate. |
 | 0.4 — breeding combos (A3) | Confirmed via `CombiRank` + `DT_PalCombiUnique`. Gates Phase 3, not Phase 1. |
+
+### A1 retired — there is no overlay
+
+**Decision: the output surface is Discord cards on a second screen. The in-game overlay is
+not a target and never will be.** A1 asked whether cards stay legible in the Steam overlay
+while playing; that question no longer exists, so the spike is retired rather than left
+open.
+
+This removes the only remaining *presentation* constraint on card design, and several
+inherited assumptions go with it:
+
+- **Card density is no longer a legibility risk.** A second screen has room, the channel
+  scrolls, and the history persists. Density is now an editorial choice about what is
+  useful, not a constraint imposed by a cramped translucent panel over gameplay.
+- **Multiple cards per answer become viable.** Discord allows 10 embeds per message, and
+  Paldeck variant families are always exactly 2 (83 of 203 slots have a variant; none has
+  more), so a family answer is at most two cards, each titled with its own Pal. This is
+  what makes the variant-family design below workable — the objection to it was that two
+  overlapping answers could not be told apart on a cramped surface, and that objection is
+  gone.
+- **The "reduce card density" fallback in [ADR-0006](adr/0006-templated-cards.md) is moot**,
+  as is "validated in the overlay" as an acceptance test for template design.
+
+Docs that still describe the overlay as a viewing surface
+([00-overview.md](00-overview.md), [README.md](README.md),
+[01-architecture.md](01-architecture.md) §, ADR-0006, ADR-0009) predate this decision and
+should be read as historical until amended.
 
 ### Spike 0.6 outcome — STT model and latency (resolved)
 
