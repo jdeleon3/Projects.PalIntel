@@ -37,6 +37,68 @@ from palintel.tools import Decline  # noqa: E402
 EVAL = REPO / "data" / "stt_eval"
 
 
+def build_router(model: str, kb: KnowledgeBase, think: bool = False):
+    """Construct the backend `model` names, plus its tool-name list.
+
+    One place, so score_router.py and repeat_router.py cannot drift into scoring
+    different registries and reporting the numbers as comparable.
+    """
+    locatable = {n.resource for n in kb.nodes}
+    pals = kb.lexicon.pals()
+    extra = [pal_spawn_schema(pals), *eval_tool_schemas(pals)]
+
+    # A "local:" prefix selects the Ollama-backed router. Same registry, same prompts,
+    # same scoring - the enum moves from the tool schema into a decoding grammar.
+    if model.startswith("local:"):
+        from palintel.routing_local import LocalRouter
+        r = LocalRouter(kb.lexicon, locatable, model=model.split(":", 1)[1],
+                        extra_tools=extra, think=think)
+        return r, r._schema["properties"]["tool"]["enum"]
+    if model.startswith("gemini"):
+        from palintel.routing_gemini import GeminiRouter
+        r = GeminiRouter(kb.lexicon, locatable, model=model, extra_tools=extra)
+        return r, r.tool_names
+    r = ClaudeRouter(kb.lexicon, locatable, model=model, extra_tools=extra)
+    return r, [t["name"] for t in r._tools]
+
+
+def score_one(router, row: dict, kb: KnowledgeBase, entities: set[str]) -> dict:
+    """Route one transcript and score it. The scoring rules live here only."""
+    heard = row["boosted_text"]
+    expected = set(row["expected"])
+
+    t = time.perf_counter()
+    call = router.route(heard, kb.lexicon.rank(heard))
+    latency_ms = (time.perf_counter() - t) * 1000
+
+    if isinstance(call, Decline):
+        got, kind = set(), "decline"
+    else:
+        # Collect entities by value, not by parameter name: the tools spell the slot
+        # pal / parent_a / pal_b depending on arity, and which tool was selected is not
+        # what A5 measures.
+        got = {v for v in call.args.values() if isinstance(v, str) and v in entities}
+        kind = call.name
+
+    if not expected:
+        # No-entity prompt: naming anything is a hallucination, declining is correct.
+        hit, wrong = not got, bool(got)
+    else:
+        hit = bool(got & expected)
+        wrong = bool(got) and not hit
+
+    u = router.last_usage
+    return {"id": row["id"], "heard": heard, "group": row.get("group", "?"),
+            "expected": sorted(expected), "got": sorted(got), "kind": kind,
+            "hit": hit, "wrong": wrong, "latency_ms": round(latency_ms),
+            # Over-naming is a hit under set-intersection but is not a shippable
+            # answer: a card cannot ask which of two Pals you meant.
+            "over_named": len(got) > len(expected),
+            "in_tok": u.input if u else 0, "out_tok": u.output if u else 0,
+            "cached_tok": u.cache_read if u else 0,
+            "usd": round(u.usd, 5) if u else 0.0}
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--condition", default="quiet")
@@ -60,28 +122,8 @@ def main() -> None:
         rows = rows[:args.limit]
 
     kb = KnowledgeBase.load("1.0.2")
-    locatable = {n.resource for n in kb.nodes}
-    pals = kb.lexicon.pals()
     entities = set(kb.lexicon.canonical_names)
-    extra = [pal_spawn_schema(pals), *eval_tool_schemas(pals)]
-
-    # A "local:" prefix selects the Ollama-backed router. Same registry, same prompts,
-    # same scoring - the enum moves from the tool schema into a decoding grammar.
-    if args.model.startswith("local:"):
-        from palintel.routing_local import LocalRouter
-        router = LocalRouter(kb.lexicon, locatable,
-                             model=args.model.split(":", 1)[1], extra_tools=extra,
-                             think=args.think)
-        tool_names = router._schema["properties"]["tool"]["enum"]
-    elif args.model.startswith("gemini"):
-        from palintel.routing_gemini import GeminiRouter
-        router = GeminiRouter(kb.lexicon, locatable, model=args.model,
-                              extra_tools=extra)
-        tool_names = router.tool_names
-    else:
-        router = ClaudeRouter(kb.lexicon, locatable, model=args.model,
-                              extra_tools=extra)
-        tool_names = [t["name"] for t in router._tools]
+    router, tool_names = build_router(args.model, kb, think=args.think)
 
     print(f"model={args.model}  condition={args.condition}  prompts={len(rows)}")
     print(f"tools={tool_names}\n")
@@ -94,42 +136,13 @@ def main() -> None:
     scored = []
     t0 = time.perf_counter()
     for r in rows:
-        heard = r["boosted_text"]
-        expected = set(r["expected"])
-        candidates = kb.lexicon.rank(heard)
+        s = score_one(router, r, kb, entities)
+        scored.append(s)
 
-        t = time.perf_counter()
-        call = router.route(heard, candidates)
-        latency_ms = (time.perf_counter() - t) * 1000
-
-        if isinstance(call, Decline):
-            got, kind = set(), "decline"
-        else:
-            # Collect entities by value, not by parameter name: the tools spell the slot
-            # pal / parent_a / pal_b depending on arity, and which tool was selected is
-            # not what A5 measures.
-            got = {v for v in call.args.values()
-                   if isinstance(v, str) and v in entities}
-            kind = call.name
-
-        if not expected:
-            # No-entity prompt: naming anything is a hallucination, declining is correct.
-            hit, wrong = not got, bool(got)
-        else:
-            hit = bool(got & expected)
-            wrong = bool(got) and not hit
-        u = router.last_usage
-        scored.append({"id": r["id"], "heard": heard, "group": r.get("group", "?"),
-                       "expected": sorted(expected), "got": sorted(got), "kind": kind,
-                       "hit": hit, "wrong": wrong, "latency_ms": round(latency_ms),
-                       "in_tok": u.input if u else 0, "out_tok": u.output if u else 0,
-                       "cached_tok": u.cache_read if u else 0,
-                       "usd": round(u.usd, 5) if u else 0.0})
-
-        mark = "OK  " if hit else ("WRONG" if wrong else "miss ")
-        print(f"  {mark} {r['id']}  expected={sorted(expected)}  got={sorted(got) or kind}"
-              f"  ({latency_ms:.0f}ms)")
-        print(f"        heard: {heard[:70]}")
+        mark = "OK  " if s["hit"] else ("WRONG" if s["wrong"] else "miss ")
+        print(f"  {mark} {s['id']}  expected={s['expected']}  "
+              f"got={s['got'] or s['kind']}  ({s['latency_ms']}ms)")
+        print(f"        heard: {s['heard'][:70]}")
 
     def block(rows: list[dict], label: str) -> None:
         if not rows:
@@ -204,7 +217,12 @@ def main() -> None:
           f"-> {'PASS' if hits / total >= 0.95 else 'FAIL'}")
 
     # ":" is legal in a model id and illegal in a Windows filename.
-    out = EVAL / args.condition / f"router_{args.model.replace(':', '-')}.json"
+    stem = f"router_{args.model.replace(':', '-')}"
+    if args.limit:
+        # A truncated run must never overwrite a full one. This has already destroyed
+        # the Opus 5 per-prompt detail once, leaving only the summary in the roadmap.
+        stem += f"_first{args.limit}"
+    out = EVAL / args.condition / f"{stem}.json"
     out.write_text(json.dumps(scored, indent=2), encoding="utf-8")
     print(f"detail -> {out}")
 

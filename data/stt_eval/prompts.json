@@ -1,10 +1,12 @@
 {
-  "version": 2,
+  "version": 3,
   "lexicon_version": 1,
   "game_version": "1.0.2",
-  "seed": 20260808,
-  "count": 40,
-  "scored_entities": 39,
+  "seed": 20260809,
+  "count": 134,
+  "new_in_v3": 94,
+  "utterances": 130,
+  "scored_entities": 131,
   "prompts": [
     {
       "group": "control",
@@ -361,6 +363,838 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "id": "P40"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where can I find Robinquill",
+      "expect_entities": [
+        "Robinquill"
+      ],
+      "difficulty": "hard",
+      "id": "P041"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where do Dualith spawn",
+      "expect_entities": [
+        "Dualith"
+      ],
+      "difficulty": "hard",
+      "id": "P042"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal how do I breed Sweepa",
+      "expect_entities": [
+        "Sweepa"
+      ],
+      "difficulty": "easy",
+      "id": "P043"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what's the breeding combo for Arsox",
+      "expect_entities": [
+        "Arsox"
+      ],
+      "difficulty": "easy",
+      "id": "P044"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal is Solenne good for mining",
+      "expect_entities": [
+        "Solenne"
+      ],
+      "difficulty": "medium",
+      "id": "P045"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what element is Hoocrates",
+      "expect_entities": [
+        "Hoocrates"
+      ],
+      "difficulty": "hard",
+      "id": "P046"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal should I use Bakemi against the first tower",
+      "expect_entities": [
+        "Bakemi"
+      ],
+      "difficulty": "easy",
+      "id": "P047"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where's the nearest Rushoar",
+      "expect_entities": [
+        "Rushoar"
+      ],
+      "difficulty": "medium",
+      "id": "P048"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what work suitability does Lifmunk have",
+      "expect_entities": [
+        "Lifmunk"
+      ],
+      "difficulty": "hard",
+      "id": "P049"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal is Prixter worth levelling up",
+      "expect_entities": [
+        "Prixter"
+      ],
+      "difficulty": "hard",
+      "id": "P050"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where can I find Dazzi",
+      "expect_entities": [
+        "Dazzi"
+      ],
+      "difficulty": "medium",
+      "id": "P051"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where do Frostplume spawn",
+      "expect_entities": [
+        "Frostplume"
+      ],
+      "difficulty": "hard",
+      "id": "P052"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal how do I breed Bulldosu",
+      "expect_entities": [
+        "Bulldosu"
+      ],
+      "difficulty": "medium",
+      "id": "P053"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what's the breeding combo for Menasting",
+      "expect_entities": [
+        "Menasting"
+      ],
+      "difficulty": "hard",
+      "id": "P054"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal is Croajiro good for mining",
+      "expect_entities": [
+        "Croajiro"
+      ],
+      "difficulty": "medium",
+      "id": "P055"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what element is Vanwyrm",
+      "expect_entities": [
+        "Vanwyrm"
+      ],
+      "difficulty": "hard",
+      "id": "P056"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal should I use Kelpsea against the first tower",
+      "expect_entities": [
+        "Kelpsea"
+      ],
+      "difficulty": "medium",
+      "id": "P057"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where's the nearest Tanzee",
+      "expect_entities": [
+        "Tanzee"
+      ],
+      "difficulty": "easy",
+      "id": "P058"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what work suitability does Jetragon have",
+      "expect_entities": [
+        "Jetragon"
+      ],
+      "difficulty": "medium",
+      "id": "P059"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal is Gildane worth levelling up",
+      "expect_entities": [
+        "Gildane"
+      ],
+      "difficulty": "easy",
+      "id": "P060"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where can I find Pengullet",
+      "expect_entities": [
+        "Pengullet"
+      ],
+      "difficulty": "hard",
+      "id": "P061"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where do Mozzarina spawn",
+      "expect_entities": [
+        "Mozzarina"
+      ],
+      "difficulty": "hard",
+      "id": "P062"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal how do I breed Lovander",
+      "expect_entities": [
+        "Lovander"
+      ],
+      "difficulty": "medium",
+      "id": "P063"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what's the breeding combo for Ghangler",
+      "expect_entities": [
+        "Ghangler"
+      ],
+      "difficulty": "medium",
+      "id": "P064"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal is Galeclaw good for mining",
+      "expect_entities": [
+        "Galeclaw"
+      ],
+      "difficulty": "medium",
+      "id": "P065"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what element is Elphidran",
+      "expect_entities": [
+        "Elphidran"
+      ],
+      "difficulty": "hard",
+      "id": "P066"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal should I use Ragnahawk against the first tower",
+      "expect_entities": [
+        "Ragnahawk"
+      ],
+      "difficulty": "hard",
+      "id": "P067"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where's the nearest Penking",
+      "expect_entities": [
+        "Penking"
+      ],
+      "difficulty": "hard",
+      "id": "P068"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what work suitability does Sekhmet have",
+      "expect_entities": [
+        "Sekhmet"
+      ],
+      "difficulty": "medium",
+      "id": "P069"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal is Prunelia worth levelling up",
+      "expect_entities": [
+        "Prunelia"
+      ],
+      "difficulty": "hard",
+      "id": "P070"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where can I find Xenogard",
+      "expect_entities": [
+        "Xenogard"
+      ],
+      "difficulty": "hard",
+      "id": "P071"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where do Sootseer spawn",
+      "expect_entities": [
+        "Sootseer"
+      ],
+      "difficulty": "hard",
+      "id": "P072"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal how do I breed Kingpaca",
+      "expect_entities": [
+        "Kingpaca"
+      ],
+      "difficulty": "hard",
+      "id": "P073"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what's the breeding combo for Venusa",
+      "expect_entities": [
+        "Venusa"
+      ],
+      "difficulty": "easy",
+      "id": "P074"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal is Selyne good for mining",
+      "expect_entities": [
+        "Selyne"
+      ],
+      "difficulty": "easy",
+      "id": "P075"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what element is Moldron",
+      "expect_entities": [
+        "Moldron"
+      ],
+      "difficulty": "medium",
+      "id": "P076"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal should I use Eikthyrdeer against the first tower",
+      "expect_entities": [
+        "Eikthyrdeer"
+      ],
+      "difficulty": "hard",
+      "id": "P077"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where's the nearest Dupin",
+      "expect_entities": [
+        "Dupin"
+      ],
+      "difficulty": "easy",
+      "id": "P078"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what work suitability does Maraith have",
+      "expect_entities": [
+        "Maraith"
+      ],
+      "difficulty": "hard",
+      "id": "P079"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal is Cawgnito worth levelling up",
+      "expect_entities": [
+        "Cawgnito"
+      ],
+      "difficulty": "medium",
+      "id": "P080"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where can I find Reindrix",
+      "expect_entities": [
+        "Reindrix"
+      ],
+      "difficulty": "hard",
+      "id": "P081"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where do Sparkit spawn",
+      "expect_entities": [
+        "Sparkit"
+      ],
+      "difficulty": "medium",
+      "id": "P082"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where can I find Snock Lux",
+      "expect_entities": [
+        "Snock Lux"
+      ],
+      "difficulty": "variant",
+      "id": "P083"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what element is Vanwyrm Cryst",
+      "expect_entities": [
+        "Vanwyrm Cryst"
+      ],
+      "difficulty": "variant",
+      "id": "P084"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal how do I breed Quivern Botan",
+      "expect_entities": [
+        "Quivern Botan"
+      ],
+      "difficulty": "variant",
+      "id": "P085"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal is Fuack Ignis better than the normal one",
+      "expect_entities": [
+        "Fuack Ignis"
+      ],
+      "difficulty": "variant",
+      "id": "P086"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where can I find Bushi Noct",
+      "expect_entities": [
+        "Bushi Noct"
+      ],
+      "difficulty": "variant",
+      "id": "P087"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what element is Mau Cryst",
+      "expect_entities": [
+        "Mau Cryst"
+      ],
+      "difficulty": "variant",
+      "id": "P088"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal how do I breed Needoll Noct",
+      "expect_entities": [
+        "Needoll Noct"
+      ],
+      "difficulty": "variant",
+      "id": "P089"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal is Smokie Cryst better than the normal one",
+      "expect_entities": [
+        "Smokie Cryst"
+      ],
+      "difficulty": "variant",
+      "id": "P090"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where can I find Frostallion Noct",
+      "expect_entities": [
+        "Frostallion Noct"
+      ],
+      "difficulty": "variant",
+      "id": "P091"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what element is Ghangler Ignis",
+      "expect_entities": [
+        "Ghangler Ignis"
+      ],
+      "difficulty": "variant",
+      "id": "P092"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal how do I breed Fenglope Lux",
+      "expect_entities": [
+        "Fenglope Lux"
+      ],
+      "difficulty": "variant",
+      "id": "P093"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal is Pengullet Lux better than the normal one",
+      "expect_entities": [
+        "Pengullet Lux"
+      ],
+      "difficulty": "variant",
+      "id": "P094"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal show me Incineram near my base",
+      "expect_entities": [
+        "Incineram"
+      ],
+      "difficulty": "frame_word",
+      "id": "P095"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal is Xenovader any good against the first tower",
+      "expect_entities": [
+        "Xenovader"
+      ],
+      "difficulty": "frame_word",
+      "id": "P096"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal can you find me a Dandilord somewhere close",
+      "expect_entities": [
+        "Dandilord"
+      ],
+      "difficulty": "frame_word",
+      "id": "P097"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what's the best way to catch Nitewing",
+      "expect_entities": [
+        "Nitewing"
+      ],
+      "difficulty": "frame_word",
+      "id": "P098"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal do I need a better sphere for Xenolord",
+      "expect_entities": [
+        "Xenolord"
+      ],
+      "difficulty": "frame_word",
+      "id": "P099"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal show me Depresso near my base",
+      "expect_entities": [
+        "Depresso"
+      ],
+      "difficulty": "frame_word",
+      "id": "P100"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal is Lapiron any good against the first tower",
+      "expect_entities": [
+        "Lapiron"
+      ],
+      "difficulty": "frame_word",
+      "id": "P101"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal can you find me a Gorirat somewhere close",
+      "expect_entities": [
+        "Gorirat"
+      ],
+      "difficulty": "frame_word",
+      "id": "P102"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what's the best way to catch Mossanda",
+      "expect_entities": [
+        "Mossanda"
+      ],
+      "difficulty": "frame_word",
+      "id": "P103"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal do I need a better sphere for Elizabee",
+      "expect_entities": [
+        "Elizabee"
+      ],
+      "difficulty": "frame_word",
+      "id": "P104"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal can I breed Eidrolon with Bastigor",
+      "expect_entities": [
+        "Eidrolon",
+        "Bastigor"
+      ],
+      "difficulty": "two_entity",
+      "id": "P105"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal is Surfent better than Solmora for handiwork",
+      "expect_entities": [
+        "Surfent",
+        "Solmora"
+      ],
+      "difficulty": "two_entity",
+      "id": "P106"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal which should I use Foxcicle or Sibelyx",
+      "expect_entities": [
+        "Foxcicle",
+        "Sibelyx"
+      ],
+      "difficulty": "two_entity",
+      "id": "P107"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal do Ophydia and Fenglope make anything good",
+      "expect_entities": [
+        "Ophydia",
+        "Fenglope"
+      ],
+      "difficulty": "two_entity",
+      "id": "P108"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal compare Nitemary and Gloopie for combat",
+      "expect_entities": [
+        "Nitemary",
+        "Gloopie"
+      ],
+      "difficulty": "two_entity",
+      "id": "P109"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal can I breed Snugloo with Warsect",
+      "expect_entities": [
+        "Snugloo",
+        "Warsect"
+      ],
+      "difficulty": "two_entity",
+      "id": "P110"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal is Univolt better than Needoll for handiwork",
+      "expect_entities": [
+        "Univolt",
+        "Needoll"
+      ],
+      "difficulty": "two_entity",
+      "id": "P111"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal which should I use Slowatt or Daedream",
+      "expect_entities": [
+        "Slowatt",
+        "Daedream"
+      ],
+      "difficulty": "two_entity",
+      "id": "P112"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal do Grintale and Loupmoon make anything good",
+      "expect_entities": [
+        "Grintale",
+        "Loupmoon"
+      ],
+      "difficulty": "two_entity",
+      "id": "P113"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal compare Quivern and Ribbuny for combat",
+      "expect_entities": [
+        "Quivern",
+        "Ribbuny"
+      ],
+      "difficulty": "two_entity",
+      "id": "P114"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal is there any crude oil around here",
+      "expect_entities": [
+        "crude_oil"
+      ],
+      "difficulty": "resource",
+      "id": "P115"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal I need coal for a new base",
+      "expect_entities": [
+        "coal"
+      ],
+      "difficulty": "resource",
+      "id": "P116"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where's the nearest ore",
+      "expect_entities": [
+        "ore"
+      ],
+      "difficulty": "resource",
+      "id": "P117"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal find me a sulfur spot for level twenty",
+      "expect_entities": [
+        "sulfur"
+      ],
+      "difficulty": "resource",
+      "id": "P118"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where's the closest quartz deposit",
+      "expect_entities": [
+        "quartz"
+      ],
+      "difficulty": "resource",
+      "id": "P119"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal show me crude oil near my base",
+      "expect_entities": [
+        "crude_oil"
+      ],
+      "difficulty": "resource",
+      "id": "P120"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal is there any coal around here",
+      "expect_entities": [
+        "coal"
+      ],
+      "difficulty": "resource",
+      "id": "P121"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal I need ore for a new base",
+      "expect_entities": [
+        "ore"
+      ],
+      "difficulty": "resource",
+      "id": "P122"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal how do I raise my capture rate",
+      "expect_entities": [],
+      "difficulty": "no_entity",
+      "id": "P123"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what's the fastest way to level up",
+      "expect_entities": [],
+      "difficulty": "no_entity",
+      "id": "P124"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal should I upgrade my base or my gear first",
+      "expect_entities": [],
+      "difficulty": "no_entity",
+      "id": "P125"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal how many workers can I have at one base",
+      "expect_entities": [],
+      "difficulty": "no_entity",
+      "id": "P126"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what does the lucky trait actually give me",
+      "expect_entities": [],
+      "difficulty": "no_entity",
+      "id": "P127"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal is it worth building a second breeding pen",
+      "expect_entities": [],
+      "difficulty": "no_entity",
+      "id": "P128"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal how do I get more technology points",
+      "expect_entities": [],
+      "difficulty": "no_entity",
+      "id": "P129"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what should I do after the first tower",
+      "expect_entities": [],
+      "difficulty": "no_entity",
+      "id": "P130"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal how do I stop my pals getting depressed",
+      "expect_entities": [],
+      "difficulty": "no_entity",
+      "id": "P131"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what's the best weapon at this level",
+      "expect_entities": [],
+      "difficulty": "no_entity",
+      "id": "P132"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal do I need to feed my pals overnight",
+      "expect_entities": [],
+      "difficulty": "no_entity",
+      "id": "P133"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal how do I unlock the next tier of gear",
+      "expect_entities": [],
+      "difficulty": "no_entity",
+      "id": "P134"
     }
   ]
 }
