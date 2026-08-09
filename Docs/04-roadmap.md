@@ -33,13 +33,13 @@ Throwaway spikes. No production code.
 **Exit criteria:** A4 confirmed (v1 depends on it). A1, A2, A3, A5, A6, A7 either confirmed
 or their fallback chosen and recorded as an ADR amendment.
 
-**Progress: A4 ✅ · A6 ✅ · A2 ✅(caveat) · A3 ◐ · A7 ◐ · A1 ⬜ · A5 ⬜**
+**Progress: A4 ✅ · A6 ✅ · A2 ✅(caveat) · A3 ◐ · A7 ◐ · A1 ⬜ · A5 ❌ (86.1% vs 95%, 0% wrong)**
 
 Remaining before Phase 1 can start:
 
 | Spike | Blocker |
 |---|---|
-| **0.6 — STT accuracy (A5)** | Model and latency **resolved**; architecture **corrected** ([ADR-0016](adr/0016-entity-resolution-in-router.md)). Final verdict needs a live router — Phase 1. |
+| **0.6 — STT accuracy (A5)** | Model and latency **resolved**; architecture **corrected** ([ADR-0016](adr/0016-entity-resolution-in-router.md)). Verdict measured in Phase 1: **86.1%, misses 95% gate, 0% wrong entities**. |
 | 0.1 — overlay legibility (A1) | Needs a play session. Not a kill criterion; informs card density. |
 | 0.4 — breeding combos (A3) | Confirmed via `CombiRank` + `DT_PalCombiUnique`. Gates Phase 3, not Phase 1. |
 
@@ -111,6 +111,47 @@ any layer: **Majex** (rank 69) and **Omascul** (rank 29).
 
 Remaining unmeasured: whether the router correctly decides an entity is *present*, and
 behaviour on arbitrary phrasing (candidate generation excluded template frame words).
+
+### A5 verdict — measured in Phase 1
+
+`tools/eval/score_router.py`, Claude Opus 5, 40 recorded transcripts, quiet condition.
+
+| | |
+|---|---|
+| Correct entity (36 utterances) | **31/36 = 86.1%** |
+| **Wrong entity** | **0/36 = 0.0%** |
+| Declined | 5 utterances + 3 no-entity prompts |
+| A5 target | ≥ 95% → **FAIL** |
+
+**86.1% against a 95% gate, but the 0% matters more.** The failure this project refuses
+to ship is a card that confidently answers the wrong question, and it did not occur once.
+Every miss was an explicit decline, several with a usable clarifying question — *"I can't
+tell whether you meant Mycora, or a Pal whose name sounded like Korra"*. All three
+no-entity prompts (*"what should I research next"*) declined rather than inventing a Pal,
+which is the false-positive test.
+
+The Phase 0 ceiling estimate (89.7% top-3) proved roughly right and its two named
+unrecoverable entities split: **Majex resolved** — "how do I breed magics?" routed
+correctly, the router recovering what ranked 69th in isolation — while **Omascul did
+not**, the one genuine corrector recall failure ("a Moscow", absent from the top 10).
+
+The five misses are three different problems, and only one is the router's:
+
+| | Cause | Answer's rank |
+|---|---|---|
+| P06 "where do Piranha spawn" | genuine ambiguity — *Piranha* is an English word | 8 (0.57) |
+| P15 "how do I breed Snark" | genuine ambiguity, outranked by Sparkit | 3 (0.60) |
+| P23 "how do I breed my Korra" | over-conservative decline | **1** (0.77) |
+| P28 "the nearest a Moscow" | corrector recall failure | **absent** |
+| P32 "breed kitsun with pyrdon" | **nondeterminism** | 1 (1.00) + 2 (0.77) |
+
+**P32 routed correctly on retry**, returning `check_breeding_pair(Kitsun, Pierdon)`. One
+run of n=36 against a nondeterministic model therefore carries real variance, and 86.1%
+should be read as a point estimate, not a measurement. Closing the last nine points needs
+repeat runs to size that variance before any tuning, or the tuning optimises noise.
+
+Latency on utterances: **median 2.9s, p95 6.6s** — see
+[01-architecture.md](01-architecture.md) §7 note 4.
 
 ### Survey outcome (0.5 / 0.7 — complete)
 
