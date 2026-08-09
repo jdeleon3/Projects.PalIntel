@@ -38,11 +38,23 @@ MODEL = "gemini-3.6-flash"
 API = "https://generativelanguage.googleapis.com/v1beta"
 TIMEOUT_S = 120
 
-# Per million tokens: (input, output). Deliberately empty of guesses - a model absent
-# here reports tokens and no dollar figure rather than a plausible-looking wrong one.
-# The Opus cost estimate in this project was already wrong by 2.5x once (commit 67720b3);
-# an invented Gemini price would repeat that with less excuse.
-PRICES: dict[str, tuple[float, float]] = {}
+# Per million tokens: (input, output).
+#
+# Source: https://ai.google.dev/gemini-api/docs/pricing (paid tier, standard).
+# Output price is stated by Google as *including* thinking tokens, so thoughts are folded
+# into output in GeminiUsage.usd rather than priced separately.
+#
+# Do not take these from the model. Asked its own pricing, Gemini answered
+# $0.075 / $0.30 - understating input 20x and output 25x, which turned a $5.75 run into
+# an apparent $0.25 one and briefly inverted the entire cost comparison against Haiku.
+# A model answers from training data that predates its own release; the pricing page is
+# the source of record.
+PRICES: dict[str, tuple[float, float]] = {
+    "gemini-3.6-flash": (1.50, 7.50),
+}
+# Context-caching input rate, per million tokens. Not yet used: the backend sends the
+# ~16.7k-token tool schema uncached on every request, which is ~93% of its spend.
+CACHED_INPUT_PRICE = {"gemini-3.6-flash": 0.15}
 
 
 @dataclass(frozen=True)
@@ -176,6 +188,11 @@ class GeminiRouter:
             input=u.get("promptTokenCount", 0),
             output=u.get("candidatesTokenCount", 0),
             thoughts=u.get("thoughtsTokenCount", 0),
+            # Implicit context caching, if it is applying at all. Recorded because the
+            # tool schema is ~16.7k tokens resent on every request and is ~99% of this
+            # backend's spend: whether it is being cached is the single biggest cost
+            # question, and it was previously not measured.
+            cache_read=u.get("cachedContentTokenCount", 0),
             model=self._model,
         )
 

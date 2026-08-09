@@ -485,6 +485,21 @@ so a future lexicon/tool mismatch is caught rather than silently costing points.
 | **variant** | 20 | **70%** | base-vs-variant disambiguation |
 | resource | 16 | 69% → **100%** once crude_oil is excluded | |
 
+**Cost: Gemini is the expensive option, not the cheap one.** At published rates
+([pricing page](https://ai.google.dev/gemini-api/docs/pricing), $1.50/$7.50 per MTok with
+thinking billed as output), the 200-prompt run costs **~$5.75 against Haiku's measured
+$0.95 — about 6x more.** Two errors had hidden this and both are now fixed: the backend
+recorded `candidatesTokenCount` as output and dropped `thoughtsTokenCount`, under-reporting
+output ~25x (median 23 tok, actually 571); and the prices had been taken from asking Gemini
+itself, which understated input 20x and output 25x. **Do not price a model by asking it.**
+
+**~93% of that spend is one avoidable line item.** The ~16.7k-token tool schema is resent
+uncached on all 196 requests — 3.27M input tokens. At the context-caching rate ($0.15/MTok)
+that input drops from $4.91 to $0.49. Gemini context caching is not currently used at all;
+`cachedContentTokenCount` is now recorded so it can be confirmed rather than assumed. Note
+also that the eval deliberately registers all seven query classes; production Q1 ships 852
+tokens of schema, not 16.7k, so eval cost is not production cost.
+
 **Variant handling is now the single largest recoverable gap.** Failures are `Celaray` for
 *Celaray Lux*, `Solmora`+`Solmora Lux` returned together, and clean transcripts like
 *"Smokey Cryst"* and *"Loop Moon Cryst"* declined outright. The corrector ranks base and

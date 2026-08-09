@@ -102,7 +102,11 @@ def score_one(router, row: dict, kb: KnowledgeBase, entities: set[str]) -> dict:
             # Over-naming is a hit under set-intersection but is not a shippable
             # answer: a card cannot ask which of two Pals you meant.
             "over_named": len(got) > len(expected),
-            "in_tok": u.input if u else 0, "out_tok": u.output if u else 0,
+            "in_tok": u.input if u else 0,
+            # Billable output. Gemini reports reasoning separately as thoughtsTokenCount
+            # and bills it at the output rate, so recording candidatesTokenCount alone
+            # under-reported this backend's output by several-fold.
+            "out_tok": (u.output + getattr(u, "thoughts", 0)) if u else 0,
             "cached_tok": u.cache_read if u else 0,
             "usd": round(u.usd, 5) if u else 0.0}
 
