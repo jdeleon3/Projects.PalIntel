@@ -78,12 +78,12 @@ def test_dotenv_is_loaded_and_real_env_wins(tmp_path, monkeypatch):
     .gitignore listed .env before anything loaded it, so a key placed there was
     silently ignored - the config looked correct and wasn't.
     """
-    import importlib
     import palintel
 
     env_file = tmp_path / ".env"
-    env_file.write_text("PALINTEL_TEST_KEY=from-dotenv
-", encoding="utf-8")
+    env_file.write_text("PALINTEL_TEST_KEY=from-dotenv\n", encoding="utf-8")
+    # _load_dotenv resolves .env relative to the package's __file__, so pointing that
+    # at a temp tree is what isolates this from the repo's real .env.
     monkeypatch.setattr(palintel, "__file__", str(tmp_path / "palintel" / "__init__.py"))
     monkeypatch.delenv("PALINTEL_TEST_KEY", raising=False)
     palintel._load_dotenv()
