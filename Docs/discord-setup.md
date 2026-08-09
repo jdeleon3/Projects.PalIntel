@@ -39,17 +39,37 @@ is a permission, set in the next step, not an intent.)*
 
 ## 4. Invite it to your server
 
-1. Open **OAuth2 → URL Generator**.
-2. Under **Scopes**, tick **`bot`**.
-3. Under **Bot Permissions**, tick:
-   - **Send Messages**
-   - **Embed Links** — cards are embeds; without this they silently do not appear
-   - **Read Message History**
-   - **View Channel**
-   - **Connect** and **Speak** — not used yet, but saves redoing this for voice
-4. Copy the generated URL, open it, pick your server, authorise.
+Quickest way — build the URL yourself rather than clicking through the generator.
 
-You need **Manage Server** permission on the target server to add a bot.
+Copy your **Application ID** from **General Information** (a number, and *not* the bot
+token), then open:
+
+```
+https://discord.com/api/oauth2/authorize?client_id=YOUR_APP_ID&permissions=3230720&scope=bot
+```
+
+Pick your server → **Authorise**.
+
+`3230720` is the sum of exactly the permissions PalIntel needs:
+
+| Permission | Bit | Why |
+|---|---|---|
+| View Channel | 1024 | see the channel at all |
+| Send Messages | 2048 | reply |
+| **Embed Links** | 16384 | cards are embeds; without this they silently never appear |
+| Read Message History | 65536 | read what was typed |
+| Connect | 1048576 | unused today — included so voice needs no re-invite |
+| Speak | 2097152 | same |
+
+<details>
+<summary>Or use the UI instead</summary>
+
+**OAuth2 → URL Generator** → scope **`bot`** → tick the six permissions above → copy the
+generated URL.
+</details>
+
+You need **Manage Server** on the target server to add a bot. If your server is missing
+from the dropdown, that is why.
 
 ## 5. Get the channel ID
 
