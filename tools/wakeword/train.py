@@ -1,8 +1,8 @@
 """Runner for openWakeWord training, with the compatibility shims it needs.
 
 `python -m openwakeword.train` does not currently run against a modern dependency set.
-Six breakages, all version drift or Windows portability rather than anything wrong with
-the config:
+Eight breakages, all version drift, Windows portability, or third-party bugs rather
+than anything wrong with the config:
 
   1. `openwakeword.data` imports `acoustics`, whose package `__init__` eagerly imports
      `acoustics.directivity`, which imports `scipy.special.sph_harm` - removed in SciPy
@@ -41,6 +41,18 @@ the config:
      has returned. Also fixes `mmap_path.strip(".npy")`, which strips *characters*
      rather than a suffix and produced "positive_features_trai2.npy" by eating the "n"
      from "train".
+
+  7. `speechbrain.utils.importutils.LazyModule.__getattr__` raises ImportError for any
+     attribute, dunders included. `hasattr` only swallows AttributeError, so when
+     `inspect.getmodule` walks sys.modules doing `hasattr(module, "__file__")` - which
+     torchinfo does while summarising the model - an unrelated optional dependency
+     (k2-fsa) kills the run at the final step.
+
+  8. openWakeWord defines `IterDataset` in its `__main__`, and Windows DataLoader
+     workers spawn and pickle the dataset class by qualified name - which a
+     runpy-executed `__main__` cannot provide. Loading is forced single-process; the
+     features are already memory-mapped, so the loader slices arrays rather than
+     decoding audio and the throughput cost is irrelevant.
 
 Usage (from the repo root):
 
@@ -164,6 +176,61 @@ def _shim_trim_mmap() -> None:
     utils.compute_features_from_generator = compute_features_from_generator
 
 
+def _shim_speechbrain() -> None:
+    """Make speechbrain's lazy modules survive attribute probing.
+
+    `LazyModule.__getattr__` raises ImportError for *any* attribute, including dunders.
+    `hasattr` only swallows AttributeError, so when `inspect.getmodule` walks sys.modules
+    doing `hasattr(module, "__file__")` - which torchinfo does while summarising the
+    model - an unrelated optional dependency (k2-fsa) takes the whole training run down
+    at the last step.
+
+    Dunder lookups now raise AttributeError, which is what the protocol expects and what
+    makes hasattr return False. Real attribute access is untouched.
+    """
+    try:
+        from speechbrain.utils.importutils import LazyModule
+    except ImportError:
+        return
+
+    original = LazyModule.__getattr__
+
+    def __getattr__(self, attr):
+        if attr.startswith("__") and attr.endswith("__"):
+            try:
+                return original(self, attr)
+            except ImportError as e:
+                raise AttributeError(attr) from e
+        return original(self, attr)
+
+    LazyModule.__getattr__ = __getattr__
+
+
+def _shim_dataloader() -> None:
+    """Force single-process data loading.
+
+    openWakeWord defines `IterDataset` inside its `__main__`, and Windows DataLoader
+    workers use spawn, which pickles the dataset class by qualified name. A class living
+    in a `runpy`-executed `__main__` cannot be re-imported by the child, so every worker
+    dies with `Can't pickle <class '__main__.IterDataset'>`.
+
+    Single-process loading costs throughput and nothing else here: the features are
+    already computed and memory-mapped, so the loader is slicing arrays rather than
+    decoding audio.
+    """
+    import torch.utils.data as tud
+
+    _orig = tud.DataLoader.__init__
+
+    def __init__(self, *args, **kwargs):
+        kwargs["num_workers"] = 0
+        kwargs.pop("prefetch_factor", None)      # invalid when num_workers is 0
+        kwargs.pop("persistent_workers", None)
+        return _orig(self, *args, **kwargs)
+
+    tud.DataLoader.__init__ = __init__
+
+
 def _piper_path() -> str:
     import yaml
     cfg = yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
@@ -202,6 +269,8 @@ def main() -> None:
     _shim_scipy()
     _shim_torchaudio()
     _shim_trim_mmap()
+    _shim_speechbrain()
+    _shim_dataloader()
     # train.py resolves the generator relative to cwd, and imports it by bare name.
     piper = _piper_path()
     _bind_voice(piper)
