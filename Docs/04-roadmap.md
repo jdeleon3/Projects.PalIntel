@@ -153,6 +153,38 @@ repeat runs to size that variance before any tuning, or the tuning optimises noi
 Latency on utterances: **median 2.9s, p95 6.6s** — see
 [01-architecture.md](01-architecture.md) §7 note 4.
 
+#### Variance sized before tuning
+
+`tools/eval/router_variance.py`, 12 boundary prompts, one repeat, $0.32. Prompts whose
+expected entity is an unambiguous rank-1 match were not re-run: they have no judgement
+left in them, so they cannot move the headline and only the boundary was sampled.
+
+**2 of 12 flipped, in opposite directions.** P32 routed correctly (`Kitsun`, `Pierdon`)
+and **P19 "should I use Astridolium against the first tower" declined, having routed last
+run** — so the second sample also scores **31/36 = 86.1%**, from a different set of
+misses. The aggregate is reproducible; the per-prompt outcomes are not.
+
+A 16.7% flip rate over 12 live prompts (Wilson 95%: 4.7–45%) puts the run-to-run standard
+deviation at **≈1.3 utterances, or ±3.6 points**. Two consequences:
+
+- The 8.9-point gap to the 95% gate is **larger than noise** — real, not a bad sample.
+- A single n=36 run **cannot resolve a change smaller than ~4 points**. Any tuning must be
+  scored with repeats or a larger prompt set, or the result is unreadable.
+
+The instability is not spread evenly: every unstable prompt is a **rank-1 candidate
+scoring 0.6–0.8** (P19 at 0.63, P32's second entity at 0.77), and P23 — the one
+over-conservative decline — sits at 0.77 in that same band. The router's confidence call
+in the 0.6–0.8 window is both the noise source and the only tuning target the misses
+actually offer.
+
+**Both flips were decline↔route, never a wrong entity.** The 0% wrong-entity result
+survived a second sample, including the three prompts where the model changed its mind.
+
+That bounds what tuning can buy. Of the four stable misses, P28 is a corrector recall
+failure and P06/P15 are genuine ambiguities; winning P23 outright still lands at
+**32/36 = 88.9%**. **Reaching 95% requires corrector recall work (Omascul), not router
+tuning alone** — consistent with the 89.7% top-3 ceiling from Phase 0.
+
 ### Survey outcome (0.5 / 0.7 — complete)
 
 Source survey is **done**; see [ADR-0014](adr/0014-game-files-as-source.md). Structured data
