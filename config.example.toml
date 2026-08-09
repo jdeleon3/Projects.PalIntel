@@ -25,10 +25,18 @@ listen_mode = "any"
 prefix = "?"
 
 [voice]
-# Voice channel to listen in. Leave 0 to run text-only.
-# This must be a VOICE channel id, not the text one above - a text id here connects
-# to nothing and the bot simply never hears anything, which looks like a broken mic.
-channel_id = 0
+# Listen on the local microphone. Leave false to run text-only.
+#
+# Input is the local mic, not a Discord voice channel: Discord's DAVE end-to-end
+# encryption broke voice reception in py-cord (Pycord-Development/pycord#3139), where
+# the connection succeeds, a sink attaches, and no audio ever arrives. Output is still
+# a Discord channel - only the input moved. The trade-off is that party members cannot
+# ask by voice; they keep the text path.
+enabled = false
+
+# Input device: an index, a name substring, or omit for the system default.
+# Run `python -c "from palintel.mic import devices; print(devices())"` to list them.
+# device = 1
 
 # Wake-word models. Bare names are openWakeWord's pretrained set
 # (hey_jarvis, hey_mycroft, hey_rhasspy, alexa); "hey_pal" is the custom model built

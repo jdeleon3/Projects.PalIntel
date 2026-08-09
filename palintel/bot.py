@@ -5,13 +5,18 @@ only transport. Text and voice converge on the same `Pipeline.handle`
 ([ADR-0012](../Docs/adr/0012-dual-input-channels.md)); voice adds wake-word detection and
 transcription in front of it and nothing else.
 
-**Two threads, and the boundary is the only hard part here.** py-cord decodes voice on
-its own thread and calls `Sink.write` there, while everything that talks to Discord must
-run on the asyncio loop. Transcription is a third problem again: ~200ms of GPU work that
-must not block either. So the voice path is: decoder thread detects and buffers ->
+**Two threads, and the boundary is the only hard part here.** Audio is captured on
+sounddevice's own thread, while everything that talks to Discord must run on the asyncio
+loop. Transcription is a third problem again: ~200ms of GPU work that must not block
+either. So the voice path is: audio thread detects and buffers ->
 `run_coroutine_threadsafe` hands the closed utterance to the loop -> the loop pushes STT
 and routing into an executor -> the result is posted from the loop. Getting this wrong
-does not crash; it stalls the audio receive loop and the bot goes quietly deaf.
+does not crash; it stalls capture and the bot goes quietly deaf.
+
+Voice input is the local microphone rather than a Discord voice channel. Discord's DAVE
+encryption broke reception in py-cord (Pycord-Development/pycord#3139): the connection
+succeeds, the sink attaches, and no audio ever arrives. Output is still a Discord
+channel - only the input moved.
 
     python -m palintel.bot
 """
@@ -139,17 +144,23 @@ def run() -> None:
         log.info("query from %s: %r", message.author.display_name, text)
         await _answer(message.channel, pipe, text, message.author.display_name)
 
-    async def start_voice() -> None:
-        """Join the voice channel and stream every speaker through the wake word."""
-        from .stt import Transcriber
-        from .voice import make_sink
+    listener = {"mic": None}   # boxed so on_ready can see it across re-fires
 
-        channel = client.get_channel(cfg.voice.channel_id)
-        if channel is None:
-            log.error("voice channel %s not visible - check the id and that it is a "
-                      "VOICE channel", cfg.voice.channel_id)
-            return
+    async def start_voice() -> None:
+        """Listen on the local microphone and answer into the text channel.
+
+        Input is the mic, not Discord voice: Discord's DAVE encryption broke reception
+        in py-cord (pycord#3139), where `start_recording` accepts a sink and then
+        delivers no audio - a failure that looks exactly like a wake word never firing.
+        """
+        from .mic import MicListener
+        from .stt import Transcriber
+
         text_channel = client.get_channel(cfg.discord.channel_id)
+        if text_channel is None:
+            log.error("cannot start voice: text channel %s not visible",
+                      cfg.discord.channel_id)
+            return
 
         # Loaded once. A per-utterance load would put seconds of model initialisation
         # into the latency of every query.
@@ -159,13 +170,11 @@ def run() -> None:
         loop = asyncio.get_running_loop()
         tmp = TemporaryDirectory(prefix="palintel-voice-")
 
-        async def on_speech(user_id: int, utt) -> None:
-            member = channel.guild.get_member(user_id)
-            who = member.display_name if member else str(user_id)
-            # faster-whisper reads a file; the buffer is raw PCM. Writing a scratch WAV
-            # is cheaper and far less fragile than teaching the transcriber to take
-            # bytes, and these are ~1-3 second clips.
-            path = f"{tmp.name}/{user_id}-{id(utt)}.wav"
+        async def on_speech(utt) -> None:
+            # faster-whisper reads a file; the buffer is raw PCM. A scratch WAV is
+            # cheaper and far less fragile than teaching the transcriber to take bytes,
+            # and these are one-to-three second clips.
+            path = f"{tmp.name}/{id(utt)}.wav"
             with wave.open(path, "wb") as w:
                 w.setnchannels(1)
                 w.setsampwidth(2)
@@ -173,34 +182,25 @@ def run() -> None:
                 w.writeframes(utt.pcm)
 
             text = await loop.run_in_executor(None, transcriber.transcribe, path)
-            log.info("voice: %s said %r (%.1fs, closed on %s)",
-                     who, text, utt.seconds, utt.reason)
+            log.info("voice: heard %r (%.1fs, closed on %s)",
+                     text, utt.seconds, utt.reason)
             if not text.strip():
                 # Wake word fired on something that was not speech. Silence is right:
                 # posting "I didn't catch that" to a false trigger is channel noise for
                 # a query nobody made.
                 return
-            await _answer(text_channel, pipe, text, f"voice/{who}")
+            await _answer(text_channel, pipe, text, "voice")
 
-        def dispatch(user_id: int, utt) -> None:
-            # Called on py-cord's decoder thread. Nothing here may block or touch the
-            # loop directly, so the whole answer is handed over and forgotten.
-            asyncio.run_coroutine_threadsafe(on_speech(user_id, utt), loop)
+        def dispatch(utt) -> None:
+            # Called on sounddevice's audio thread. Nothing here may block or touch the
+            # loop directly, so the whole answer is handed over and forgotten - a stall
+            # here drops audio rather than merely delaying it.
+            asyncio.run_coroutine_threadsafe(on_speech(utt), loop)
 
-        sink = make_sink(dispatch, models=list(cfg.voice.models),
-                         threshold=cfg.voice.threshold)
-        vc = await channel.connect()
-        # The finished-callback is required by the API and fires only when recording
-        # stops, which for this bot means shutdown. Nothing to do there.
-        vc.start_recording(sink, lambda *_: None)
-        log.info("voice: listening in #%s for %s", channel.name,
-                 " / ".join(cfg.voice.models))
-
-    @client.event
-    async def on_connect() -> None:
-        # Registered separately from on_ready: on_ready can fire again on reconnect, and
-        # joining voice twice raises rather than being idempotent.
-        pass
+        mic = MicListener(dispatch, models=list(cfg.voice.models),
+                          threshold=cfg.voice.threshold, device=cfg.voice.device)
+        mic.start()
+        listener["mic"] = mic
 
     if cfg.voice.enabled:
         _orig_ready = on_ready
@@ -208,8 +208,8 @@ def run() -> None:
         @client.event
         async def on_ready() -> None:  # noqa: F811  (replaces the text-only handler)
             await _orig_ready()
-            if client.voice_clients:
-                return          # already connected; a reconnect re-fires on_ready
+            if listener["mic"] is not None:
+                return          # a reconnect re-fires on_ready; one stream is enough
             try:
                 await start_voice()
             except Exception:

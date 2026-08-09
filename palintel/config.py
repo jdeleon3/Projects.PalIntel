@@ -55,19 +55,21 @@ class DiscordConfig:
 
 @dataclass(frozen=True)
 class VoiceConfig:
-    """Voice receive. Absent `channel_id`, the bot runs text-only.
+    """Voice input. `enabled = false` runs the bot text-only.
+
+    Input is the local microphone. Discord voice receive is blocked upstream by
+    Discord's DAVE encryption (Pycord-Development/pycord#3139) - it connects, accepts a
+    sink, and delivers no audio. Output is a Discord channel either way; only the input
+    moved.
 
     `models` is a list because a pretrained model can run alongside a custom one during
     a transition - inference is CPU-bound at a realtime factor near 0.015, so the second
     model is close to free, and the highest score wins.
     """
-    channel_id: int = 0
+    enabled: bool = False
     models: tuple[str, ...] = ("hey_pal",)
     threshold: float = 0.5
-
-    @property
-    def enabled(self) -> bool:
-        return bool(self.channel_id)
+    device: int | str | None = None      # None = the system default input
 
 
 @dataclass(frozen=True)
@@ -105,22 +107,22 @@ class Config:
             raise ConfigError(f"listen_mode must be any|prefix|mention, got {mode!r}")
 
         v = raw.get("voice", {}) or {}
-        voice_channel = int(os.environ.get("PALINTEL_VOICE_CHANNEL_ID",
-                                           v.get("channel_id", 0)))
-        models = tuple(v.get("models") or ("hey_pal",))
-        if voice_channel and voice_channel == channel:
-            # A text channel id in the voice slot connects to nothing and the bot simply
-            # never hears anything - indistinguishable from a broken mic.
+        if "channel_id" in v:
             raise ConfigError(
-                "voice.channel_id is the same as discord.channel_id. The first must be "
-                "a VOICE channel and the second a TEXT channel.")
+                "voice.channel_id is no longer used. Voice input is the local "
+                "microphone: Discord voice receive is blocked by Discord's DAVE "
+                "encryption (pycord#3139) and delivers no audio. Use "
+                "voice.enabled = true, and voice.device to pick a specific mic.")
+        models = tuple(v.get("models") or ("hey_pal",))
+        device = v.get("device")
 
         save = (raw.get("game", {}) or {}).get("save_dir", "").strip()
         return cls(
             discord=DiscordConfig(token=token, channel_id=channel,
                                   listen_mode=mode, prefix=d.get("prefix", "?")),
-            voice=VoiceConfig(channel_id=voice_channel, models=models,
-                              threshold=float(v.get("threshold", 0.5))),
+            voice=VoiceConfig(enabled=bool(v.get("enabled", False)), models=models,
+                              threshold=float(v.get("threshold", 0.5)),
+                              device=device),
             data_version=os.environ.get(
                 "PALINTEL_DATA_VERSION", (raw.get("data", {}) or {}).get("version", "1.0.2")),
             save_dir=Path(save) if save else None,
@@ -133,8 +135,8 @@ class Config:
             "token": f"{t[:6]}...{t[-4:]} ({len(t)} chars)" if t else "(unset)",
             "channel_id": self.discord.channel_id,
             "listen_mode": self.discord.listen_mode,
-            "voice_channel_id": self.voice.channel_id or "(text only)",
-            "wake_models": ", ".join(self.voice.models),
+            "voice": (f"mic, {', '.join(self.voice.models)}"
+                      if self.voice.enabled else "(text only)"),
             "data_version": self.data_version,
             "save_dir": str(self.save_dir) if self.save_dir else "(none)",
         }
