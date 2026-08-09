@@ -1,42 +1,38 @@
-"""Extend the STT evaluation prompt set (assumption A5).
+"""Extend the STT evaluation prompt set in balanced batches (assumption A5).
 
-v3 - powered to resolve differences the v2 set cannot.
+The set grows over time: record a batch, score it, record another. Target is ~1000
+prompts, which is far more than one sitting, so the file has to stay useful at every
+intermediate size.
 
-v2's 36 utterances measure a router to +/-3.6 points (see Docs/04-roadmap.md, "Variance
-sized before tuning"). That is wider than every difference now on the table: Gemini 3.6
-Flash leads Opus 5 by 5.6 points on one run, which is two utterances, and the three
-no-entity prompts make the false-positive rate a 1-in-3 coin. The set is out of
-resolution, so more runs cannot help - only more prompts can.
+**Every batch is a balanced miniature of the whole.** The composition below is fixed per
+batch rather than filled category-by-category across the set, because a partially
+recorded set must still be an unbiased sample. If no-entity prompts all lived in the last
+batch, then stopping halfway would silently produce a set with no false-positive test and
+a headline number that looked fine.
 
-**This script appends. It never regenerates.** The existing prompts are copied through
-byte-identical and new ones are given fresh ids, because record_stt.py skips ids already
-in a condition's manifest: re-recording is therefore unnecessary, and the 40 takes
-already on disk stay valid. Regenerating instead would silently invalidate them the
-moment the lexicon or the sampling changed.
+**This script appends. It never regenerates.** Existing prompts are copied through
+byte-identical, because record_stt.py skips ids already in a condition's manifest - takes
+already on disk stay valid, and only new ids are asked for. Regenerating would invalidate
+them the moment the lexicon or sampling changed.
 
-What v3 adds, and why each one is a measured gap rather than a guess:
+Batch composition (40 prompts - one sitting, the size of the original recorded set).
+Each slice is a measured gap rather than a guess; see Docs/04-roadmap.md:
 
-  no-entity     3 -> 15   The false-positive test. Qwen3 invented a Pal on 1 of 3 and
-                          every other model scored 0 of 3; neither result means anything
-                          at n=3. This is the safety bar, so it gets the most power.
-  variant Pals  0 -> 12   v2 excluded multi-word names outright (`" " not in canonical`).
-                          Variants are exactly where models hedge: Qwen3 answered
-                          "where can I find Kitsun?" with Kitsun *and* Kitsun Noct. The
-                          set currently cannot see that failure at all.
-  frame-word    0 -> 10   Deliberate collisions with phrasing the corrector mis-matches.
-                          "show me" scores 0.71 against Shroomer and "against the" 0.59
-                          against Maraith; those spurious candidates are what Qwen3
-                          selected. Only accidental coverage in v2.
-  two-entity    2 -> 10   Arity handling, and the over-naming failure mode.
-  resource     4 -> 12    Includes crude_oil, which v2 omitted entirely.
+  hard 9 / medium 6 / easy 3   single Pals, weighted toward acoustically hard names
+  variant       5              multi-word names ("Kitsun Noct"); where models hedge
+  frame_word    4              phrasings whose frame words the corrector mis-matches
+  two_entity    4              arity, and the over-naming failure mode
+  resource      3              includes crude_oil
+  no_entity     6              the false-positive test
 
-Output: data/stt_eval/prompts.json (v3). Then:
-    python tools/eval/record_stt.py --condition quiet     # records only the new ids
-    python tools/eval/score_stt.py  --condition quiet
-    python tools/eval/score_router.py --condition quiet --model <model>
+Usage:
+    python tools/eval/extend_stt_prompts.py --batches 4     # append 4 batches
+    python tools/eval/extend_stt_prompts.py --target 1000   # append until ~1000 prompts
+    python tools/eval/record_stt.py --condition quiet --batch 2
 """
 from __future__ import annotations
 
+import argparse
 import json
 import random
 import re
@@ -46,18 +42,14 @@ REPO = Path(__file__).resolve().parents[2]
 LEXICON = REPO / "data" / "1.0.2" / "lexicon.json"
 OUT = REPO / "data" / "stt_eval"
 
-SEED = 20260809  # distinct from v2's 20260808; fixed so v3 is reproducible
+SEED = 20260809
 
-# Phrasings whose frame words the corrector mis-matches against real Pal names. These
-# are the ones that produced wrong entities, not just misses - see the Qwen3 table in
-# Docs/04-roadmap.md.
-FRAME_WORD_TEMPLATES = [
-    "hey pal show me {pal} near my base",
-    "hey pal is {pal} any good against the first tower",
-    "hey pal can you find me a {pal} somewhere close",
-    "hey pal what's the best way to catch {pal}",
-    "hey pal do I need a better sphere for {pal}",
-]
+# Prompts per batch, and the mix. Keep this stable: changing it mid-collection makes
+# early and late batches non-comparable, which is the one thing batching exists to avoid.
+# 40 is one sitting - the same size as the original recorded set, which took ~15 minutes.
+COMPOSITION = [("hard", 9), ("medium", 6), ("easy", 3), ("variant", 5),
+               ("frame_word", 4), ("two_entity", 4), ("resource", 3), ("no_entity", 6)]
+BATCH_SIZE = sum(n for _, n in COMPOSITION)
 
 PAL_TEMPLATES = [
     "hey pal where can I find {pal}",
@@ -70,15 +62,41 @@ PAL_TEMPLATES = [
     "hey pal where's the nearest {pal}",
     "hey pal what work suitability does {pal} have",
     "hey pal is {pal} worth levelling up",
+    "hey pal what does {pal} drop",
+    "hey pal how much stamina does {pal} have",
+    "hey pal is {pal} any good for logging",
+    "hey pal what's a good partner skill for {pal}",
+    "hey pal can {pal} carry things back to base",
+    "hey pal what level should {pal} be before the tower",
+    "hey pal does {pal} work at night",
+    "hey pal how rare is {pal}",
 ]
 
-# Variant names ("X Noct", "X Aqua"). The base form is a live distractor at high score,
-# which is the condition that produced over-naming.
 VARIANT_TEMPLATES = [
     "hey pal where can I find {pal}",
     "hey pal what element is {pal}",
     "hey pal how do I breed {pal}",
     "hey pal is {pal} better than the normal one",
+    "hey pal what does {pal} drop",
+    "hey pal is {pal} worth catching",
+    "hey pal where do {pal} spawn at night",
+    "hey pal how do I get {pal}",
+]
+
+# Frame words the corrector mis-matches against real Pal names: "show me" scores 0.71
+# against Shroomer, "against the" 0.59 against Maraith. Those spurious candidates are
+# what the local model selected, so the set needs them deliberately, not by accident.
+FRAME_WORD_TEMPLATES = [
+    "hey pal show me {pal} near my base",
+    "hey pal is {pal} any good against the first tower",
+    "hey pal can you find me a {pal} somewhere close",
+    "hey pal what's the best way to catch {pal}",
+    "hey pal do I need a better sphere for {pal}",
+    "hey pal find me a {pal} near my second base",
+    "hey pal show me where {pal} are right now",
+    "hey pal is it worth going after {pal} tonight",
+    "hey pal can I get {pal} before the first tower",
+    "hey pal help me find {pal} around here",
 ]
 
 TWO_PAL_TEMPLATES = [
@@ -87,6 +105,9 @@ TWO_PAL_TEMPLATES = [
     "hey pal which should I use {pal} or {pal2}",
     "hey pal do {pal} and {pal2} make anything good",
     "hey pal compare {pal} and {pal2} for combat",
+    "hey pal should I put {pal} or {pal2} on the ranch",
+    "hey pal what do I get from {pal} and {pal2}",
+    "hey pal is {pal} faster than {pal2}",
 ]
 
 RESOURCE_TEMPLATES = [
@@ -96,30 +117,44 @@ RESOURCE_TEMPLATES = [
     "hey pal show me {res} near my base",
     "hey pal is there any {res} around here",
     "hey pal I need {res} for a new base",
-]
-
-# The false-positive test. Deliberately varied: some name game concepts that sound like
-# they could be entities (traits, towers, techs), because an entity-shaped noun is what
-# provokes a hallucinated match.
-NO_ENTITY = [
-    "hey pal what should I research next",
-    "hey pal where should I put my second base",
-    "hey pal what does the artisan trait do",
-    "hey pal how do I raise my capture rate",
-    "hey pal what's the fastest way to level up",
-    "hey pal should I upgrade my base or my gear first",
-    "hey pal how many workers can I have at one base",
-    "hey pal what does the lucky trait actually give me",
-    "hey pal is it worth building a second breeding pen",
-    "hey pal how do I get more technology points",
-    "hey pal what should I do after the first tower",
-    "hey pal how do I stop my pals getting depressed",
-    "hey pal what's the best weapon at this level",
-    "hey pal do I need to feed my pals overnight",
-    "hey pal how do I unlock the next tier of gear",
+    "hey pal where do I mine {res}",
+    "hey pal what's the best {res} node nearby",
+    "hey pal how far is the nearest {res}",
+    "hey pal can I get {res} at this level",
+    "hey pal show me a safe {res} spot",
+    "hey pal where should I set up for {res}",
+    "hey pal is there {res} near the first tower",
+    "hey pal what's the closest place to farm {res}",
+    "hey pal do I have enough {res} for this",
+    "hey pal point me at some {res}",
+    "hey pal any {res} worth mining nearby",
 ]
 
 RESOURCES = ["coal", "ore", "sulfur", "quartz", "crude oil"]
+
+# The false-positive test, built combinatorially so it can supply ~120 distinct prompts
+# without hand-writing them. Topics are deliberately entity-shaped nouns - traits, tech,
+# towers - because an entity-shaped noun is what provokes a hallucinated match.
+NO_ENTITY_FRAMES = [
+    "hey pal what should I do about {topic}",
+    "hey pal how do I deal with {topic}",
+    "hey pal is it worth worrying about {topic}",
+    "hey pal what's the best approach to {topic}",
+    "hey pal can you explain {topic}",
+    "hey pal how important is {topic}",
+    "hey pal what do I need for {topic}",
+    "hey pal should I focus on {topic} yet",
+    "hey pal how do I get better at {topic}",
+    "hey pal what changes with {topic}",
+]
+NO_ENTITY_TOPICS = [
+    "my next research", "my second base", "the artisan trait", "my capture rate",
+    "levelling up faster", "upgrading my gear", "the worker limit", "the lucky trait",
+    "a second breeding pen", "technology points", "the first tower", "pals getting depressed",
+    "my weapon choice", "feeding overnight", "the next tier of gear", "base defence",
+    "raid attacks", "my guild setup", "fast travel points", "cooking food",
+    "the pal box limit", "sanity in the base", "hot and cold weather", "my stat points",
+]
 
 
 def unusual(name: str) -> int:
@@ -136,16 +171,38 @@ def natural(text: str) -> str:
     return re.sub(r"\ba (?=[aeiou])", "an ", text)
 
 
-def main() -> None:
-    rng = random.Random(SEED)
-    lex = json.loads(LEXICON.read_text(encoding="utf-8"))
-    existing = json.loads((OUT / "prompts.json").read_text(encoding="utf-8"))
-    keep = existing["prompts"]
-    used = {e for p in keep for e in p["expect_entities"]}
+def _interleave(pairs: list[tuple[str, list[str], int]],
+                rng: random.Random) -> list[tuple[str, list[str]]]:
+    """Round-robin the pool by template so consecutive draws use different phrasings.
 
+    A plain shuffle lets a batch draw the same sentence frame several times in a row -
+    tedious to read aloud, and it narrows how many phrasings a batch actually tests.
+    Dealing one template at a time spreads them evenly at every batch size.
+    """
+    buckets: dict[int, list[tuple[str, list[str]]]] = {}
+    for text, ents, ti in pairs:
+        buckets.setdefault(ti, []).append((text, ents))
+    for b in buckets.values():
+        rng.shuffle(b)
+    order = sorted(buckets)
+    rng.shuffle(order)
+    out: list[tuple[str, list[str]]] = []
+    while any(buckets[t] for t in order):
+        for t in order:
+            if buckets[t]:
+                out.append(buckets[t].pop())
+    return out
+
+
+def _pools(lex: dict, rng: random.Random) -> dict[str, list[tuple[str, list[str]]]]:
+    """Every (text, entities) pair the generator may draw, ordered for even coverage.
+
+    Built as an exhausted-in-order pool rather than sampled per batch so that no text can
+    repeat across the whole 1000-prompt set, and so coverage spreads evenly instead of
+    clustering by luck.
+    """
     simple = [p["canonical"] for p in lex["pals"]
-              if p["in_paldeck"] and " " not in p["canonical"]
-              and p["canonical"] not in used]
+              if p["in_paldeck"] and " " not in p["canonical"]]
     variants = [p["canonical"] for p in lex["pals"]
                 if p["in_paldeck"] and " " in p["canonical"]]
 
@@ -153,90 +210,110 @@ def main() -> None:
     third = len(ranked) // 3
     bands = {"easy": ranked[:third], "medium": ranked[third:2 * third],
              "hard": ranked[2 * third:]}
-    for b in bands.values():
-        rng.shuffle(b)
-    rng.shuffle(variants)
+
+    raw: dict[str, list[tuple[str, list[str], int]]] = {}
+    for band, names in bands.items():
+        raw[band] = [(t.format(pal=n), [n], i)
+                     for n in names for i, t in enumerate(PAL_TEMPLATES)]
+    raw["variant"] = [(t.format(pal=n), [n], i)
+                      for n in variants for i, t in enumerate(VARIANT_TEMPLATES)]
+    raw["frame_word"] = [(t.format(pal=n), [n], i)
+                         for n in bands["hard"] + bands["medium"]
+                         for i, t in enumerate(FRAME_WORD_TEMPLATES)]
+    raw["resource"] = [(t.format(res=r), [r.replace(" ", "_")], i)
+                       for r in RESOURCES for i, t in enumerate(RESOURCE_TEMPLATES)]
+    raw["no_entity"] = [(f.format(topic=t), [], i)
+                        for t in NO_ENTITY_TOPICS for i, f in enumerate(NO_ENTITY_FRAMES)]
+
+    pairs = []
+    pool = bands["medium"] + bands["easy"]
+    for i, a in enumerate(pool):
+        b = pool[(i * 7 + 3) % len(pool)]  # coprime stride: every name pairs widely
+        if a != b:
+            pairs += [(t.format(pal=a, pal2=b), [a, b], j)
+                      for j, t in enumerate(TWO_PAL_TEMPLATES)]
+    raw["two_entity"] = pairs
+
+    return {k: _interleave(v, rng) for k, v in raw.items()}
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--batches", type=int, default=0, help="how many batches to append")
+    ap.add_argument("--target", type=int, default=0,
+                    help="append batches until the set reaches about this many prompts")
+    args = ap.parse_args()
+
+    lex = json.loads(LEXICON.read_text(encoding="utf-8"))
+    existing = json.loads((OUT / "prompts.json").read_text(encoding="utf-8"))
+    keep = existing["prompts"]
+
+    n_batches = args.batches
+    if args.target:
+        n_batches = max(0, round((args.target - len(keep)) / BATCH_SIZE))
+    if n_batches <= 0:
+        raise SystemExit("nothing to do: pass --batches N or --target N")
+
+    # Tag anything untagged so batch numbering is continuous from here on. The original
+    # 40 are batch 0 and the first extension batch 1.
+    for p in keep:
+        p.setdefault("batch", 0 if int(p["id"][1:]) <= 40 else 1)
+    next_batch = max(p["batch"] for p in keep) + 1
+
+    rng = random.Random(SEED + next_batch)
+    pools = _pools(lex, rng)
+    seen = {p["text"] for p in keep}
+    cursor = {k: 0 for k in pools}
 
     new: list[dict] = []
-
-    seen_text = {p["text"] for p in keep}
-
-    def add(group: str, text: str, ents: list[str], difficulty: str) -> None:
-        """Skip anything already recorded. Three of the no-entity lines below are
-        verbatim v2 prompts; re-recording them would buy a second take of an existing
-        item rather than a new one, and quietly double its weight in the total."""
-        t = natural(text)
-        if t in seen_text:
-            return
-        seen_text.add(t)
-        new.append({"group": group, "text": t,
-                    "expect_entities": ents, "difficulty": difficulty})
-
-    # Single Pals, weighted toward hard, cycling every template so phrasing and entity
-    # are not correlated the way v2's fixed cycle made them.
-    picks = ([("hard", n) for n in bands["hard"][:20]]
-             + [("medium", n) for n in bands["medium"][:14]]
-             + [("easy", n) for n in bands["easy"][:8]])
-    rng.shuffle(picks)
-    for i, (band, pal) in enumerate(picks):
-        add("utterance", PAL_TEMPLATES[i % len(PAL_TEMPLATES)].format(pal=pal),
-            [pal], band)
-
-    for i, pal in enumerate(variants[:12]):
-        add("utterance", VARIANT_TEMPLATES[i % len(VARIANT_TEMPLATES)].format(pal=pal),
-            [pal], "variant")
-
-    frame_pool = bands["hard"][20:25] + bands["medium"][14:19]
-    for i, pal in enumerate(frame_pool[:10]):
-        add("utterance", FRAME_WORD_TEMPLATES[i % len(FRAME_WORD_TEMPLATES)].format(pal=pal),
-            [pal], "frame_word")
-
-    pair_pool = bands["medium"][19:] + bands["easy"][8:]
-    for i, t in enumerate(TWO_PAL_TEMPLATES * 2):
-        a, b = pair_pool[i * 2 % len(pair_pool)], pair_pool[(i * 2 + 1) % len(pair_pool)]
-        if a == b:
-            continue
-        add("utterance", t.format(pal=a, pal2=b), [a, b], "two_entity")
-
-    for i in range(12):
-        res = RESOURCES[i % len(RESOURCES)]
-        canonical = res.replace(" ", "_")
-        add("utterance", RESOURCE_TEMPLATES[i % len(RESOURCE_TEMPLATES)].format(res=res),
-            [canonical], "resource")
-
-    for t in NO_ENTITY:
-        add("utterance", t, [], "no_entity")
+    for b in range(next_batch, next_batch + n_batches):
+        for difficulty, count in COMPOSITION:
+            pool, taken = pools[difficulty], 0
+            while taken < count and cursor[difficulty] < len(pool):
+                text, ents = pool[cursor[difficulty]]
+                cursor[difficulty] += 1
+                text = natural(text)
+                if text in seen:
+                    continue
+                seen.add(text)
+                new.append({"group": "utterance", "text": text,
+                            "expect_entities": ents, "difficulty": difficulty,
+                            "batch": b})
+                taken += 1
+            if taken < count:
+                raise SystemExit(
+                    f"pool '{difficulty}' exhausted in batch {b} ({taken}/{count}). "
+                    f"Add templates or entities before generating more batches - "
+                    f"silently shipping a short batch would unbalance the set.")
 
     start = max(int(p["id"][1:]) for p in keep)
     for i, p in enumerate(new):
         p["id"] = f"P{start + i + 1:03d}"
 
     prompts = keep + new
-    scored = sum(len(p["expect_entities"]) for p in prompts)
     utterances = sum(1 for p in prompts if p["group"] == "utterance")
+    batches = sorted({p["batch"] for p in prompts})
 
     (OUT / "prompts.json").write_text(json.dumps({
-        "version": 3,
+        "version": 4,
         "lexicon_version": lex["lexicon_version"],
         "game_version": lex["game_version"],
         "seed": SEED,
+        "batch_size": BATCH_SIZE,
+        "batches": len(batches),
         "count": len(prompts),
-        "new_in_v3": len(new),
         "utterances": utterances,
-        "scored_entities": scored,
+        "scored_entities": sum(len(p["expect_entities"]) for p in prompts),
         "prompts": prompts,
     }, indent=2), encoding="utf-8")
 
-    print(f"v3: {len(keep)} kept + {len(new)} new = {len(prompts)} prompts "
-          f"({utterances} utterances, {scored} scored entities)")
-    by = {}
-    for p in new:
-        by[p["difficulty"]] = by.get(p["difficulty"], 0) + 1
-    for k in sorted(by):
-        print(f"    new {k:12s} {by[k]:3d}")
-    print(f"\n  record with:  python tools/eval/record_stt.py --condition quiet")
-    print(f"  it will skip the {len(keep)} already in the manifest and ask for "
-          f"{len(new)}.")
+    print(f"appended {n_batches} batches ({len(new)} prompts) -> "
+          f"{len(prompts)} total, {utterances} utterances")
+    for b in batches:
+        rows = [p for p in prompts if p["batch"] == b]
+        print(f"    batch {b:>2}  {len(rows):>3} prompts")
+    print(f"\n  record one batch at a time:")
+    print(f"    python tools/eval/record_stt.py --condition quiet --batch {next_batch}")
 
 
 if __name__ == "__main__":

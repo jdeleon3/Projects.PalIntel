@@ -50,6 +50,10 @@ def main() -> None:
     ap.add_argument("--condition", required=True,
                     help="recording condition, e.g. quiet | noisy | ingame")
     ap.add_argument("--only", help="comma-separated prompt ids to record")
+    ap.add_argument("--batch", type=int,
+                    help="record only this batch. The set is collected over several "
+                         "sittings, and each batch is a balanced sample on its own, so "
+                         "stopping after any batch still leaves an unbiased set.")
     args = ap.parse_args()
 
     try:
@@ -58,6 +62,10 @@ def main() -> None:
         sys.exit("sounddevice not installed:  pip install sounddevice")
 
     prompts = json.loads((EVAL / "prompts.json").read_text(encoding="utf-8"))["prompts"]
+    if args.batch is not None:
+        prompts = [p for p in prompts if p.get("batch") == args.batch]
+        if not prompts:
+            sys.exit(f"no prompts in batch {args.batch}")
     if args.only:
         wanted = {s.strip().upper() for s in args.only.split(",")}
         prompts = [p for p in prompts if p["id"] in wanted]
