@@ -1,0 +1,19 @@
+# PalIntel tooling dependencies (ingestion + evaluation).
+# Not the runtime bot - that has its own set once Phase 1 begins.
+#
+#   py -m venv .venv
+#   .venv\Scripts\python -m pip install -r requirements.txt
+
+# --- save parsing (Phase 0.3) ---
+palworld-save-tools==0.24.0   # PlZ only; PlM/Oodle handled by our own shim
+pyooz==0.0.8                  # open-source Oodle decompressor (module name: ooz)
+
+# --- STT evaluation (Phase 0.6) ---
+sounddevice>=0.4.6            # microphone capture for the eval recorder
+faster-whisper>=1.2.1
+
+# --- CUDA runtime for GPU inference (Windows) ---
+# CTranslate2 needs these at runtime. Installing them is not enough on its own:
+# see tools/eval/_cuda.py for why PATH must also be set.
+nvidia-cublas-cu12
+nvidia-cudnn-cu12

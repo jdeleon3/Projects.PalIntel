@@ -54,11 +54,22 @@ SEED_ALIASES: dict[str, list[str]] = {
 # Resource vocabulary for Q1. Small, closed, and hand-maintained: these are ordinary
 # English words whose STT failure modes are homophones rather than novel morphology.
 RESOURCES: dict[str, list[str]] = {
-    "ore": ["oar", "or", "awe"],
-    "coal": ["cole", "kohl", "call", "coel"],
+    "ore": ["oar", "ore deposit", "ore node"],
+    "coal": ["cole", "kohl", "coel"],
     "sulfur": ["sulphur", "sulfa", "sulfer"],
-    "quartz": ["quarts", "courts", "kwartz"],
-    "crude_oil": ["crude oil", "oil", "cruel oil"],
+    "quartz": ["quarts", "kwartz"],
+    "crude_oil": ["crude oil", "cruel oil"],
+}
+
+# Aliases this short, or this common, cause more false matches than they fix. "or" as
+# an alias for "ore" is a fair spoken homophone but matches "for" at 0.80 similarity,
+# which silently tags half the corpus. "call" for "coal" and "courts" for "quartz" fail
+# the same way. Precision matters more than recall here: ADR-0007 treats a confident
+# wrong entity as worse than an admitted miss.
+MIN_ALIAS_LEN = 4
+ALIAS_STOPWORDS = {
+    "or", "oar", "awe", "call", "courts", "oil", "for", "more", "your", "our",
+    "all", "coil", "cold", "gold", "goal", "tall", "sort", "short",
 }
 
 
@@ -87,6 +98,21 @@ def metaphone_key(word: str) -> str:
     tail = re.sub(r"[aeiou]", "", w[1:])
     out = head + tail.upper()
     return re.sub(r"(.)\1+", r"\1", out)
+
+
+def safe_aliases(aliases: list[str]) -> list[str]:
+    """Drop aliases too short or too common to be safe fuzzy-match targets."""
+    out = []
+    for a in aliases:
+        a = a.strip()
+        if not a or a.lower() in ALIAS_STOPWORDS:
+            continue
+        # Multi-word aliases are inherently specific, so the length floor applies to
+        # single tokens only.
+        if " " not in a and len(a) < MIN_ALIAS_LEN:
+            continue
+        out.append(a)
+    return out
 
 
 def variants(name: str) -> list[str]:
@@ -144,13 +170,13 @@ def build(version: str) -> dict:
             "internal_ids": sorted(ids),
             "zukan_index": min(zukan) if zukan else None,
             "in_paldeck": bool(zukan),
-            "aliases": sorted(set(SEED_ALIASES.get(name, []) + variants(name))),
+            "aliases": sorted(set(safe_aliases(SEED_ALIASES.get(name, []) + variants(name)))),
             "phonetic": metaphone_key(name),
         })
 
     resources = [{
         "canonical": c,
-        "aliases": sorted(set(a + ([c.replace("_", " ")] if "_" in c else []))),
+        "aliases": sorted(set(safe_aliases(a + ([c.replace("_", " ")] if "_" in c else [])))),
         "phonetic": metaphone_key(c.replace("_", " ")),
     } for c, a in RESOURCES.items()]
 

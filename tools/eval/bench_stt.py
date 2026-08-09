@@ -39,7 +39,16 @@ def main() -> None:
     from faster_whisper import WhisperModel
 
     src = EVAL / args.condition
-    manifest = json.loads((src / "manifest.json").read_text(encoding="utf-8"))
+    manifest_path = src / "manifest.json"
+    if not manifest_path.exists():
+        have = sorted(p.name for p in EVAL.iterdir()
+                      if p.is_dir() and (p / "manifest.json").exists())
+        raise SystemExit(
+            f"No recordings for condition '{args.condition}'.\n"
+            f"  Record them first:\n"
+            f"    python tools/eval/record_stt.py --condition {args.condition}\n"
+            f"  Conditions already recorded: {', '.join(have) if have else '(none)'}")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     forms = load_lexicon()
     hotwords = ", ".join(sorted(forms)[:400])
     audio_s = sum(m["duration_s"] for m in manifest.values())

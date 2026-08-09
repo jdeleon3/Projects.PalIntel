@@ -99,10 +99,19 @@ two defenses against entity corruption.
 
 ### 3.5 Lexicon Corrector
 
-Second defense. Fuzzy-matches tokens and n-grams against canonical entity names using
-phonetic and edit-distance scoring. `"life monk"` → `Lifmunk`. Correction happens once;
-everything downstream may assume canonical names.
-See [ADR-0007](adr/0007-entity-lexicon-boundary.md).
+Second defense. Ranks lexicon entities against transcript n-grams using phonetic and
+edit-distance scoring, and emits the **top-K candidates with scores** — it does not
+decide. `"health sphere"` → `[Helzephyr 0.72, Helzephyr Lux 0.68, …]`.
+
+**It does not threshold or reject.** Measurement showed a threshold here discarding
+candidates that were correctly ranked first: 61.5% accepted versus 89.7% present in the
+top 3. The corrector has the least context of any component and is the wrong place to
+judge confidence. See [ADR-0016](adr/0016-entity-resolution-in-router.md).
+
+Matching normalises away whitespace and punctuation before comparison, because STT
+renders one invented word as several English ones — *"Lee's bunk"* for `Leezpunk`,
+*"my Korra"* for `Mycora`. Comparing across that split without normalising drops
+similarity below any usable threshold.
 
 ### 3.6 Conversation Memory
 
@@ -117,8 +126,19 @@ detected topic change. See [ADR-0013](adr/0013-conversation-memory.md).
 
 ### 3.7 Intent Router
 
-One LLM call with tool calling enabled, given the tool schemas (§4) and any live
-conversation context. Entity parameters are constrained to lexicon-generated enums.
+One LLM call with tool calling enabled, given the tool schemas (§4), any live
+conversation context, and the corrector's ranked entity candidates. Entity parameters are
+constrained to lexicon-generated enums.
+
+**The router owns entity resolution**, not just intent. It is the only component with
+sentence context — *"against the first tower"* implies a combat matchup, *"how do I breed
+X"* constrains X to a breedable species — and it selects from a constrained enum, so it
+makes a forced choice rather than a threshold judgement. It declines when genuinely
+unsure; that decline is the system's guard against confident wrong entities
+([ADR-0016](adr/0016-entity-resolution-in-router.md)).
+
+This makes router accuracy the binding constraint on entity extraction. It is **not yet
+measured** — it needs a live model and is Phase 1 work.
 
 Outcomes:
 - **Specific tool matched** → dispatch to Tier 1 or Tier 2.
@@ -303,7 +323,7 @@ Notes:
 |---|---|
 | Wake word false positive | Fails routing → decline card |
 | Low STT confidence | Card asks for a repeat; no query executed |
-| Entity below lexicon threshold | Card names the unrecognized token explicitly |
+| Router cannot resolve an entity from candidates | Card names the unrecognized token explicitly |
 | Intent ambiguous between tools | Decline; never guess between query classes |
 | Tier 1/2 query returns zero rows | Explicit "no results" card |
 | Tier 2 model output references unknown candidate | Discard the addition; render validated set |

@@ -39,7 +39,7 @@ Remaining before Phase 1 can start:
 
 | Spike | Blocker |
 |---|---|
-| **0.6 — STT accuracy (A5)** | Model and latency **resolved** — see below. Accuracy measurement needs a re-record. |
+| **0.6 — STT accuracy (A5)** | Model and latency **resolved**; architecture **corrected** ([ADR-0016](adr/0016-entity-resolution-in-router.md)). Final verdict needs a live router — Phase 1. |
 | 0.1 — overlay legibility (A1) | Needs a play session. Not a kill criterion; informs card density. |
 | 0.4 — breeding combos (A3) | Confirmed via `CombiRank` + `DT_PalCombiUnique`. Gates Phase 3, not Phase 1. |
 
@@ -64,18 +64,53 @@ because CUDA failed to initialise, and hosted STT was briefly recommended on tha
 The cause was a missing runtime library, not a real constraint. Recorded in ADR-0015
 because the failure mode is subtle and worth not repeating.
 
-**Accuracy is still not properly measured.** The 88% figure comes from the v1 prompt set,
-which put 20 of 28 prompts on isolated bare names — a condition that never occurs in
-production — leaving only **5 scored entities** in the utterance group that actually
-matters. Both a pass and a fail would have been unsupported at that sample size.
+### Spike 0.6 outcome — entity accuracy (A5): architecture corrected, verdict deferred
 
-v2 (`data/stt_eval/prompts.json`) corrects the weighting: **40 prompts, 39 scored
-entities**, utterance-weighted and difficulty-stratified. Re-record before judging A5.
+Two measurement errors were made and corrected here. Both are recorded because each
+produced a confident wrong conclusion.
 
-Layer contributions on v1, which did answer the design question — all three earn their
-place: raw 24% → +hotwords 40% → +fuzzy 72% → **cumulative pipeline 84%**. Note the
-measurement initially applied fuzzy repair to raw rather than boosted transcripts,
-understating the pipeline; the layers are cumulative now.
+**Error 1 — an inflated pass.** The v1 prompt set scored 84%, but tested exactly the names
+that had hand-written seed aliases (Lifmunk, Jormuntide, Depresso…), and carried only
+**5 scored entities** in the utterance group that matters. It measured tuning, not
+generalisation.
+
+v2 corrects both: **40 prompts, 39 scored entities**, utterance-weighted, names sampled
+across the whole lexicon. Score dropped to **61.5%**. Of 16 misses, **14 were names with
+no seeded alias.**
+
+**Error 2 — a false failure.** 61.5% would have fired ADR-0007's redesign trigger. Ranking
+the lexicon instead of thresholding it showed the trigger would have been wrong:
+
+| | threshold-and-decline | ranked availability |
+|---|---|---|
+| correct entity accepted / rank 1 | 61.5% | **79.5%** |
+| top-3 | — | **89.7%** |
+| top-10 | — | 94.9% |
+
+Every headline failure — *"health sphere"* → Helzephyr, *"the nurse? I grew down"* →
+Aegidron, *"car links"* → Cryolinx — ranks the correct Pal **first**. They were rejected
+by a 0.78 threshold, not missed by the matcher.
+
+The signal was never lost; it was being discarded by the layer least able to judge it.
+Resolved by [ADR-0016](adr/0016-entity-resolution-in-router.md): the corrector emits
+ranked candidates, the router decides with context.
+
+**Fixes landed during this spike**
+- `hotwords` replaces `initial_prompt` — the latter was *hurting*, dropping controls from
+  75% to 50%. It is a context hint, not keyterm boosting.
+- Whitespace/punctuation normalisation before matching, since STT splits invented words
+  into English ones (*"Lee's bunk"* → `Leezpunk`).
+- A **precision metric**, which was missing entirely. It immediately caught 9 spurious
+  matches traced to a single bad alias — `"or"` for *ore*, which scores 0.80 against
+  "for". Alias safety rules plus length-aware thresholds cut spurious matches 9 → 1.
+
+**A5 verdict: deferred to Phase 1.** Router accuracy is now the binding constraint and
+cannot be measured without a live model. The ceiling is 89.7% top-3 availability — an
+upper bound on a perfect chooser, not an achievement. Two entities are unrecoverable at
+any layer: **Majex** (rank 69) and **Omascul** (rank 29).
+
+Remaining unmeasured: whether the router correctly decides an entity is *present*, and
+behaviour on arbitrary phrasing (candidate generation excluded template frame words).
 
 ### Survey outcome (0.5 / 0.7 — complete)
 

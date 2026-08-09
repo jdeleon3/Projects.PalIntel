@@ -160,9 +160,14 @@ compression codec changed between minor versions. This raises the value of the
 `SaveParser` interface and the degradation path in
 [ADR-0005](adr/0005-save-file-player-state.md).
 
-**A5 remains the highest-rated accuracy risk.** Palworld proper nouns — *Lifmunk,
-Jormuntide, Depresso, Chillet, Faleris* — are invented words that general-purpose STT will
-mangle, and a corrupted entity name poisons every downstream stage.
+**A5 remains the highest-rated accuracy risk, and measurement reshaped it.** STT does not
+garble Palworld proper nouns — it renders them as confident English ("Helzephyr" →
+*"health sphere"*). Fuzzy matching still ranks the correct entity first 79.5% of the time
+and in the top 3 **89.7%** of the time; the original design simply discarded those
+candidates at a threshold. Entity resolution has moved to the router, which has sentence
+context and makes a forced choice
+([ADR-0016](adr/0016-entity-resolution-in-router.md)). Router accuracy is now the binding
+constraint and is measured in Phase 1.
 
 **A1 is no longer existential.** The output is a Discord channel; the overlay is one
 viewing surface among several. It informs card density, not project viability.

@@ -28,6 +28,23 @@ LEXICON = REPO / "data" / "1.0.2" / "lexicon.json"
 MATCH_THRESHOLD = 0.78  # below this we decline rather than coerce - see ADR-0007
 
 
+def threshold_for(target: str) -> float:
+    """Short targets need a higher bar.
+
+    Similarity is length-sensitive: "Mau" scores 0.80 against "my", and "ore" against
+    "for", because a one-character difference is proportionally huge on a 3-letter
+    string. A single global threshold therefore either admits junk on short names or
+    rejects valid matches on long ones. Scaling with length lets long invented names
+    stay permissive while short ones demand near-exact agreement.
+    """
+    n = len(re.sub(r"[^a-z]", "", target.lower()))
+    if n <= 3:
+        return 1.0    # exact only
+    if n <= 5:
+        return 0.90
+    return MATCH_THRESHOLD
+
+
 def phonetic(word: str) -> str:
     w = re.sub(r"[^a-z]", "", word.lower())
     if not w:
@@ -51,25 +68,55 @@ def load_lexicon() -> dict[str, list[str]]:
     return forms
 
 
+def squash(s: str) -> str:
+    """Strip everything that only exists because of ASR tokenisation.
+
+    Whisper renders one invented word as several English ones - "Leezpunk" becomes
+    "Lee's bunk", "Mycora" becomes "my Korra". Comparing across that split with the
+    spaces and apostrophes still in place drags the similarity score below threshold
+    even when the letters line up almost exactly ("lee's bunk" vs "leezpunk" scores
+    0.66; "leesbunk" vs "leezpunk" scores 0.88).
+
+    This is a fix for a known artifact class, not for particular clips.
+    """
+    return re.sub(r"[^a-z]", "", s.lower())
+
+
 def repair(transcript: str, forms: dict[str, list[str]]) -> set[str]:
     """Fuzzy-match transcript n-grams to canonical entities.
 
     Matches below threshold are deliberately NOT coerced: answering confidently about
-    the wrong entity is worse than admitting the miss.
+    the wrong entity is worse than admitting the miss (ADR-0007).
     """
     words = re.findall(r"[a-z']+", transcript.lower())
-    grams = [" ".join(words[i:i + n]) for n in (1, 2) for i in range(len(words) - n + 1)]
+    # 3-grams included because word-splitting can produce three tokens
+    # ("the nurse I grew down"), not just two.
+    grams = [" ".join(words[i:i + n])
+             for n in (1, 2, 3) for i in range(len(words) - n + 1)]
+    squashed = [(g, squash(g)) for g in grams]
+
     found = set()
     for canon, surfaces in forms.items():
-        best = 0.0
         cp = phonetic(canon)
-        for g in grams:
-            for s in surfaces:
-                best = max(best, SequenceMatcher(None, g, s).ratio())
-            if phonetic(g) == cp and cp:
-                best = max(best, 0.95)
-        if best >= MATCH_THRESHOLD:
-            found.add(canon)
+        sq_surfaces = [(s, squash(s)) for s in surfaces]
+        for g, gs in squashed:
+            if not gs:
+                continue
+            hit = False
+            for s, ss in sq_surfaces:
+                need = threshold_for(s)
+                score = max(SequenceMatcher(None, g, s).ratio(),
+                            SequenceMatcher(None, gs, ss).ratio())
+                if score >= need:
+                    hit = True
+                    break
+            # Phonetic agreement is only trusted on targets long enough for the key to
+            # carry information; three-letter keys collide constantly.
+            if not hit and cp and len(cp) >= 4 and phonetic(gs) == cp:
+                hit = True
+            if hit:
+                found.add(canon)
+                break
     return found
 
 
@@ -93,7 +140,16 @@ def main() -> None:
         sys.exit("faster-whisper not installed:  pip install faster-whisper")
 
     src = EVAL / args.condition
-    manifest = json.loads((src / "manifest.json").read_text(encoding="utf-8"))
+    manifest_path = src / "manifest.json"
+    if not manifest_path.exists():
+        have = sorted(p.name for p in EVAL.iterdir()
+                      if p.is_dir() and (p / "manifest.json").exists())
+        sys.exit(
+            f"No recordings for condition '{args.condition}'.\n"
+            f"  Record them first:\n"
+            f"    python tools/eval/record_stt.py --condition {args.condition}\n"
+            f"  Conditions already recorded: {', '.join(have) if have else '(none)'}")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     forms = load_lexicon()
     hotwords = ", ".join(sorted({c for c in forms})[:400])
 
@@ -124,7 +180,10 @@ def main() -> None:
             return " ".join(s.text for s in segs).strip()
 
         raw = run()
-        boosted = run(initial_prompt=f"Palworld pal names: {hotwords}")
+        # `hotwords` is faster-whisper's actual keyterm-biasing mechanism.
+        # `initial_prompt` is a context hint and was measurably HURTING: it dropped the
+        # control group from 75% to 50% by steering the model toward a general context.
+        boosted = run(hotwords=hotwords)
 
         expected = set(m["expect_entities"])
         got_raw = literal_hits(raw, m["expect_entities"])
@@ -133,14 +192,20 @@ def main() -> None:
         # output. Measuring repair against the raw transcript instead would understate
         # the real pipeline, since it throws away whatever boosting recovered.
         got_fuzzy_raw = repair(raw, forms) & expected
-        got_pipeline = repair(boosted, forms) & expected
+        all_found = repair(boosted, forms)
+        got_pipeline = all_found & expected
+        # Precision matters as much as recall here and was previously unmeasured.
+        # Loosening the matcher trades misses for WRONG entities, and ADR-0007 treats a
+        # confident wrong answer as worse than an admitted miss - so a recall gain that
+        # comes with a spurious-match spike is a regression, not an improvement.
+        spurious = sorted(all_found - expected)
 
         rows.append({
             "id": pid, "group": m["group"], "expected": sorted(expected),
             "raw_text": raw, "boosted_text": boosted,
             "raw": len(got_raw), "boosted": len(got_boost),
             "fuzzy": len(got_fuzzy_raw), "pipeline": len(got_pipeline),
-            "n": len(expected),
+            "spurious": spurious, "n": len(expected),
         })
         flag = "" if got_pipeline == expected else "  <-- MISS"
         print(f"  {pid} {m['group']:<9} raw={len(got_raw)} boost={len(got_boost)} "
@@ -161,8 +226,18 @@ def main() -> None:
     print(f"\nPIPELINE = hotwords + fuzzy repair, i.e. what production actually runs.")
     print(f"utterance row is the realistic condition; bare names are a lower bound.")
 
+    total_sp = sum(len(r["spurious"]) for r in rows)
+    clips_sp = sum(1 for r in rows if r["spurious"])
+    print(f"\nSPURIOUS matches: {total_sp} across {clips_sp}/{len(rows)} clips "
+          f"(entities found that were not spoken)")
+    if total_sp:
+        worst = sorted((r for r in rows if r["spurious"]),
+                       key=lambda r: -len(r["spurious"]))[:5]
+        for r in worst:
+            print(f"   {r['id']} expected={r['expected']} -> also matched {r['spurious'][:4]}")
+
     overall = rate("pipeline")
-    print("=" * 62)
+    print("=" * 74)
     print(f"\nA5 target: >=95% entity accuracy.  Achieved: {overall:.1f}%  "
           f"-> {'PASS' if overall >= 95 else 'FAIL'}")
     if overall < 95:
