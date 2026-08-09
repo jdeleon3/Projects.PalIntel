@@ -1,0 +1,35 @@
+# PalIntel configuration.
+#
+# Copy to config.local.toml and fill in. config.local.* is gitignored: the token is a
+# credential and the save path is machine-specific.
+#
+#   copy config.example.toml config.local.toml
+#
+# Every value can also come from the environment, which wins over the file:
+#   PALINTEL_DISCORD_TOKEN, PALINTEL_CHANNEL_ID, PALINTEL_DATA_VERSION
+
+[discord]
+# Bot token from https://discord.com/developers/applications -> your app -> Bot.
+# Treat it like a password. Anyone holding it controls the bot.
+token = ""
+
+# Channel the bot listens in and posts to. Enable Developer Mode in Discord
+# (Settings -> Advanced), then right-click the channel -> Copy Channel ID.
+channel_id = 0
+
+# How to address the bot in that channel:
+#   "any"     - respond to every message. Fine for a dedicated #copilot-hud channel.
+#   "prefix"  - respond only to messages starting with `prefix`.
+#   "mention" - respond only when the bot is @mentioned.
+listen_mode = "any"
+prefix = "?"
+
+[data]
+# Which extracted dataset to load, matching a directory under data/.
+version = "1.0.2"
+
+[game]
+# Palworld save directory, used later by the save watcher to resolve "nearest" and
+# level gating. Leave empty to run without player state.
+# Typically: C:/Users/<you>/AppData/Local/Pal/Saved/SaveGames/<steamid>/<worldid>
+save_dir = ""

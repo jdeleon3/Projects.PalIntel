@@ -17,3 +17,11 @@ faster-whisper>=1.2.1
 # see tools/eval/_cuda.py for why PATH must also be set.
 nvidia-cublas-cu12
 nvidia-cudnn-cu12
+
+# --- Discord (Phase 1 text intake; voice receive later) ---
+# py-cord, not discord.py: both install as `discord` and conflict, and
+# py-cord is the one with voice RECEIVE support the wake-word path needs.
+py-cord>=2.6
+
+# --- tests ---
+pytest>=8.0
