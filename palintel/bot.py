@@ -15,8 +15,7 @@ import sys
 from .cards import Card
 from .config import Config, ConfigError
 from .knowledge import KnowledgeBase
-from .pipeline import Pipeline, PlayerState
-from .routing import StubRouter
+from .pipeline import Pipeline, PlayerState, build_router
 from .tools import Decline
 
 log = logging.getLogger("palintel.bot")
@@ -38,7 +37,7 @@ def to_embed(card: Card) -> "discord.Embed":
 
 def build_pipeline(cfg: Config) -> Pipeline:
     kb = KnowledgeBase.load(cfg.data_version)
-    return Pipeline(kb, StubRouter(kb.lexicon, {n.resource for n in kb.nodes}))
+    return Pipeline(kb, build_router(kb))
 
 
 def run() -> None:

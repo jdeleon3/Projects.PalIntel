@@ -15,15 +15,13 @@ import logging
 import sys
 
 from .knowledge import KnowledgeBase
-from .pipeline import Pipeline, PlayerState
-from .routing import StubRouter
+from .pipeline import Pipeline, PlayerState, build_router
 from .tools import Decline
 
 
-def build(version: str) -> Pipeline:
+def build(version: str, router: str = "auto") -> Pipeline:
     kb = KnowledgeBase.load(version)
-    locatable = {n.resource for n in kb.nodes}
-    return Pipeline(kb, StubRouter(kb.lexicon, locatable))
+    return Pipeline(kb, build_router(kb, router))
 
 
 def show(pipe: Pipeline, text: str, state: PlayerState, verbose: bool) -> None:
@@ -47,6 +45,8 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("utterance", nargs="*", help="one-shot query; omit for interactive")
     ap.add_argument("--version", default="1.0.2")
+    ap.add_argument("--router", default="auto", choices=["auto", "claude", "stub"],
+                    help="auto falls back to the stub when no credential resolves")
     ap.add_argument("--status", action="store_true", help="print loaded data and exit")
     ap.add_argument("--level", type=int, help="simulate player level")
     ap.add_argument("--at", help="simulate position as 'x,y'")
@@ -58,9 +58,12 @@ def main() -> None:
                         format="%(levelname)s %(name)s: %(message)s")
 
     try:
-        pipe = build(args.version)
+        pipe = build(args.version, args.router)
     except FileNotFoundError as e:
         sys.exit(f"missing data: {e}\nRun tools/ingest/ to build it.")
+    except RuntimeError as e:
+        # Missing credential / missing SDK: actionable, not a stack trace.
+        sys.exit(str(e))
 
     if args.status:
         print(json.dumps(pipe.kb.summary(), indent=2))

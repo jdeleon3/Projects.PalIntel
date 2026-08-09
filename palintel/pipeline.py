@@ -32,6 +32,34 @@ class Outcome:
     candidates: list[Candidate]
 
 
+def build_router(kb: KnowledgeBase, prefer: str = "auto") -> RouterBackend:
+    """Select a router backend.
+
+    `auto` uses Claude when a credential resolves and falls back to the stub otherwise,
+    so the pipeline stays runnable without an API key. The fallback is logged rather
+    than silent - a router quietly downgrading to keyword matching would look like a
+    capability regression with no visible cause.
+    """
+    from .routing import StubRouter
+
+    locatable = {n.resource for n in kb.nodes}
+    if prefer in ("auto", "claude"):
+        try:
+            from . import routing_anthropic
+            if routing_anthropic.available():
+                return routing_anthropic.ClaudeRouter(kb.lexicon, locatable)
+            if prefer == "claude":
+                raise RuntimeError(
+                    "No Anthropic credential found. Set ANTHROPIC_API_KEY or run "
+                    "`ant auth login`.")
+            log.info("no Anthropic credential - falling back to the stub router")
+        except ImportError:
+            if prefer == "claude":
+                raise
+            log.info("anthropic SDK not installed - falling back to the stub router")
+    return StubRouter(kb.lexicon, locatable)
+
+
 class Pipeline:
     def __init__(self, kb: KnowledgeBase, router: RouterBackend):
         self.kb = kb

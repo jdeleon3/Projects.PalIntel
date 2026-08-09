@@ -26,5 +26,10 @@ py-cord>=2.6
 # it and voice receive (Phase 3) cannot work at all.
 PyNaCl>=1.5
 
+# --- intent router (Claude) ---
+# Resolves ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN, or an `ant auth login`
+# profile - a bare client works with any of them.
+anthropic>=0.60
+
 # --- tests ---
 pytest>=8.0
