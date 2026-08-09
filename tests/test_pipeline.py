@@ -35,12 +35,27 @@ def test_loads_expected_shape(kb: KnowledgeBase):
     assert len(kb.nodes) > 2000
 
 
-def test_suspect_clusters_are_never_loaded(kb: KnowledgeBase):
-    """Origin-artifact clusters would send a player to a place that does not exist."""
-    assert kb.excluded_suspect > 0, "fixture should exercise the exclusion"
-    origin_x, origin_y = -344, 271
+def test_no_cluster_is_implausibly_dense(kb: KnowledgeBase):
+    """Density is the signature of coordinates collapsing to a point.
+
+    A cluster spans at most ~110 m by construction. Before the extractor resolved
+    parent transforms, scattered nodes stored relative to a placement volume collapsed
+    onto world origin and produced a 171-deposit phantom "hotspot" at (-344, 271) -
+    a real-looking map position with nothing there. The builder now fails closed on
+    this; asserting it at load time too keeps a bad dataset from being served.
+    """
     for n in kb.nodes:
-        assert n.distance_to(origin_x, origin_y) > 20, f"{n.node_id} near world origin"
+        assert n.node_count <= 50, f"{n.node_id} has {n.node_count} deposits"
+
+
+def test_placement_volume_children_are_resolved_not_dropped(kb: KnowledgeBase):
+    """Nodes scattered inside a placement volume must be recovered, not excluded.
+
+    The earlier stopgap dropped every deposit within 2000 world units of the origin,
+    which cost 152 real coal deposits.
+    """
+    coal = sum(n.node_count for n in kb.nodes if n.resource == "coal")
+    assert coal == 998, f"expected all 998 coal deposits, got {coal}"
 
 
 def test_every_node_has_real_coordinates(kb: KnowledgeBase):

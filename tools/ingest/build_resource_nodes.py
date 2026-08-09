@@ -89,23 +89,6 @@ def spread(group: list[dict], cx: float, cy: float) -> float:
     return max(math.dist((p["map_x"], p["map_y"]), (cx, cy)) for p in group)
 
 
-# --- unresolved local-coordinate guard ---------------------------------------
-# Some actors inside data-layer cells carry coordinates relative to a level-instance
-# parent rather than absolute world coordinates. Extraction records them verbatim, so
-# they land near world origin - which maps to (-344, 271), a perfectly plausible-looking
-# spot on the map. Left alone they produce a phantom 171-deposit coal "hotspot".
-#
-# There is no clean magnitude gap between these and genuine near-origin nodes, so this
-# is a conservative stopgap, not a fix. The real fix is resolving the level-instance
-# transform during extraction. Excluding is the safe direction: a missing node yields an
-# honest "no results", whereas a phantom node yields confidently wrong coordinates.
-ORIGIN_EXCLUSION_WORLD = 2000.0
-
-# Where world origin (0,0) lands in map space, per the validated transform. Derived
-# rather than hardcoded so it follows any future transform revision.
-_SCALE, _OFFSET_X, _OFFSET_Y = 458.7383, -124238.1, 157818.3
-ORIGIN_MAP_POS = ((0.0 - _OFFSET_Y) / _SCALE, (0.0 - _OFFSET_X) / _SCALE)
-
 # A cluster spans at most 2*CLUSTER_RADIUS (~110 m). More than this many deposits in that
 # area is not real terrain - it means coordinates collapsed to a point. Build fails.
 MAX_PLAUSIBLE_DEPOSITS_PER_CLUSTER = 50
@@ -121,12 +104,6 @@ def main() -> None:
     nodes = [p for p in placements if p["cls"] in CLASS_TO_RESOURCE]
     print(f"placements: {len(placements):,}  -> resource nodes: {len(nodes):,}")
 
-    unresolved = [p for p in nodes
-                  if max(abs(p["world_x"]), abs(p["world_y"])) < ORIGIN_EXCLUSION_WORLD]
-    if unresolved:
-        nodes = [p for p in nodes if p not in unresolved]
-        print(f"  excluded {len(unresolved):,} with unresolved local coordinates "
-              f"(|world xy| < {ORIGIN_EXCLUSION_WORLD:,.0f})")
 
     by_res: dict[str, list[dict]] = defaultdict(list)
     for n in nodes:
@@ -159,14 +136,6 @@ def main() -> None:
                 # level data per area, which comes from the Pal spawner sheets.
                 "min_player_level": None,
                 "danger": None,
-                # Clusters sitting on the map position of world origin are likely
-                # residual unresolved local coordinates rather than real terrain. The
-                # 2000-unit exclusion above is conservative and does not catch all of
-                # them. Flagged rather than dropped, so genuine nodes there are not
-                # silently lost - Q1 should exclude suspect clusters until the
-                # level-instance transform is resolved properly.
-                "suspect_origin_artifact": math.dist(
-                    (anchor["map_x"], anchor["map_y"]), ORIGIN_MAP_POS) <= 20.0,
             })
 
     out = {
@@ -178,9 +147,6 @@ def main() -> None:
         "known_gaps": [
             "crude_oil has no spawner class in the overworld; it is not a placed node",
             "min_player_level and danger are unpopulated - they need wild Pal level data",
-            f"{len(unresolved)} deposits excluded: coordinates are relative to a "
-            "level-instance parent and were not resolved to world space. Proper fix is "
-            "resolving that transform during extraction; excluding is the safe stopgap.",
         ],
         "stats": {
             "deposits": len(nodes),

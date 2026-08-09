@@ -175,7 +175,6 @@ class KnowledgeBase:
     game_version: str
     lexicon: Lexicon
     nodes: list[ResourceNode] = field(default_factory=list)
-    excluded_suspect: int = 0
 
     @classmethod
     def load(cls, version: str = "1.0.2", root: Path | None = None) -> "KnowledgeBase":
@@ -183,15 +182,8 @@ class KnowledgeBase:
         lexicon = Lexicon(base / "lexicon.json")
 
         raw = json.loads((base / "resource_nodes.json").read_text(encoding="utf-8"))
-        nodes, suspect = [], 0
+        nodes = []
         for n in raw["nodes"]:
-            # Clusters sitting on the map position of world origin are probably
-            # unresolved level-instance coordinates, not real terrain. Serving one
-            # would send a player to a location that does not exist - the exact
-            # failure this project is built to prevent.
-            if n.get("suspect_origin_artifact"):
-                suspect += 1
-                continue
             nodes.append(ResourceNode(
                 node_id=n["node_id"], resource=n["resource"],
                 map_x=n["map_x"], map_y=n["map_y"],
@@ -200,8 +192,7 @@ class KnowledgeBase:
                 danger=n.get("danger"), area_hint=n.get("area_hint"),
             ))
 
-        return cls(game_version=raw["game_version"], lexicon=lexicon,
-                   nodes=nodes, excluded_suspect=suspect)
+        return cls(game_version=raw["game_version"], lexicon=lexicon, nodes=nodes)
 
     def summary(self) -> dict[str, object]:
         by_res: dict[str, int] = {}
@@ -213,5 +204,4 @@ class KnowledgeBase:
             "resources": self.lexicon.resources(),
             "node_clusters": len(self.nodes),
             "by_resource": dict(sorted(by_res.items())),
-            "excluded_suspect_clusters": self.excluded_suspect,
         }

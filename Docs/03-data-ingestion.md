@@ -45,9 +45,16 @@ Phase 0.5 survey established that the leading community maps derive their marker
 coordinates from PAK extraction themselves, then verify against in-game tile coordinates.
 Extracting directly puts us at the same source rather than one hop downstream of it.
 
-Path: FModel (UE5.1 profile) with the community Palworld mapping file and AES key, against
-the local game install. Level/world data yields node placements in **world coordinates**;
-the world → in-game map transform must then be derived and validated (§3.1.1).
+Path: `tools/extract/PakExtract` (CUE4Parse, .NET 10) against the local game install,
+using the community Palworld mapping file. **No AES key is needed** — the pak carries a
+zero encryption GUID and `bEncryptedIndex=0`.
+
+**Actor positions are not uniformly in world space.** Nodes scattered by a designer
+placement volume (`BP_BoxPlacementTool_*`) store `RelativeLocation` relative to that
+volume; taken literally they collapse onto world origin, which maps to a plausible-looking
+but empty spot. The extractor walks each actor's `Owner` chain and composes parent
+transforms to recover world positions. Anything whose owner lies outside the loaded cell
+is excluded rather than guessed.
 
 Hazards:
 - **Coordinate space ambiguity** — see [02-data-model.md](02-data-model.md) §2. Establish

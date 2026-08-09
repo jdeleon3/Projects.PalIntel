@@ -288,21 +288,33 @@ Node actors are `BP_PalMapObjectSpawner_*_C`; Pal spawn zones are `BP_PalSpawner
    coordinates now **snap to a real deposit** rather than a centroid, which could
    otherwise land in a lake.
 
-3. **Some actors carry level-instance-relative coordinates, not world coordinates.**
-   Extraction recorded them verbatim, placing them near world origin — which maps to
-   **(−344, 271)**, a plausible-looking spot. Left alone this produced a phantom
-   171-deposit coal hotspot: precisely the confidently-wrong-coordinate failure this
-   project exists to prevent.
+3. **Some actors store positions relative to a parent, not in world space** —
+   **now fixed at the source.**
 
-   There is no clean magnitude gap between these and genuine near-origin nodes, so the
-   current handling is a **conservative stopgap, not a fix**: 378 deposits below a
-   2,000-unit threshold are excluded, and 5 residual clusters near the origin position
-   are flagged `suspect_origin_artifact` rather than dropped, so real nodes are not
-   silently lost. **Q1 must exclude suspect clusters.** The proper fix is resolving the
-   level-instance transform during extraction, and it should land before Phase 1 ships.
+   Nodes scattered by a designer placement volume (`BP_BoxPlacementTool_*`) store
+   `RelativeLocation` relative to that volume. Recorded verbatim they cluster near world
+   origin, which maps to **(−344, 271)** — a plausible-looking spot with nothing there —
+   producing a phantom 171-deposit coal hotspot. Precisely the confidently-wrong-coordinate
+   failure this project exists to prevent.
 
-   A **density guard** now fails the build if any cluster exceeds 50 deposits within its
-   ~110 m span, so this class of bug cannot ship silently again.
+   The first response was a stopgap: exclude everything within 2,000 world units of the
+   origin and flag the residue `suspect_origin_artifact`. That cost **152 real coal
+   deposits** and left the root cause in place.
+
+   **The real fix**: every affected actor carries an `Owner` pointing at its placement
+   volume, and those volumes have clean world transforms. The extractor now walks the
+   owner chain and composes parent transforms, recovering true world positions. Results:
+
+   | | before | after |
+   |---|---|---|
+   | placements near world origin | 383 | **0** |
+   | coal deposits | 846 (152 dropped) | **998** |
+   | largest coal cluster | 171 (phantom) | **9** |
+   | owner chains resolved | — | 633, none deeper than one hop |
+
+   The stopgap and the `suspect_origin_artifact` flag are gone. The **density guard**
+   stays — it fails the build if any cluster exceeds 50 deposits within its ~110 m span,
+   and it is what caught this in the first place.
 
 **Still unpopulated:** `min_player_level` and `danger`. Both need wild Pal level data,
 which comes from the `BP_PalSpawner_Sheets_*` actors already extracted.
