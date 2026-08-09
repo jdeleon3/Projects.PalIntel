@@ -76,6 +76,32 @@ def test_environment_overrides_file(tmp_path, monkeypatch):
     assert Config.load(p).discord.token == "from-env"
 
 
+def test_windows_path_in_double_quotes_gets_an_actionable_error(tmp_path):
+    r"""TOML reads \U in "C:\Users" as a unicode escape.
+
+    The raw parser says "Invalid hex value", which points nowhere. Windows users will
+    hit this constantly, so the error has to name the cause and the fix.
+    """
+    p = _write(tmp_path, "\n".join([
+        "[discord]", 'token = "abc"', "channel_id = 1", "",
+        "[game]", r'save_dir = "C:\Users\me\AppData\Local\Pal"',
+    ]))
+    with pytest.raises(ConfigError) as exc:
+        Config.load(p)
+    text = str(exc.value)
+    assert "single quotes" in text and "forward slashes" in text
+    assert "line 6" in text          # points at the offending line
+    assert "save_dir" in text        # and shows it
+
+
+def test_windows_path_as_literal_string_parses(tmp_path):
+    p = _write(tmp_path, "\n".join([
+        "[discord]", 'token = "abc"', "channel_id = 1", "",
+        "[game]", r"save_dir = 'C:\Users\me\AppData\Local\Pal'",
+    ]))
+    assert str(Config.load(p).save_dir).endswith("Pal")
+
+
 def test_redacted_never_exposes_the_token(tmp_path, monkeypatch):
     monkeypatch.delenv("PALINTEL_DISCORD_TOKEN", raising=False)
     secret = "MTIzNDU2Nzg5.SUPERSECRETVALUE.abcdefgh"

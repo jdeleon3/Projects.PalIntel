@@ -31,5 +31,11 @@ version = "1.0.2"
 [game]
 # Palworld save directory, used later by the save watcher to resolve "nearest" and
 # level gating. Leave empty to run without player state.
-# Typically: C:/Users/<you>/AppData/Local/Pal/Saved/SaveGames/<steamid>/<worldid>
-save_dir = ""
+#
+# NOTE THE SINGLE QUOTES. In TOML, single quotes make a *literal* string, so Windows
+# backslashes work as-is. With double quotes, "C:\Users\..." fails to parse because
+# \U starts a unicode escape.
+#
+#   save_dir = 'C:\Users\you\AppData\Local\Pal\Saved\SaveGames\<steamid>\<worldid>'
+#   save_dir = "C:/Users/you/AppData/Local/Pal/Saved/SaveGames/..."   # also fine
+save_dir = ''

@@ -20,6 +20,31 @@ class ConfigError(RuntimeError):
     pass
 
 
+def _toml_help(path: Path, err: Exception) -> str:
+    """Turn a TOML parse error into something actionable.
+
+    Windows paths in double-quoted TOML are the overwhelmingly likely cause: "C:\\Users"
+    fails because \\U opens a unicode escape. The raw parser error says "Invalid hex
+    value", which points nowhere useful.
+    """
+    msg = [f"{path} is not valid TOML:", f"  {err}"]
+    try:
+        line_no = int(str(err).rsplit("at line ", 1)[1].split(",")[0])
+        line = path.read_text(encoding="utf-8").splitlines()[line_no - 1]
+        msg.append(f"  line {line_no}: {line.strip()}")
+        if "\\" in line and '"' in line:
+            msg += [
+                "",
+                "  A Windows path in double quotes: TOML reads \\U, \\a, \\t as escapes.",
+                "  Use single quotes (a literal string) or forward slashes:",
+                f"    {line.split('=')[0].strip()} = 'C:\\Users\\you\\...'",
+                f"    {line.split('=')[0].strip()} = \"C:/Users/you/...\"",
+            ]
+    except (IndexError, ValueError):
+        pass
+    return "\n".join(msg)
+
+
 @dataclass(frozen=True)
 class DiscordConfig:
     token: str
@@ -39,7 +64,10 @@ class Config:
         path = path or DEFAULT_PATH
         raw: dict = {}
         if path.exists():
-            raw = tomllib.loads(path.read_text(encoding="utf-8"))
+            try:
+                raw = tomllib.loads(path.read_text(encoding="utf-8"))
+            except tomllib.TOMLDecodeError as e:
+                raise ConfigError(_toml_help(path, e)) from e
         elif not os.environ.get("PALINTEL_DISCORD_TOKEN"):
             raise ConfigError(
                 f"No config at {path} and PALINTEL_DISCORD_TOKEN is unset.\n"
