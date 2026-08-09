@@ -26,15 +26,251 @@ Throwaway spikes. No production code.
 | 0.2 | Capture per-speaker PCM via Pycord; write a WAV | — | Unusable → evaluate alternative Discord libraries |
 | 0.3 | Locate the save directory; parse owned Pals, bases, **and unlocked tech** | A2, A6 | Unparseable → Q3/Q5/Q6 degrade to stateless; revisit [ADR-0005](adr/0005-save-file-player-state.md) |
 | 0.4 | Derive the combination table from ranks; check ≥ 100 known combos | A3 | < 100% agreement outside exceptions → scrape explicit combos |
-| 0.5 | Acquire ~20 node coords; verify against the in-game map | A4 | Transform underivable → Q1 not viable as specified |
+| 0.5 | Extract node placements via FModel; fit the world → map transform; verify ~20 nodes in-game | A4 | Transform underivable → Q1 not viable as specified |
 | 0.6 | Record 20 utterances with hard Pal names; measure STT raw, with keyterm boosting, with fuzzy correction | A5 | < 95% after both defenses → redesign entity handling first |
-| 0.7 | Survey wiki/guide sources for **licence terms** and structural quality | A7 | No licensable source → Q7 corpus must be hand-written; scope Tier 3 down |
+| 0.7 | Survey sources for **licence terms** and structural quality | A7 | No licensable source → Q7 corpus must be hand-written; scope Tier 3 down |
 
 **Exit criteria:** A4 confirmed (v1 depends on it). A1, A2, A3, A5, A6, A7 either confirmed
 or their fallback chosen and recorded as an ADR amendment.
 
-Sequence 0.7 early despite Q7 being late — if licensing blocks the corpus, Tier 3 needs
-rethinking before the architecture depends on it.
+**Progress: A4 ✅ · A6 ✅ · A2 ✅(caveat) · A3 ◐ · A7 ◐ · A1 ⬜ · A5 ⬜**
+
+Remaining before Phase 1 can start:
+
+| Spike | Blocker |
+|---|---|
+| **0.6 — STT accuracy (A5)** | Model and latency **resolved** — see below. Accuracy measurement needs a re-record. |
+| 0.1 — overlay legibility (A1) | Needs a play session. Not a kill criterion; informs card density. |
+| 0.4 — breeding combos (A3) | Confirmed via `CombiRank` + `DT_PalCombiUnique`. Gates Phase 3, not Phase 1. |
+
+### Spike 0.6 outcome — STT model and latency (resolved)
+
+**Decision: faster-whisper `medium.en`, float16, local GPU** —
+see [ADR-0015](adr/0015-local-gpu-stt.md).
+
+| | idle | game running |
+|---|---|---|
+| median | 141 ms | **171 ms** |
+| p95 | 210 ms | **295 ms** |
+| accuracy (v1 set) | 88% | 88% |
+| VRAM | — | ~930 MiB |
+
+No perceptible frame impact during play. CPU inference was measured at **RTF 1.35** and is
+not viable at any usable model size; the GPU is a 23× speedup *and* more accurate, since it
+runs float16 rather than the int8 CPU required.
+
+A wrong conclusion was reached and reversed here: the first benchmark ran silently on CPU
+because CUDA failed to initialise, and hosted STT was briefly recommended on that basis.
+The cause was a missing runtime library, not a real constraint. Recorded in ADR-0015
+because the failure mode is subtle and worth not repeating.
+
+**Accuracy is still not properly measured.** The 88% figure comes from the v1 prompt set,
+which put 20 of 28 prompts on isolated bare names — a condition that never occurs in
+production — leaving only **5 scored entities** in the utterance group that actually
+matters. Both a pass and a fail would have been unsupported at that sample size.
+
+v2 (`data/stt_eval/prompts.json`) corrects the weighting: **40 prompts, 39 scored
+entities**, utterance-weighted and difficulty-stratified. Re-record before judging A5.
+
+Layer contributions on v1, which did answer the design question — all three earn their
+place: raw 24% → +hotwords 40% → +fuzzy 72% → **cumulative pipeline 84%**. Note the
+measurement initially applied fuzzy repair to raw rather than boosted transcripts,
+understating the pipeline; the layers are cumulative now.
+
+### Survey outcome (0.5 / 0.7 — complete)
+
+Source survey is **done**; see [ADR-0014](adr/0014-game-files-as-source.md). Structured data
+comes from the game's own `.pak` files rather than community scraping, via MIT-licensed
+tooling (`PalworldDataExtractor`, `cheahjs/palworld-save-tools`) plus FModel for level data.
+
+| Assumption | Status after survey |
+|---|---|
+| A2 save parsing | **Confirmed, with a caveat** — see 0.3 below |
+| A3 breeding ranks | **De-risked** — exception table exposed as a distinct dataset, corroborating the rank model |
+| A6 unlocked tech | **CONFIRMED** — see 0.3 below |
+| A7 licensing | **Narrowed** — risk now confined to the Q7 prose corpus; structured data is licence-clean |
+| **A4 transform** | **Unchanged — the hard gate.** Level-data extraction plus in-game verification |
+
+Target game version is **1.0.2**.
+
+### Spike 0.5 outcome — headless pak extraction (working)
+
+A CLI extraction pipeline is **operational**, with no GUI step. This matters beyond
+convenience: a GUI in the ingestion path would be a permanent per-patch tax.
+
+| Finding | Detail |
+|---|---|
+| Pak mount | **185,003 files** indexed from a single 40.5 GB `Pal-Windows.pak` |
+| **Encryption** | **None.** Footer carries a zero encryption GUID and `bEncryptedIndex=0` — **no AES key needed**, removing a per-patch dependency on third-party key extraction |
+| Pak format | v11, Oodle compression (same codec the saves adopted) |
+| Mappings | `PalworldModding/UsefulFiles` `Mappings.usmap`, updated July 2026. usmap **v4** |
+| Toolchain | .NET 10 + CUE4Parse `1.2.2.202608`. usmap v4 requires ≥ `1.2.2.202607`, which targets net10 only |
+| World Partition | **9,977** generated cells under `PL_MainWorld5/_Generated_/`, named `CloseRange_L0_X{x}_Y{y}_DL0` — **cell names encode grid coordinates** |
+| Extracted | `DT_BossSpawnerLoactionData` → **159 rows** with world coordinates and levels |
+
+Sample extracted row:
+
+```json
+{ "SpawnerID": "yamijima_IceLand_pink_D_BOSS",
+  "CharacterID": "BOSS_Horus_Water",
+  "Location": { "X": -867560.9, "Y": -441338.22, "Z": 18640.152 },
+  "Level": 66 }
+```
+
+World coordinate extent: X `-1,033,348 … 601,097`, Y `-733,420 … 575,683` (UE cm).
+
+**A4 — CONFIRMED. Validation passed; the v1 hard gate on v1 is cleared.**
+Stored in [`../data/coord_transform.json`](../data/coord_transform.json) as
+`palworld-1.0.2-linear-axisswap-v2`, status **accepted**.
+
+```
+map_x = (world_y - 157818.3) / 458.7383
+map_y = (world_x + 124238.1) / 458.7383
+```
+
+**Independent validation:** 7 landmarks held out entirely from the fit were read in-game
+and compared against v1's predictions. **Worst error 3.0 map units, mean 1.92**, against a
+10-unit threshold. This is the meaningful verdict — the points had no influence on the
+parameters being tested.
+
+Validation also surfaced a defect the fit alone could not: **`dy` was systematically
+positive on all 7 points** (mean +1.69, sd 0.75). A consistent sign across widely separated
+landmarks is a parameter offset, not reading noise. v2 corrects it — `offset_x` moves 500
+world units (~1.1 map units) — and was refitted on all 11 points.
+
+v2 residuals are consequently **not** an independent test; the refit consumed the validation
+set. That is an acceptable trade because validation had already confirmed the *model form*,
+making the refit a precision improvement rather than a fresh claim. About 13 landmarks
+remain unread and still provide ongoing independent checks.
+
+One mild outlier: point 2 (`5_2_island_iceblock_FBOSS_1`, residual 5.4) sits opposite the
+systematic bias, so correcting the bias worsened it. Most likely read from further off the
+spawn point. Worth re-reading; not currently harmful.
+
+Practical scale: 1 map unit ≈ 4.6 m, so a 3-unit error is ~14 m — well inside visual range
+of a node cluster.
+
+**The axes are swapped** — map X derives from world Y and vice versa. This was the specific
+risk flagged in [03-data-ingestion.md](03-data-ingestion.md) §3.1.1, and it is real: assuming
+the obvious axis pairing would have produced confidently wrong coordinates everywhere.
+
+The two axes were fitted **independently**, so a shared scale was a possible outcome rather
+than a built-in assumption. They agreed to **0.16%** (458.93 vs 458.20 world units per map
+unit). That convergence is the strongest evidence the model is correct — a wrong model does
+not produce two independently-fitted axes that agree.
+
+Worst fit residual is 4.0 map units, consistent with readings taken while standing *near*
+a boss spawn point rather than exactly on it.
+
+**Validation remains outstanding**, and matters: fit residuals only measure how well the
+model reproduces its own inputs. The 20 disjoint `VALIDATE` landmarks stay unfilled until
+confirmed, and `status` stays `provisional` until they are. Acceptance threshold: 10 map units.
+
+Two `VALIDATE` rows sit in the World Tree region (points 8, 20) and one on an oil rig
+(point 16); substitute from `all_boss_landmarks.csv` if unreachable.
+
+Two easier sources were ruled out and are worth recording so they are not re-attempted:
+
+- **Fast travel points** — `DT_RespawnPointInfo` holds spawn-region metadata
+  (`ResourcesAbundant`, `PalAbundant`), not coordinates.
+- **Player position from the save** — lives in `Level.sav` character blobs, behind the same
+  stale `RawData` decoder that spike 0.3 found broken on 1.0.2.
+
+**Then:** node placements come from the World Partition cells. The grid-coordinate naming
+should constrain the search considerably rather than requiring all 9,977 cells to be parsed.
+
+### Spike 0.3 outcome — save parsing (complete)
+
+Run against a live 1.0.2 save. Both assumptions resolved.
+
+**A6 — CONFIRMED.** The player save exposes exactly what Q6 needs:
+
+| Field | Observed |
+|---|---|
+| `UnlockedRecipeTechnologyNames` | 118 entries, by tech name (`Workbench`, `PalBox`, `RepairBench`, …) |
+| `TechnologyPoint` | 230 |
+| `bossTechnologyPoint` | 33 |
+| `PalStorageContainerId` / `OtomoCharacterContainerId` | container GUIDs → join into `Level.sav` |
+
+Tech names are the natural join key to the `tech_tree.json` `tech_id`. Q6's candidate-set
+arithmetic ([02-data-model.md](02-data-model.md) §4.2) works directly against this.
+
+**A2 — CONFIRMED with a bounded caveat.** Two obstacles, both surmountable:
+
+1. **Save compression changed to Oodle.** Palworld 0.6+ writes `PlM` (Oodle) where older
+   versions wrote `PlZ` (zlib). `palworld-save-tools` 0.24.0 — the current PyPI release, and
+   the current state of upstream `main` — handles **only** `PlZ`. Header framing is
+   identical; only the codec differs. Resolved with a ~30-line shim over `pyooz` (module
+   name `ooz`), an open-source Oodle-compatible decompressor. No proprietary DLL required.
+2. **Some `RawData` sub-decoders are stale for 1.0.2.** `character.py` and `map_model.py`
+   both fail with *"EOF not reached"*. These decode inner binary blobs, **not** the GVAS
+   tree. With custom decoders disabled, `Level.sav` parses fully:
+
+   | Structure | Count |
+   |---|---|
+   | `BaseCampSaveData` | 3 |
+   | `CharacterSaveParameterMap` | 547 |
+   | `ItemContainerSaveData` | 3,011 |
+   | `CharacterContainerSaveData` | 5 |
+
+   So base camps and the character roster are reachable now. Per-Pal detail (level, traits)
+   lives inside the blobs those stale decoders handle. Updating them is bounded, well-understood
+   work; actively maintained 2026 forks are the first place to look before writing our own.
+
+**Consequences for the design**
+- The save watcher ([01-architecture.md](01-architecture.md) §3.10) gains a native
+  dependency on `pyooz`. Minor, but it is a compiled extension, not pure Python — note it in
+  packaging.
+- **Save-format drift is now a demonstrated risk, not a hypothetical one.** The compression
+  codec changed between minor versions. The `SaveParser` interface and the
+  "state unavailable" degradation path in [ADR-0005](adr/0005-save-file-player-state.md)
+  are load-bearing, and the pinned parser version belongs in `/palintel status`.
+- Q6 is fully unblocked. Q3/Q5 need per-Pal detail, so they depend on the blob decoders —
+  sequence that work into Phase 3.
+
+### Phase 1 data foundation — extraction complete
+
+The Q1 dataset now exists. `tools/ingest/` holds the pipeline; `data/1.0.2/` the output.
+
+| Output | Result |
+|---|---|
+| `lexicon.json` | **313 Pals** (286 in Paldeck), joined to `zukan_index`, plus resources |
+| `resource_nodes.json` | **2,668 clusters** from 4,257 deposits — coal, ore, sulfur, quartz |
+
+Full World Partition scan: **9,977 cells → 54,863 placements in 3.6 min, zero failures.**
+Node actors are `BP_PalMapObjectSpawner_*_C`; Pal spawn zones are `BP_PalSpawner_Sheets_*_C`
+(411 distinct classes, the Q2 payload, extracted but not yet processed).
+
+**Three corrections the data forced:**
+
+1. **`crude_oil` is not a placed node.** No spawner class exists for it in the overworld.
+   Removed from `ResourceType` ([02-data-model.md](02-data-model.md) §3.1) — Q1 cannot
+   answer "where is oil" the way it answers "where is coal".
+
+2. **Single-link clustering chains badly.** Deposits strung along a cliff merged into one
+   171-member "cluster" spanning a whole region — not a place a player can go. Replaced
+   with leader clustering, which bounds cluster diameter by construction. Reported
+   coordinates now **snap to a real deposit** rather than a centroid, which could
+   otherwise land in a lake.
+
+3. **Some actors carry level-instance-relative coordinates, not world coordinates.**
+   Extraction recorded them verbatim, placing them near world origin — which maps to
+   **(−344, 271)**, a plausible-looking spot. Left alone this produced a phantom
+   171-deposit coal hotspot: precisely the confidently-wrong-coordinate failure this
+   project exists to prevent.
+
+   There is no clean magnitude gap between these and genuine near-origin nodes, so the
+   current handling is a **conservative stopgap, not a fix**: 378 deposits below a
+   2,000-unit threshold are excluded, and 5 residual clusters near the origin position
+   are flagged `suspect_origin_artifact` rather than dropped, so real nodes are not
+   silently lost. **Q1 must exclude suspect clusters.** The proper fix is resolving the
+   level-instance transform during extraction, and it should land before Phase 1 ships.
+
+   A **density guard** now fails the build if any cluster exceeds 50 deposits within its
+   ~110 m span, so this class of bug cannot ship silently again.
+
+**Still unpopulated:** `min_player_level` and `danger`. Both need wild Pal level data,
+which comes from the `BP_PalSpawner_Sheets_*` actors already extracted.
 
 ---
 

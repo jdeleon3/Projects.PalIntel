@@ -133,10 +133,32 @@ Each has a verification task in [04-roadmap.md](04-roadmap.md) Phase 0.
 | A1 | Discord cards are legible in the in-game overlay | Overlay viewing degraded; other surfaces (second monitor, phone, popout) unaffected |
 | A2 | Palworld saves are parseable from local disk with community tooling | Q3, Q5, Q6 degrade to generic answers |
 | A3 | Breeding is derivable from a per-Pal combination rank plus exceptions | Breeding graph needs thousands of scraped combos |
-| A4 | Community coordinate data is usable and its map transform derivable | Q1 answers wrong or unusable |
+| A4 | Node coordinates are PAK-extractable and the world → map transform is derivable | Q1 answers wrong or unusable |
 | A5 | STT with keyterm boosting reaches ≥ 95% on Palworld proper nouns | Entity extraction caps total system accuracy |
 | A6 | The save exposes unlocked technologies | Q6 falls back to asking the player what they have |
-| A7 | A licensable knowledge corpus of sufficient coverage can be assembled | Q7 coverage gaps; corpus grows incrementally |
+| A7 | A licensable prose corpus of sufficient coverage can be assembled | Q7 coverage gaps; corpus grows incrementally |
+
+**Status after Phase 0.3 / 0.5 / 0.7** — details in [04-roadmap.md](04-roadmap.md):
+
+- **A6 confirmed.** The player save exposes `UnlockedRecipeTechnologyNames` (118 entries on
+  the test save) plus tech-point balances. Q6 is unblocked.
+- **A2 confirmed with a caveat.** Saves parse, but 1.0.2 uses Oodle (`PlM`) compression that
+  the current `palworld-save-tools` release does not handle, and two `RawData` sub-decoders
+  are stale. Both are bounded; per-Pal detail (Q3/Q5) depends on the decoder work.
+- **A3 de-risked.** The breeding exception table is exposed as a distinct dataset, which
+  corroborates the rank model.
+- **A7 narrowed.** Licensing risk is now confined to the Q7 prose corpus, since structured
+  data comes from game files ([ADR-0014](adr/0014-game-files-as-source.md)).
+- **A4 confirmed.** The world → map transform is derived, independently validated (7
+  held-out landmarks, worst error 3.0 map units against a 10-unit threshold) and
+  **accepted** as [`data/coord_transform.json`](../data/coord_transform.json). The axes
+  turn out to be **swapped** — exactly the failure mode that would otherwise have produced
+  confidently wrong coordinates everywhere. **The hard gate on v1 is cleared.**
+
+Save-format drift is now a **demonstrated** risk rather than a hypothetical one: the
+compression codec changed between minor versions. This raises the value of the
+`SaveParser` interface and the degradation path in
+[ADR-0005](adr/0005-save-file-player-state.md).
 
 **A5 remains the highest-rated accuracy risk.** Palworld proper nouns — *Lifmunk,
 Jormuntide, Depresso, Chillet, Faleris* — are invented words that general-purpose STT will

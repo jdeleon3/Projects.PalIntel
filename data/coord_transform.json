@@ -1,0 +1,59 @@
+{
+  "transform_id": "palworld-1.0.2-linear-axisswap-v2",
+  "status": "accepted",
+  "game_version": "1.0.2",
+  "fitted_on": "2026-08-08",
+  "supersedes": "palworld-1.0.2-linear-axisswap-v1",
+
+  "model": {
+    "description": "UE world coordinates (cm) to in-game map coordinates. Axes are swapped: map X derives from world Y, map Y derives from world X. Both axes share one scale.",
+    "map_x": "(world_y - offset_y) / scale",
+    "map_y": "(world_x - offset_x) / scale",
+    "scale": 458.7383,
+    "offset_x": -124238.1,
+    "offset_y": 157818.3,
+    "units": "world coordinates in Unreal centimetres; map coordinates as displayed in-game"
+  },
+
+  "per_axis_fit": {
+    "note": "Axes fitted independently so a shared scale would be a result, not an assumption. They agree to 0.09%.",
+    "scale_from_map_x": 458.956,
+    "scale_from_map_y": 458.521,
+    "delta": 0.435
+  },
+
+  "validation": {
+    "status": "PASSED",
+    "method": "7 landmarks held out entirely from the v1 fit, read in-game and compared against v1 predictions",
+    "n_points": 7,
+    "worst_error_map_units": 3.0,
+    "mean_error_map_units": 1.92,
+    "threshold_map_units": 10,
+    "finding": "All 7 within 3 map units. dy was systematically positive (mean +1.69, sd 0.75) across every point, indicating a small offset error rather than reading noise. v2 corrects it: offset_x moved by 500 world units, about 1.1 map units.",
+    "independence_note": "The v2 parameters were refitted on all 11 points, so v2 residuals are NOT an independent test. The v1 validation above is the meaningful verdict; it confirmed the model form, after which refitting is a precision improvement rather than a new claim."
+  },
+
+  "fit": {
+    "method": "ordinary least squares, per axis, on all 11 read landmarks",
+    "source": "DT_BossSpawnerLoactionData world coordinates paired with in-game map readings",
+    "n_points": 11,
+    "mean_residual_map_units": 1.4,
+    "worst_residual_map_units": 5.38
+  },
+
+  "outliers": [
+    {
+      "point_id": 2,
+      "source_id": "5_2_island_iceblock_FBOSS_1",
+      "residual_map_units": 5.38,
+      "note": "Sits opposite the systematic bias found in validation, so bias correction worsened it. Most likely read from further off the spawn point than the others. Worth re-reading; not currently harmful."
+    }
+  ],
+
+  "caveats": [
+    "Roughly 13 landmarks remain unread. They are still independent of this fit and provide ongoing validation.",
+    "Z axis is unmodelled. No query class currently needs elevation.",
+    "1 map unit is about 4.6 metres in world space, so a 3-unit error is roughly 14 metres - well inside visual range of a resource node cluster.",
+    "Version-scoped. A map change in a future patch invalidates it, hence transform_id is recorded on every stored Coord."
+  ]
+}

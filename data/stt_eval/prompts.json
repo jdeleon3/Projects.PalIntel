@@ -1,0 +1,366 @@
+{
+  "version": 2,
+  "lexicon_version": 1,
+  "game_version": "1.0.2",
+  "seed": 20260808,
+  "count": 40,
+  "scored_entities": 39,
+  "prompts": [
+    {
+      "group": "control",
+      "text": "Anubis",
+      "expect_entities": [
+        "Anubis"
+      ],
+      "difficulty": "control",
+      "id": "P01"
+    },
+    {
+      "group": "control",
+      "text": "Foxparks",
+      "expect_entities": [
+        "Foxparks"
+      ],
+      "difficulty": "control",
+      "id": "P02"
+    },
+    {
+      "group": "control",
+      "text": "Lamball",
+      "expect_entities": [
+        "Lamball"
+      ],
+      "difficulty": "control",
+      "id": "P03"
+    },
+    {
+      "group": "control",
+      "text": "Grizzbolt",
+      "expect_entities": [
+        "Grizzbolt"
+      ],
+      "difficulty": "control",
+      "id": "P04"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where can I find Kitsun",
+      "expect_entities": [
+        "Kitsun"
+      ],
+      "difficulty": "easy",
+      "id": "P05"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where do Pierdon spawn",
+      "expect_entities": [
+        "Pierdon"
+      ],
+      "difficulty": "medium",
+      "id": "P06"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal how do I breed Majex",
+      "expect_entities": [
+        "Majex"
+      ],
+      "difficulty": "easy",
+      "id": "P07"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what's the breeding combo for Gumoss",
+      "expect_entities": [
+        "Gumoss"
+      ],
+      "difficulty": "easy",
+      "id": "P08"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal is Faleris good for mining",
+      "expect_entities": [
+        "Faleris"
+      ],
+      "difficulty": "easy",
+      "id": "P09"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what element is Necromus",
+      "expect_entities": [
+        "Necromus"
+      ],
+      "difficulty": "hard",
+      "id": "P10"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal should I use Helzephyr against the first tower",
+      "expect_entities": [
+        "Helzephyr"
+      ],
+      "difficulty": "hard",
+      "id": "P11"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where's the nearest Bellanoir",
+      "expect_entities": [
+        "Bellanoir"
+      ],
+      "difficulty": "hard",
+      "id": "P12"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where can I find Suzaku",
+      "expect_entities": [
+        "Suzaku"
+      ],
+      "difficulty": "easy",
+      "id": "P13"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where do Finsider spawn",
+      "expect_entities": [
+        "Finsider"
+      ],
+      "difficulty": "medium",
+      "id": "P14"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal how do I breed Snock",
+      "expect_entities": [
+        "Snock"
+      ],
+      "difficulty": "easy",
+      "id": "P15"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what's the breeding combo for Skutlass",
+      "expect_entities": [
+        "Skutlass"
+      ],
+      "difficulty": "hard",
+      "id": "P16"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal is Shroomer good for mining",
+      "expect_entities": [
+        "Shroomer"
+      ],
+      "difficulty": "hard",
+      "id": "P17"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what element is Hartalis",
+      "expect_entities": [
+        "Hartalis"
+      ],
+      "difficulty": "medium",
+      "id": "P18"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal should I use Astralym against the first tower",
+      "expect_entities": [
+        "Astralym"
+      ],
+      "difficulty": "medium",
+      "id": "P19"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where's the nearest Aegidron",
+      "expect_entities": [
+        "Aegidron"
+      ],
+      "difficulty": "medium",
+      "id": "P20"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where can I find Leezpunk",
+      "expect_entities": [
+        "Leezpunk"
+      ],
+      "difficulty": "hard",
+      "id": "P21"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where do Grizzbolt spawn",
+      "expect_entities": [
+        "Grizzbolt"
+      ],
+      "difficulty": "hard",
+      "id": "P22"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal how do I breed Mycora",
+      "expect_entities": [
+        "Mycora"
+      ],
+      "difficulty": "easy",
+      "id": "P23"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what's the breeding combo for Silvance",
+      "expect_entities": [
+        "Silvance"
+      ],
+      "difficulty": "hard",
+      "id": "P24"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal is Knocklem good for mining",
+      "expect_entities": [
+        "Knocklem"
+      ],
+      "difficulty": "medium",
+      "id": "P25"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what element is Chikipi",
+      "expect_entities": [
+        "Chikipi"
+      ],
+      "difficulty": "easy",
+      "id": "P26"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal should I use Paladius against the first tower",
+      "expect_entities": [
+        "Paladius"
+      ],
+      "difficulty": "hard",
+      "id": "P27"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where's the nearest Omascul",
+      "expect_entities": [
+        "Omascul"
+      ],
+      "difficulty": "medium",
+      "id": "P28"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where can I find Cryolinx",
+      "expect_entities": [
+        "Cryolinx"
+      ],
+      "difficulty": "medium",
+      "id": "P29"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where do Direhowl spawn",
+      "expect_entities": [
+        "Direhowl"
+      ],
+      "difficulty": "medium",
+      "id": "P30"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal how do I breed Hoodle",
+      "expect_entities": [
+        "Hoodle"
+      ],
+      "difficulty": "easy",
+      "id": "P31"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal can I breed Kitsun with Pierdon",
+      "expect_entities": [
+        "Kitsun",
+        "Pierdon"
+      ],
+      "difficulty": "two_entity",
+      "id": "P32"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal is Majex better than Gumoss for handiwork",
+      "expect_entities": [
+        "Majex",
+        "Gumoss"
+      ],
+      "difficulty": "two_entity",
+      "id": "P33"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where's the nearest coal",
+      "expect_entities": [
+        "coal"
+      ],
+      "difficulty": "resource",
+      "id": "P34"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal find me an ore spot for level twenty",
+      "expect_entities": [
+        "ore"
+      ],
+      "difficulty": "resource",
+      "id": "P35"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where's the closest sulfur deposit",
+      "expect_entities": [
+        "sulfur"
+      ],
+      "difficulty": "resource",
+      "id": "P36"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal show me quartz near my base",
+      "expect_entities": [
+        "quartz"
+      ],
+      "difficulty": "resource",
+      "id": "P37"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what should I research next",
+      "expect_entities": [],
+      "difficulty": "no_entity",
+      "id": "P38"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where should I put my second base",
+      "expect_entities": [],
+      "difficulty": "no_entity",
+      "id": "P39"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what does the artisan trait do",
+      "expect_entities": [],
+      "difficulty": "no_entity",
+      "id": "P40"
+    }
+  ]
+}

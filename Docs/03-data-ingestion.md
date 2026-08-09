@@ -13,7 +13,7 @@ them against the roadmap rather than attempting them all at once.
 
 ```
 [source] → [acquire] → [normalize] → [derive] → [validate] → [publish]
-            raw cache   canonical     computed   invariants   data/v0.6.x/
+            raw cache   canonical     computed   invariants   data/v1.0.2/
                         schema        fields     + spot check
 ```
 
@@ -38,16 +38,47 @@ Corpus ingestion (§4) adds a `chunk → embed` stage before publish.
 
 **Needs:** coordinates, resource type, cluster size, surrounding threat level, region.
 
-**Sources:** community interactive maps are the only practical origin. Evaluate candidates
-in Phase 0 on: coordinate space published, coverage, whether data is reachable as
-structured JSON behind the map UI rather than requiring DOM scraping, and licensing.
+**Source: extract from the game's own `.pak` files.** Community interactive maps are
+cross-validation, not the origin. See [ADR-0014](adr/0014-game-files-as-source.md).
+
+Phase 0.5 survey established that the leading community maps derive their marker
+coordinates from PAK extraction themselves, then verify against in-game tile coordinates.
+Extracting directly puts us at the same source rather than one hop downstream of it.
+
+Path: FModel (UE5.1 profile) with the community Palworld mapping file and AES key, against
+the local game install. Level/world data yields node placements in **world coordinates**;
+the world → in-game map transform must then be derived and validated (§3.1.1).
 
 Hazards:
 - **Coordinate space ambiguity** — see [02-data-model.md](02-data-model.md) §2. Establish
-  and validate the transform before ingesting at volume.
+  and validate the transform before ingesting at volume. This is assumption **A4** and the
+  only hard gate on v1.
 - **Cluster granularity** — sources disagree on whether a node is one deposit or a cluster.
   Normalize to cluster with an explicit `node_count`.
+- **Scope disagreement between sources** — one surveyed source reports 553 coal nodes;
+  another reports 1,021 across 119 maps, the latter likely including dungeon instances.
+  Overworld and instanced-dungeon nodes must be distinguished explicitly, and a node count
+  that matches neither source is a validation failure, not a rounding difference.
 - **`min_player_level` does not exist upstream.** It is derived (§5).
+
+#### 3.1.1 Deriving the coordinate transform
+
+The expected form is a linear map from UE world coordinates to in-game map coordinates:
+
+```
+map_x = (world_y - offset_y) / scale
+map_y = (world_x - offset_x) / scale
+```
+
+Axis swap and sign conventions are unverified — UE's world axes do not necessarily align
+with the in-game map's, and this is exactly where a silent systematic error would enter.
+
+Fit against ≥ 3 known landmarks (fast travel points are ideal: fixed, unambiguous, and
+readable in-game), then **validate against ≥ 20 independent nodes by standing on them
+in-game and reading the map coordinate**. Fit and validation sets must be disjoint — a
+transform that reproduces its own fit points proves nothing.
+
+Record the resulting transform as a versioned `transform_id` on every `Coord`.
 
 ### 3.2 Paldeck, spawns, and base stats (Q2, Q5, lexicon)
 
@@ -224,10 +255,10 @@ accept.
 ## 8. Refresh workflow
 
 ```bash
-palintel-ingest   --version 0.6.x --source-config sources.yaml
-palintel-corpus   --version 0.6.x --embed          # chunk + embed prose
-palintel-validate --version 0.6.x --compare-to 0.5.x
-palintel-publish  --version 0.6.x                  # writes data/, updates `current`
+palintel-ingest   --version 1.0.2 --source-config sources.yaml
+palintel-corpus   --version 1.0.2 --embed          # chunk + embed prose
+palintel-validate --version 1.0.2 --compare-to 1.0.1
+palintel-publish  --version 1.0.2                  # writes data/, updates `current`
 ```
 
 Ingestion tooling lives in the repo but is **not** part of the runtime process. The bot

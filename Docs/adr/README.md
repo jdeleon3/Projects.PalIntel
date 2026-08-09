@@ -19,6 +19,8 @@ the relevant ADR before proposing a change that reintroduces a discarded approac
 | [0011](0011-corpus-grounded-knowledge.md) | Corpus-grounded general knowledge; cite or decline | Accepted |
 | [0012](0012-dual-input-channels.md) | Voice and text share one pipeline | Accepted |
 | [0013](0013-conversation-memory.md) | Short per-user conversation memory | Accepted |
+| [0014](0014-game-files-as-source.md) | Game files as primary data source; community sites as validation | Accepted |
+| [0015](0015-local-gpu-stt.md) | Local GPU speech-to-text (faster-whisper `medium.en`) | Accepted |
 
 ## Amendment chain
 
