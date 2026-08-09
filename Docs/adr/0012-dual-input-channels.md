@@ -63,3 +63,19 @@ it is what makes Phase 1's own exit criteria measurable without a microphone.
   Not a stricter requirement — the same pipeline with two stages removed.
 - Per-user conversation memory ([ADR-0013](0013-conversation-memory.md)) spans both channels:
   a spoken question can be followed up in text, and vice versa.
+
+## Amendment (2026-08-09) — voice is single-speaker
+
+Voice input is the local microphone, not a Discord voice channel: Discord's DAVE
+end-to-end encryption broke reception in py-cord
+([pycord#3139](https://github.com/Pycord-Development/pycord/issues/3139)) and no audio
+arrives at all. See [ADR-0004](0004-wake-word-activation.md).
+
+The two-path decision stands, but its reach narrows. Voice serves the player at the
+machine; **party members can no longer ask by voice** and are served by the text path
+alone. For them, text is no longer the convenient second option this ADR describes — it
+is the only one.
+
+This is a genuine reduction and is recorded rather than absorbed. It is also reversible:
+`SpeakerStream` still keys by speaker id, so multi-speaker voice returns as configuration
+if reception is ever fixed upstream.

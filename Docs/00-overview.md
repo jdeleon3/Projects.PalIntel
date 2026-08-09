@@ -9,8 +9,8 @@ about how the game's systems work. Obtaining any of these today means alt-tabbin
 wiki — which interrupts play, and in multiplayer leaves the character vulnerable.
 
 Input is constrained by the game client: mouse and keyboard are captured during play, so
-**voice is the only free input channel**. Output goes to a **Discord text channel**,
-readable via the in-game overlay, a second monitor, a phone, or a Discord popout.
+**voice is the only free input channel**. Output goes to a **Discord text channel** read
+on a **second monitor** beside the game.
 
 ## 2. Core objective
 
@@ -130,7 +130,7 @@ Each has a verification task in [04-roadmap.md](04-roadmap.md) Phase 0.
 
 | # | Assumption | Risk if wrong |
 |---|---|---|
-| A1 | Discord cards are legible in the in-game overlay | Overlay viewing degraded; other surfaces (second monitor, phone, popout) unaffected |
+| A1 | ~~Discord cards are legible in the in-game overlay~~ **RETIRED** — there is no overlay; cards are read on a second monitor | — |
 | A2 | Palworld saves are parseable from local disk with community tooling | Q3, Q5, Q6 degrade to generic answers |
 | A3 | Breeding is derivable from a per-Pal combination rank plus exceptions | Breeding graph needs thousands of scraped combos |
 | A4 | Node coordinates are PAK-extractable and the world → map transform is derivable | Q1 answers wrong or unusable |
@@ -169,5 +169,7 @@ context and makes a forced choice
 ([ADR-0016](adr/0016-entity-resolution-in-router.md)). Router accuracy is now the binding
 constraint and is measured in Phase 1.
 
-**A1 is no longer existential.** The output is a Discord channel; the overlay is one
-viewing surface among several. It informs card density, not project viability.
+**A1 is retired, not verified.** There is no in-game overlay: cards are read on a second
+monitor beside the game, so the legibility question the assumption asked never arises.
+What survives of it is a design note — cards are read at a glance, mid-play, so field
+count and contrast still matter. That informs card density, not project viability.

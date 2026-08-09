@@ -44,16 +44,16 @@ player can tell advice from fact at a glance.
 - Removes the dominant per-query cost
 - Card output is deterministic — testable with exact assertions, and identical for
   identical inputs
-- Templates can be tuned for overlay legibility (field count, contrast, colour coding)
-  with immediate, predictable results
+- Templates can be tuned for second-screen legibility (field count, contrast, colour
+  coding) with immediate, predictable results
 
 **Negative**
 - Every new result type needs a hand-written template. Acceptable: there are four query
-  classes, and template design is where overlay legibility is actually won.
+  classes, and template design is where at-a-glance legibility is actually won.
 - Cards cannot adapt phrasing to how the question was asked. Not a loss — a HUD card read
   mid-combat should be terse and *consistent*, so the player learns where to look.
 
 **Neutral**
 - Card templates become a design surface in their own right. Field ordering, colour, and
-  density are legibility decisions to be validated in the overlay
-  ([04-roadmap.md](../04-roadmap.md) Phase 0.1), not styling preferences.
+  density are legibility decisions to be validated by reading cards on the second screen
+  during real play ([04-roadmap.md](../04-roadmap.md) Phase 1), not styling preferences.

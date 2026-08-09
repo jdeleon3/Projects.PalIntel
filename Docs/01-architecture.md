@@ -61,7 +61,7 @@ See [ADR-0002](adr/0002-llm-as-router.md) and
 └──────────────────────────────────────────────────────┼───────────────┘
                                                        ▼
                                           Discord #copilot-hud
-                                  (overlay / 2nd monitor / phone / popout)
+                                    (read on a second monitor)
 ```
 
 Everything inside the box is one process on the player's machine. The only network
