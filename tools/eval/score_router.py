@@ -29,6 +29,7 @@ sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(Path(__file__).parent))
 
 from palintel.knowledge import KnowledgeBase  # noqa: E402
+from palintel.routing import CANDIDATE_LIMIT  # noqa: E402
 from palintel.routing_anthropic import (ClaudeRouter,  # noqa: E402
                                         pal_spawn_schema)
 from _router_tools import eval_tool_schemas  # noqa: E402
@@ -68,7 +69,7 @@ def score_one(router, row: dict, kb: KnowledgeBase, entities: set[str]) -> dict:
     expected = set(row["expected"])
 
     t = time.perf_counter()
-    call = router.route(heard, kb.lexicon.rank(heard))
+    call = router.route(heard, kb.lexicon.rank(heard, limit=CANDIDATE_LIMIT))
     latency_ms = (time.perf_counter() - t) * 1000
 
     if isinstance(call, Decline):

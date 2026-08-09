@@ -388,6 +388,54 @@ riding on the single-entity number.
 The false-positive test is now 9 prompts and **every model scored 9/9**, including Qwen3 —
 its lone hallucination at n=3 was noise, as the variance work predicted.
 
+#### Tuning round 1 — helps the capable models, hurts the weak one
+
+Three changes, measured against the same 76 utterances. **Opus 5 is dropped from the
+evaluation on cost**; the field is Haiku 4.5, Gemini 3.6 Flash, and Qwen3 8B.
+
+1. **One shared routing policy.** `routing_anthropic.SYSTEM` and `routing_local.SYSTEM`
+   had drifted apart, so Haiku and Gemini were being compared on *different
+   instructions* — a confound in every earlier number. The judgment rules now live once
+   in `routing.ROUTING_POLICY`; only the output-format sentence differs per backend.
+2. **Decline policy rebalanced.** The old text said *"prefer decline over a coin flip"*.
+   Measured, the router declined 21–34% and was wrong 3–5%, so the instruction was
+   costing far more than it saved. It now says a plural or a misheard vowel is not
+   ambiguity, and that declining an answerable query is also a failure.
+3. **Candidate depth 10 → 15** (`routing.CANDIDATE_LIMIT`), the knee of the recall curve:
+   recall@10 = 94.0%, @15 = 95.5%, flat to @100.
+
+| | exact before | after | Δ | wrong | declined |
+|---|---|---|---|---|---|
+| **Gemini 3.6 Flash** | 85.5% | **86.8%** | +1.3 | 4 → **3** (3.9%) | 21.1% → 21.1% |
+| Haiku 4.5 | 73.7% | **77.6%** | +3.9 | 3 → **5** (6.6%) | 34.2% → 27.6% |
+| Qwen3 8B | 71.1% | **65.8%** | **−5.3** | 17 → **23** (30.3%) | 18.4% → 14.5% |
+
+**No result here is statistically significant** — paired p = 0.375, 1.000, 0.289. At n=76
+a 4-point move is about 3 utterances. These are directional readings, not wins.
+
+**The mechanism is clean, and it differs by model capability.** Every one of Haiku's four
+gains was a decline becoming a correct resolution — *Puffolt*, *Cawgnito*, *Xenolord*,
+*Gumoss+Majex* — which is precisely what change 2 was for. Five of Qwen3's six losses were
+the *same* failure in the other direction: a spurious second entity pulled from the newly
+deeper candidate list (`Cryolinx`+Frostallion, `Demon Eye`+Maraith, `Paladius`+coal,
+`Faleris`+Paladius, `Snock`+Snock Lux). **A deeper list helps a model that can reject
+distractors and actively harms one that cannot**, and telling a weak model to be less
+conservative just converts honest declines into confident errors.
+
+Qwen3 also broke the false-positive test for the first time, inventing `Fuack` for a
+no-entity prompt — 9/9 became 8/9.
+
+**Kept, with the reservation stated.** Gemini leads and improved on both axes at once
+(accuracy up, wrong down: its one recovered error was a half-wrong pair becoming an
+honest decline). The pre-registered revert condition was a wrong-entity rate above ~5%:
+**Gemini is at 3.9% and passes; Haiku is at 6.6% and does not.** If Haiku were the
+candidate this would be reverted. Qwen3's regression is severe enough that local routing
+is now further from viable than any earlier measurement suggested.
+
+Attribution is inferred rather than isolated — three changes landed together — but the
+failure shapes make it fairly legible: Haiku's gains are all decline→resolve (change 2),
+Qwen3's losses are all added-distractor (change 3).
+
 ### Survey outcome (0.5 / 0.7 — complete)
 
 Source survey is **done**; see [ADR-0014](adr/0014-game-files-as-source.md). Structured data

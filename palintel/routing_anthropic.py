@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .knowledge import Candidate, Lexicon
+from .routing import ROUTING_POLICY
 from .tools import Decline, ToolCall
 
 log = logging.getLogger("palintel.routing.claude")
@@ -52,23 +53,13 @@ def _reasoning_params(model: str) -> dict:
                 "output_config": {"effort": EFFORT}}
     return {"thinking": {"type": "enabled", "budget_tokens": budget}}
 
-SYSTEM = """\
+SYSTEM = f"""\
 You route Palworld voice and text queries to typed tools. You are one stage in a \
-pipeline: your only output is a tool call, or nothing.
+pipeline: your only output is a tool call, or nothing. Call a tool when you can \
+identify both the intent and its parameters; otherwise return no tool call and say \
+briefly what was unclear.
 
-Speech-to-text mangles Palworld proper nouns, so the utterance may contain a corrupted \
-entity name. A ranked list of candidate entities is supplied with each query, produced \
-by phonetic and edit-distance matching. Treat it as a hint, not an answer - it has no \
-sentence context and you do. Use the phrasing to judge which candidate the speaker \
-meant: "where's the nearest X" implies a resource or location, "how do I breed X" \
-implies a Pal.
-
-Call a tool when you can identify both the intent and its parameters. Otherwise return \
-no tool call and say briefly what was unclear.
-
-Do not guess between two plausible entities. A card that confidently answers the wrong \
-question is worse than one that admits the miss, because the player acts on it \
-mid-game and cannot tell it was wrong.\
+{ROUTING_POLICY}\
 """
 
 

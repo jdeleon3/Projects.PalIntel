@@ -22,6 +22,45 @@ from typing import Protocol
 from .knowledge import Candidate, Lexicon
 from .tools import Decline, ToolCall
 
+# How many candidates the corrector hands the router. Measured on 67 entity-bearing
+# utterances (batches 0-1): recall@10 = 94.0%, @15 = 95.5%, and flat from there until
+# @100. Gorirat sat at rank 11 - one past the old cutoff. Past 15 the extra candidates
+# are noise the router has to reject, so this is the knee, not a maximum.
+CANDIDATE_LIMIT = 15
+
+# The routing policy every backend shares. Only the output-format sentence differs per
+# backend (a tool call for Claude and Gemini, a JSON object for the local grammar), so
+# the judgment rules live here and are worded once. They were previously duplicated in
+# routing_anthropic.py and routing_local.py and had already drifted apart, which meant
+# the hosted models were being compared on different instructions.
+ROUTING_POLICY = """\
+Speech-to-text mangles Palworld proper nouns, so the utterance may contain a corrupted \
+entity name. A ranked list of candidate entities is supplied with each query, produced \
+by phonetic and edit-distance matching. Treat it as a hint, not an answer - it has no \
+sentence context and you do. Use the phrasing to judge which candidate the speaker \
+meant: "where's the nearest X" implies a resource or location, "how do I breed X" \
+implies a Pal. The list is not exhaustive; if the phrasing clearly names an entity that \
+is not in it, you may still name that entity.
+
+Resolve the entity whenever the phrasing and the candidates agree on a clear best \
+reading, even when the transcript is badly mangled - "what does Vanwyrms drop" means \
+Vanwyrm, "what level should Shroomr be" means Shroomer, "the breeding combo for Gizmos" \
+means Gumoss. A plural, a dropped syllable, or a misheard vowel is not ambiguity.
+
+Decline when two or more candidates are genuinely plausible for the same slot and \
+nothing in the sentence separates them, or when no candidate fits the phrasing at all.
+
+Both failures are real. A card that confidently answers the wrong question is worse \
+than one that admits the miss, because the player acts on it mid-game and cannot tell \
+it was wrong. But declining a query you could have answered is also a failure, and on \
+measured data it is much the more common one.
+
+Name exactly the entities the query is about - one for a question about a single Pal, \
+two only when the query genuinely names two. Never list variants, alternatives, or \
+runners-up. Naming two Pals when the speaker meant one is a wrong answer, not a hedge: \
+the answer is a card, and a card cannot ask which one you meant.\
+"""
+
 
 class RouterBackend(Protocol):
     """Anything that can turn an utterance into a tool call or an honest decline."""

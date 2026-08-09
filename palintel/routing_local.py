@@ -29,6 +29,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .knowledge import Candidate, Lexicon
+from .routing import ROUTING_POLICY
 from .tools import Decline, ToolCall
 
 log = logging.getLogger("palintel.routing.local")
@@ -42,31 +43,12 @@ TIMEOUT_S = 180
 # stops a small model padding the array to fill the schema.
 MAX_ENTITIES = 2
 
-SYSTEM = """\
+SYSTEM = f"""\
 You route Palworld voice and text queries to typed tools. You are one stage in a \
-pipeline: your only output is one JSON object.
+pipeline: your only output is one JSON object. Pick a tool when you can identify both \
+the intent and its parameters; otherwise pick "decline" and return no entities.
 
-Speech-to-text mangles Palworld proper nouns, so the utterance may contain a corrupted \
-entity name. A ranked list of candidate entities is supplied with each query, produced \
-by phonetic and edit-distance matching. Treat it as a hint, not an answer - it has no \
-sentence context and you do. Use the phrasing to judge which candidate the speaker \
-meant: "where's the nearest X" implies a resource or location, "how do I breed X" \
-implies a Pal.
-
-The candidate list is a hint and it is not exhaustive. If the phrasing clearly names a \
-Pal that is not in the list, you may still name it.
-
-Pick a tool when you can identify both the intent and its parameters. Otherwise pick \
-"decline" and return no entities.
-
-Return exactly the entities the query is about - one for a question about a single Pal, \
-two only when the query genuinely names two. Never list variants, alternatives, or \
-runners-up. Naming two Pals when the speaker meant one is a wrong answer, not a hedge: \
-the answer is a card, and a card cannot ask which one you meant.
-
-Do not guess between two plausible entities. A card that confidently answers the wrong \
-question is worse than one that admits the miss, because the player acts on it mid-game \
-and cannot tell it was wrong. Prefer "decline" over a coin flip.\
+{ROUTING_POLICY}\
 """
 
 
