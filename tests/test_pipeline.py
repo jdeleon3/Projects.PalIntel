@@ -153,6 +153,21 @@ def test_decline_offers_only_locatable_resources(pipe: Pipeline):
     assert "coal" in out.call.known_options
 
 
+def test_compound_noun_prefers_the_specific_resource(pipe: Pipeline):
+    """"Quartz ore" means quartz. Both match at 1.00, so the tie-break decides.
+
+    Before specificity broke the tie, the winner was whichever entity the lexicon
+    loaded first - this query answered with ore.
+    """
+    out = pipe.handle("hey pal where can I find quartz ore")
+    assert out.call.args["resource"] == "quartz"
+
+
+def test_plain_generic_resource_still_wins_alone(pipe: Pipeline):
+    """Specificity must not stop a bare 'ore' query resolving to ore."""
+    assert pipe.handle("find me an ore spot").call.args["resource"] == "ore"
+
+
 def test_extracts_numeric_and_worded_levels(pipe: Pipeline):
     assert pipe.handle("find coal for level 25").call.args["max_player_level"] == 25
     assert pipe.handle("find coal for level twenty").call.args["max_player_level"] == 20

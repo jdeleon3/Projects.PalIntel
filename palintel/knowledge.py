@@ -136,7 +136,11 @@ class Lexicon:
             if best > 0:
                 out.append(Candidate(canon, kind, round(best, 3), best_text))
 
-        out.sort(key=lambda c: -c.score)
+        # Ties break toward the more specific entity. "Quartz ore" matches both `quartz`
+        # and `ore` at 1.00; without this the winner is whichever the lexicon happened
+        # to load first, which answered with ore. A longer exact match carries more
+        # information, and the compound's head noun is the generic one.
+        out.sort(key=lambda c: (-c.score, -len(c.canonical), c.canonical))
         return out[:limit]
 
 
