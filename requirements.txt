@@ -18,13 +18,20 @@ faster-whisper>=1.2.1
 nvidia-cublas-cu12
 nvidia-cudnn-cu12
 
-# --- Discord (Phase 1 text intake; voice receive later) ---
+# --- Discord (text intake + voice receive) ---
 # py-cord, not discord.py: both install as `discord` and conflict, and
 # py-cord is the one with voice RECEIVE support the wake-word path needs.
-py-cord>=2.6
-# Voice encryption. Not used by text intake, but py-cord warns loudly without
-# it and voice receive (Phase 3) cannot work at all.
+# The [voice] extra is required, not optional: py-cord 2.8 moved voice onto
+# `davey`, and a bare install imports discord fine and then raises
+# MissingVoiceDependenciesError at connect time.
+py-cord[voice]>=2.8
+# Voice encryption. Not used by text intake, but py-cord warns loudly without it.
 PyNaCl>=1.5
+
+# --- wake word (Phase 1 voice) ---
+# Pretrained models do not include "hey pal" and none of them fire on it -
+# measured at 0/60 against real recordings. tools/wakeword/ trains one.
+openwakeword>=0.6
 
 # --- intent router (Claude) ---
 # Resolves ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN, or an `ant auth login`
@@ -38,3 +45,10 @@ python-dotenv>=1.0
 
 # --- tests ---
 pytest>=8.0
+
+# --- wake-word TRAINING only (tools/wakeword) ---
+# Not needed at runtime: inference is a ~1MB ONNX model on CPU. Install these to
+# retrain the wake word, then remove them. torch must come from the cu128 index
+# for Blackwell (sm_120) - the default PyPI wheel has no kernels for it:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu128
+#   pip install torchinfo torchmetrics datasets mutagen speechbrain piper-tts
