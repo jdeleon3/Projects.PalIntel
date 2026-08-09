@@ -23,6 +23,10 @@ import numpy as np
 log = logging.getLogger("palintel.wakeword")
 
 MODEL = "hey_pal"
+# Inference is CPU-only: onnxruntime here has no CUDA provider, and 4s of audio costs
+# ~51ms, a realtime factor near 0.01. It therefore never contends with the GPU, which
+# matters because the GPU is simultaneously running STT and, during development, the
+# wake-word training itself.
 # openWakeWord scores 0-1 per 80ms frame. 0.5 is upstream's default; the honest value
 # comes from measuring recall against the 240 recorded utterances, which is why the
 # constant is here rather than inlined.
@@ -36,21 +40,37 @@ REFRACTORY_FRAMES = 25  # ~2s
 class WakeWord:
     """Streaming wake-word detector. One instance per speaker."""
 
-    def __init__(self, model: str = MODEL, threshold: float = THRESHOLD,
+    def __init__(self, model: str | list[str] = MODEL, threshold: float = THRESHOLD,
                  models_dir: Path | None = None):
+        """`model` may be one name or several.
+
+        Several is the useful case during a transition: a pretrained model keeps the
+        voice path working while a custom one is trained or evaluated, and both can run
+        at once because inference is CPU-bound at ~1ms per 80ms frame. Whichever scores
+        highest wins, so adding a model can only make the gate more sensitive - it never
+        suppresses a detection the previous set would have made.
+        """
         try:
             from openwakeword.model import Model
         except ImportError as e:  # pragma: no cover
             raise RuntimeError(
                 "openwakeword not installed:  pip install -r requirements.txt") from e
 
+        names = [model] if isinstance(model, str) else list(model)
+        if not names:
+            raise ValueError("at least one wake-word model is required")
+
         # A trained model is a path; a pretrained one is a bare name openWakeWord
         # resolves itself. Supporting both is what lets the voice path be built and
-        # tested before "hey pal" finishes training.
-        spec = str(models_dir / f"{model}.onnx") if models_dir else model
-        self.model = Model(wakeword_models=[spec], inference_framework="onnx")
+        # tested before "hey pal" finishes training, and what lets the two overlap
+        # afterwards rather than requiring a cutover.
+        specs = [str(models_dir / f"{n}.onnx") if models_dir and not n.endswith(".onnx")
+                 else n for n in names]
+        self.model = Model(wakeword_models=specs, inference_framework="onnx")
         self.threshold = threshold
-        self.name = model
+        self.names = names
+        self.name = "+".join(names)
+        self.last_fired: str | None = None
         self._refractory = 0
 
     def reset(self) -> None:
@@ -68,14 +88,20 @@ class WakeWord:
         """
         pcm = np.frombuffer(frame, dtype=np.int16)
         scores = self.model.predict(pcm)
-        best = max(scores.values()) if scores else 0.0
+        if not scores:
+            return 0.0
+        winner = max(scores, key=scores.get)
+        best = scores[winner]
 
         if self._refractory > 0:
             self._refractory -= 1
             return best
         if best >= self.threshold:
             self._refractory = REFRACTORY_FRAMES
-            log.info("wake word %r fired at %.2f", self.name, best)
+            # Which model fired matters while several are loaded: it is how a custom
+            # model's real-world recall gets attributed rather than inferred.
+            self.last_fired = winner
+            log.info("wake word %r fired at %.2f", winner, best)
         return best
 
     def fired(self, score: float) -> bool:
