@@ -24,6 +24,24 @@ channel_id = 0
 listen_mode = "any"
 prefix = "?"
 
+[voice]
+# Voice channel to listen in. Leave 0 to run text-only.
+# This must be a VOICE channel id, not the text one above - a text id here connects
+# to nothing and the bot simply never hears anything, which looks like a broken mic.
+channel_id = 0
+
+# Wake-word models. Bare names are openWakeWord's pretrained set
+# (hey_jarvis, hey_mycroft, hey_rhasspy, alexa); "hey_pal" is the custom model built
+# by tools/wakeword/. Several can run at once - inference is CPU-bound at a realtime
+# factor near 0.015, the highest score wins, so a second model only adds sensitivity.
+# Useful while a custom model is being evaluated against a known-good one.
+models = ["hey_pal"]
+
+# Firing threshold, 0-1. Lower catches more genuine activations and more chatter.
+# ADR-0004 notes false negatives are silent failures - the player speaks and nothing
+# happens - so bias low rather than high.
+threshold = 0.5
+
 [data]
 # Which extracted dataset to load, matching a directory under data/.
 version = "1.0.2"

@@ -97,18 +97,17 @@ class WakeWordSink:
     """
 
     def __init__(self, on_utterance: Callable[[int, Utterance], None],
-                 model: str | None = None):
-        from discord.sinks import Sink
-
+                 models: list[str] | None = None, threshold: float = 0.5):
         self._on_utterance = on_utterance
-        self._model = model
+        self._models = models
+        self._threshold = threshold
         self._streams: dict[int, SpeakerStream] = {}
-        self._sink_cls = Sink
 
     def stream_for(self, user_id: int) -> SpeakerStream:
         if user_id not in self._streams:
-            kw = {"model": self._model} if self._model else {}
-            self._streams[user_id] = SpeakerStream(wake=WakeWord(**kw))
+            kw = {"model": self._models} if self._models else {}
+            self._streams[user_id] = SpeakerStream(
+                wake=WakeWord(threshold=self._threshold, **kw))
             log.info("voice: new speaker stream for %s", user_id)
         return self._streams[user_id]
 

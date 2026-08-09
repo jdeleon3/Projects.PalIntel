@@ -1,7 +1,8 @@
 """Runner for openWakeWord training, with the compatibility shims it needs.
 
 `python -m openwakeword.train` does not currently run against a modern dependency set.
-Two breakages, both version drift rather than anything wrong with the config:
+Six breakages, all version drift or Windows portability rather than anything wrong with
+the config:
 
   1. `openwakeword.data` imports `acoustics`, whose package `__init__` eagerly imports
      `acoustics.directivity`, which imports `scipy.special.sph_harm` - removed in SciPy
@@ -30,6 +31,12 @@ Two breakages, both version drift rather than anything wrong with the config:
      load, which fixes 64,000 files without rewriting any of them - and note the failure
      mode it prevents: the first run wrote a 176MB feature file from 22kHz audio before
      erroring, so a partial run leaves behind features that look valid and are not.
+
+  6. `data.trim_mmap` deletes its source while still holding it memory-mapped - legal on
+     Linux, PermissionError on Windows, and it strikes at the very last step after all
+     the augmentation work is done. The replacement drops both mappings first. It also
+     fixes `mmap_path.strip(".npy")`, which strips *characters* rather than a suffix and
+     produced "positive_features_trai2.npy" by eating the "n" from "train".
 
 Usage (from the repo root):
 
@@ -96,6 +103,41 @@ def _shim_torchaudio() -> None:
     torchaudio.info = _Info
 
 
+def _shim_trim_mmap() -> None:
+    """Trim trailing all-zero rows without deleting an open memory map."""
+    import gc
+    import os as _os
+
+    import numpy as np
+    from numpy.lib.format import open_memmap
+
+    import openwakeword.data as data
+
+    def trim_mmap(mmap_path):
+        src = np.load(mmap_path, mmap_mode="r")
+        i = -1
+        while np.all(src[i, :, :] == 0):
+            i -= 1
+        n_new = src.shape[0] + i + 1
+
+        tmp = f"{mmap_path}.trim"
+        dst = open_memmap(tmp, mode="w+", dtype=np.float32,
+                          shape=(n_new, src.shape[1], src.shape[2]))
+        for j in range(0, n_new, 1024):
+            k = min(j + 1024, n_new)
+            dst[j:k] = src[j:k]
+        dst.flush()
+
+        # Both mappings must go before the file can be replaced on Windows. gc.collect()
+        # is not superstition here: numpy holds the mmap alive through the array's base,
+        # so dropping the names alone does not always close the handle.
+        del dst, src
+        gc.collect()
+        _os.replace(tmp, mmap_path)
+
+    data.trim_mmap = trim_mmap
+
+
 def _piper_path() -> str:
     import yaml
     cfg = yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
@@ -133,6 +175,7 @@ def _bind_voice(piper_dir: str) -> None:
 def main() -> None:
     _shim_scipy()
     _shim_torchaudio()
+    _shim_trim_mmap()
     # train.py resolves the generator relative to cwd, and imports it by bare name.
     piper = _piper_path()
     _bind_voice(piper)

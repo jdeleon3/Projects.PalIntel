@@ -1,16 +1,27 @@
 """Discord adapter — a thin layer over Pipeline.
 
 Deliberately thin. All understanding and answering lives in Pipeline, so the bot adds
-only transport: read a message, render the card as an embed, post it. Voice will enter
-the same Pipeline later with wake-word detection and transcription in front of it
-(Docs/adr/0012-dual-input-channels.md).
+only transport. Text and voice converge on the same `Pipeline.handle`
+([ADR-0012](../Docs/adr/0012-dual-input-channels.md)); voice adds wake-word detection and
+transcription in front of it and nothing else.
+
+**Two threads, and the boundary is the only hard part here.** py-cord decodes voice on
+its own thread and calls `Sink.write` there, while everything that talks to Discord must
+run on the asyncio loop. Transcription is a third problem again: ~200ms of GPU work that
+must not block either. So the voice path is: decoder thread detects and buffers ->
+`run_coroutine_threadsafe` hands the closed utterance to the loop -> the loop pushes STT
+and routing into an executor -> the result is posted from the loop. Getting this wrong
+does not crash; it stalls the audio receive loop and the bot goes quietly deaf.
 
     python -m palintel.bot
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import sys
+import wave
+from tempfile import TemporaryDirectory
 
 from .cards import Card
 from .config import Config, ConfigError
@@ -38,6 +49,35 @@ def to_embed(card: Card) -> "discord.Embed":
 def build_pipeline(cfg: Config) -> Pipeline:
     kb = KnowledgeBase.load(cfg.data_version)
     return Pipeline(kb, build_router(kb))
+
+
+async def _answer(channel, pipe: Pipeline, text: str, who: str) -> None:
+    """Route `text` and post the cards. Shared by the text and voice paths.
+
+    Routing is a network call and transcription is GPU work, so both run in the default
+    executor: doing them inline would block the event loop and, with voice, stall the
+    audio receive path behind an answer nobody is waiting on yet.
+    """
+    loop = asyncio.get_running_loop()
+    try:
+        outcome = await loop.run_in_executor(None, pipe.handle, text, PlayerState())
+    except Exception:
+        # Never leave a query unanswered: silence is indistinguishable from the bot
+        # being down, and the player is mid-game and cannot investigate.
+        log.exception("pipeline failed on %r", text)
+        await channel.send(embed=discord.Embed(
+            title="Something broke",
+            description="That query hit an internal error. It's logged.",
+            color=0xC62828))
+        return
+
+    kind = "decline" if isinstance(outcome.call, Decline) else outcome.call.name
+    log.info("%s -> %s (%d card%s)", who, kind, len(outcome.cards),
+             "" if len(outcome.cards) == 1 else "s")
+    # One message, several embeds. A query that resolves to a base Pal and its variant
+    # has two correct answers; separate messages would let channel traffic interleave
+    # and break the pairing that makes them readable.
+    await channel.send(embeds=[to_embed(c) for c in outcome.cards])
 
 
 def run() -> None:
@@ -97,26 +137,82 @@ def run() -> None:
             return
 
         log.info("query from %s: %r", message.author.display_name, text)
-        try:
-            outcome = pipe.handle(text, PlayerState())
-        except Exception:
-            # Never leave a query unanswered: silence is indistinguishable from the bot
-            # being down, and the player is mid-game and cannot investigate.
-            log.exception("pipeline failed on %r", text)
-            await message.channel.send(
-                embed=discord.Embed(title="Something broke",
-                                    description="That query hit an internal error. "
-                                                "It's logged.",
-                                    color=0xC62828))
-            return
+        await _answer(message.channel, pipe, text, message.author.display_name)
 
-        kind = "decline" if isinstance(outcome.call, Decline) else outcome.call.name
-        log.info("-> %s (%d card%s)", kind, len(outcome.cards),
-                 "" if len(outcome.cards) == 1 else "s")
-        # One message, several embeds. A query that resolves to a base Pal and its
-        # variant has two correct answers; sending them as separate messages would let
-        # channel traffic interleave and break the pairing that makes them readable.
-        await message.channel.send(embeds=[to_embed(c) for c in outcome.cards])
+    async def start_voice() -> None:
+        """Join the voice channel and stream every speaker through the wake word."""
+        from .stt import Transcriber
+        from .voice import WakeWordSink
+
+        channel = client.get_channel(cfg.voice.channel_id)
+        if channel is None:
+            log.error("voice channel %s not visible - check the id and that it is a "
+                      "VOICE channel", cfg.voice.channel_id)
+            return
+        text_channel = client.get_channel(cfg.discord.channel_id)
+
+        # Loaded once. A per-utterance load would put seconds of model initialisation
+        # into the latency of every query.
+        transcriber = Transcriber(pipe.kb.lexicon)
+        log.info("voice: STT on %s", transcriber.device)
+
+        loop = asyncio.get_running_loop()
+        tmp = TemporaryDirectory(prefix="palintel-voice-")
+
+        async def on_speech(user_id: int, utt) -> None:
+            member = channel.guild.get_member(user_id)
+            who = member.display_name if member else str(user_id)
+            # faster-whisper reads a file; the buffer is raw PCM. Writing a scratch WAV
+            # is cheaper and far less fragile than teaching the transcriber to take
+            # bytes, and these are ~1-3 second clips.
+            path = f"{tmp.name}/{user_id}-{id(utt)}.wav"
+            with wave.open(path, "wb") as w:
+                w.setnchannels(1)
+                w.setsampwidth(2)
+                w.setframerate(16_000)
+                w.writeframes(utt.pcm)
+
+            text = await loop.run_in_executor(None, transcriber.transcribe, path)
+            log.info("voice: %s said %r (%.1fs, closed on %s)",
+                     who, text, utt.seconds, utt.reason)
+            if not text.strip():
+                # Wake word fired on something that was not speech. Silence is right:
+                # posting "I didn't catch that" to a false trigger is channel noise for
+                # a query nobody made.
+                return
+            await _answer(text_channel, pipe, text, f"voice/{who}")
+
+        def dispatch(user_id: int, utt) -> None:
+            # Called on py-cord's decoder thread. Nothing here may block or touch the
+            # loop directly, so the whole answer is handed over and forgotten.
+            asyncio.run_coroutine_threadsafe(on_speech(user_id, utt), loop)
+
+        sink = WakeWordSink(dispatch, models=list(cfg.voice.models),
+                            threshold=cfg.voice.threshold)
+        vc = await channel.connect()
+        vc.start_recording(sink, lambda *_: None)
+        log.info("voice: listening in #%s for %s", channel.name,
+                 " / ".join(cfg.voice.models))
+
+    @client.event
+    async def on_connect() -> None:
+        # Registered separately from on_ready: on_ready can fire again on reconnect, and
+        # joining voice twice raises rather than being idempotent.
+        pass
+
+    if cfg.voice.enabled:
+        _orig_ready = on_ready
+
+        @client.event
+        async def on_ready() -> None:  # noqa: F811  (replaces the text-only handler)
+            await _orig_ready()
+            if client.voice_clients:
+                return          # already connected; a reconnect re-fires on_ready
+            try:
+                await start_voice()
+            except Exception:
+                # Voice failing must not take the text path down with it.
+                log.exception("voice startup failed - continuing text-only")
 
     # No log_handler kwarg here: that is discord.py's API. py-cord forwards run()'s
     # kwargs straight to start(), which rejects it. Logging is configured above instead.
