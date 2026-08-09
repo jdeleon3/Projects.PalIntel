@@ -24,12 +24,31 @@ class PlayerState:
     base_coords: tuple[float, float] | None = None
 
 
+# One answer may be several cards. A Paldeck slot holds a base Pal and its element
+# variant - Menasting and Menasting Terra are DarkScorpion and DarkScorpion_Ground - and
+# they have different elements, spawns and combos, so a query that cannot be narrowed to
+# one of them has two correct answers rather than one ambiguous one. On the output
+# surface (Discord, second screen) that renders as two titled cards the reader picks
+# between; it was only unworkable when the target was a cramped in-game overlay, which
+# A1's retirement removed.
+#
+# Beyond this many, the answer stops being a set of options and becomes a wall, so the
+# pipeline asks a clarifying question instead. Variant families are always exactly 2, so
+# the cap only binds on multi-entity queries where more than one slot is ambiguous.
+MAX_CARDS = 2
+
+
 @dataclass
 class Outcome:
-    """Everything about one query, for the card and for diagnosis."""
-    card: Card
+    """Everything about one query, for the cards and for diagnosis."""
+    cards: list[Card]
     call: ToolCall | Decline
     candidates: list[Candidate]
+
+    @property
+    def card(self) -> Card:
+        """The first card. Convenience for callers that only ever show one."""
+        return self.cards[0]
 
 
 def build_router(kb: KnowledgeBase, prefer: str = "auto") -> RouterBackend:
@@ -103,7 +122,7 @@ class Pipeline:
         call = self.router.route(utterance, candidates)
         if isinstance(call, Decline):
             log.info("decline: %s", call.reason)
-            return Outcome(cards.decline_card(call), call, candidates)
+            return Outcome([cards.decline_card(call)], call, candidates)
 
         # 3. Dispatch. Player state is injected here, never parsed from the utterance -
         #    "nearest" must resolve against where the player actually is.
@@ -117,8 +136,20 @@ class Pipeline:
             result = execution.find_resource_nodes(self.kb, **args)
             log.info("find_resource_nodes(%s) -> %d/%d",
                      args, len(result.nodes), result.total_available)
-            return Outcome(cards.resource_card(result), call, candidates)
+            return Outcome([cards.resource_card(result)], call, candidates)
 
         # A tool the router knows about but the dispatcher does not is a wiring bug.
         # Fail loudly here rather than rendering something plausible.
         raise RuntimeError(f"router produced unregistered tool: {call.name!r}")
+
+    def _cards_for(self, entities: list[str], render) -> list[Card]:
+        """One card per entity, or a clarifying question past the cap.
+
+        Not reachable from Q1 - a resource query names one resource, and variant families
+        are a Pal concept. It becomes live with `find_pal_spawns` in Phase 2; it lives
+        here now because the shape of Outcome had to change either way, and changing it
+        under the voice work would have been worse.
+        """
+        if len(entities) > MAX_CARDS:
+            return [cards.clarify_card(entities)]
+        return [render(e) for e in entities]

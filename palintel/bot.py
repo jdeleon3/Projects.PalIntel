@@ -111,8 +111,12 @@ def run() -> None:
             return
 
         kind = "decline" if isinstance(outcome.call, Decline) else outcome.call.name
-        log.info("-> %s", kind)
-        await message.channel.send(embed=to_embed(outcome.card))
+        log.info("-> %s (%d card%s)", kind, len(outcome.cards),
+                 "" if len(outcome.cards) == 1 else "s")
+        # One message, several embeds. A query that resolves to a base Pal and its
+        # variant has two correct answers; sending them as separate messages would let
+        # channel traffic interleave and break the pairing that makes them readable.
+        await message.channel.send(embeds=[to_embed(c) for c in outcome.cards])
 
     # No log_handler kwarg here: that is discord.py's API. py-cord forwards run()'s
     # kwargs straight to start(), which rejects it. Logging is configured above instead.

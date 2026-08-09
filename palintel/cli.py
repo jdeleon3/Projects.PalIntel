@@ -27,7 +27,7 @@ def build(version: str, router: str = "auto") -> Pipeline:
 def show(pipe: Pipeline, text: str, state: PlayerState, verbose: bool) -> None:
     outcome = pipe.handle(text, state)
     print()
-    print(outcome.card.to_text())
+    print("\n\n".join(c.to_text() for c in outcome.cards))
     if verbose:
         print("\n--- diagnosis ---")
         if isinstance(outcome.call, Decline):

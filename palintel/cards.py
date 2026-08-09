@@ -92,6 +92,27 @@ def resource_card(result: ResourceResult) -> Card:
     return Card(title=f"{name} locations", lines=lines, footer=footer, colour=TIER_FACT)
 
 
+def clarify_card(options: list[str]) -> Card:
+    """Ask which of several entities was meant, instead of answering all of them.
+
+    Two answers render as two cards the reader picks between. More than that stops being
+    a set of options and becomes a wall, and the reader ends up doing the disambiguation
+    the router declined to do - so past the cap the honest move is to ask.
+
+    Distinct from decline_card: nothing failed here. The query was understood and the
+    entity was not narrowed, so the question is specific rather than an apology.
+    """
+    return Card(
+        title="Which one?",
+        # ASCII bullet: Discord renders "- " as a list, and the CLI renderer runs on a
+        # cp1252 console where a U+2022 arrives as a replacement character.
+        lines=[f"That could be **{len(options)}** different Pals:",
+               *(f"- {o}" for o in options),
+               "", "_Ask again naming one of them._"],
+        colour=TIER_DECLINE,
+    )
+
+
 def decline_card(decline: Decline) -> Card:
     lines = ["I didn't catch that."]
     if decline.unrecognized:
