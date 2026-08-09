@@ -506,6 +506,45 @@ tokens of schema, not 16.7k, so eval cost is not production cost.
 variant as independent entities that both match the same audio, and nothing downstream
 knows they are the same family.
 
+#### Variant-suffix rule: tried, measured, reverted
+
+A rule was added to `ROUTING_POLICY` stating that a spoken variant suffix (Cryst, Noct,
+Lux, Terra…) disambiguates and that a base/variant pair is not ambiguity. The reasoning
+looked sound: all 83 multi-word Pals share a base name with a real Pal, so every variant
+query carries a guaranteed distractor, and the router was declining on rank-1 answers.
+
+**It made the band it targeted worse.** Paired on the same 192 prompts, rule off → on:
+
+| | off | on |
+|---|---|---|
+| exact | 91.1% | 88.5% |
+| wrong | 2.6% | 3.1% |
+| **variant band** | **18/20** | **15/20** |
+
+Gained 3, lost 8, p = 0.227. Three regressions were variant prompts correct before and
+declined after — `Dinossom Lux`, `Incineram Noct`, `Vanwyrm Cryst` — and it introduced a
+hallucination on a no-entity prompt. Reverted.
+
+**The diagnosis behind it was wrong in an instructive way.** The failures were read as the
+router mistaking a base/variant pair for ambiguity. But the band was already at 90% (18/20)
+before the rule; the six failures examined were selected *because* they had failed, and
+generalising a mechanism from a filtered sample produced a rule that broke the 90% that was
+already working. Spelling out a distinction the model was mostly handling implicitly made
+it hesitate.
+
+Held-out batch 5 scored 4/5 on variant prompts, which read as confirmation — at n=5 it
+carried almost no information against a 192-prompt paired comparison pointing the other
+way. **Note also that the run-to-run noise floor here is ~3 prompts** (89.6% and 91.1% on
+identical config), so an 8-lost/3-gained swing is not cleanly separable from noise either;
+the change is dropped for lack of evidence *for* it, not proof against it.
+
+**Batch 5 raised the wrong-entity rate.** Held-out: 80.0% exact with **12.5% wrong** (5 of
+40), against 88.5% and 3.1% on batches 0–4. Only one of the five is variant-related; the
+rest are the router committing to a wrong candidate on heavily mangled input —
+*"Cinnamom"* → `Cinnamoth` for Incineram, *"Astrum"* → `Astegon` for Astralym. That is
+tuning round 1's decline-rebalancing, not the variant rule, and **it needs its own
+measurement now that a fresh recording session has surfaced it.**
+
 ### Survey outcome (0.5 / 0.7 — complete)
 
 Source survey is **done**; see [ADR-0014](adr/0014-game-files-as-source.md). Structured data
