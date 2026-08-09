@@ -327,6 +327,67 @@ names pass, 218 fail; 300 short synthetic names pass). Function declarations car
 identical enum without complaint. Structured-output mode is therefore not usable for
 entity resolution at this vocabulary size; function calling is.
 
+#### Batch 1 recorded — n doubled, and the scoring was wrong
+
+80 clips (batches 0–1), 76 utterances. Two things changed at once, and they pull in
+opposite directions, so both are reported.
+
+**The scorer was over-crediting.** A hit was any overlap with the expected set, so
+*"can I breed Kitsun with Pyrdun"* answered as `(Kitsun, Pyrin)` scored as a clean hit —
+one of the two intersected. That is a breeding card naming the wrong parent, which is the
+confidently-wrong answer [ADR-0007](adr/0007-answer-or-abstain.md) refuses to ship. The
+headline is now **exact match** (every slot right, nothing invented) and `wrong` is **any
+entity the speaker did not say**. The lenient figure is still printed so earlier runs stay
+comparable.
+
+| | exact | lenient | **wrong** | declined |
+|---|---|---|---|---|
+| **Gemini 3.6 Flash** | **85.5%** | 89.5% | 5.3% | 21.1% |
+| Opus 5 | 77.6% | 78.9% | **2.6%** | 31.6% |
+| Haiku 4.5 | 73.7% | 75.0% | 3.9% | 34.2% |
+| Qwen3 8B *think* | 71.1% | 82.9% | **22.4%** | 18.4% |
+
+**Gemini strictly dominates Opus 5**: 6 prompts it gets right that Opus does not, and
+**zero** the other way. Exact McNemar p = 0.031. The 5.6-point lead at n=36 was called
+suggestive-not-established; at n=76 it is established, and it widened to 7.9 points.
+Haiku (p = 0.45) and Qwen3 (p = 0.33) are not separable from Opus.
+
+**Nothing regressed — the new prompts are simply harder.** Restricted to the original 36,
+every model reproduced its earlier number: Opus 86.1%, Gemini 91.7%, Qwen3 83.3%. The
+whole drop comes from batch 1, which was built to be harder on purpose.
+
+**Opus's conservatism stops being free.** It declines 31.6% against Gemini's 21.1%, and
+seven of the eight prompts Gemini wins are Opus declining something plainly resolvable —
+*"what does Vanwyrms drop"* (a plural), *"what level should Shroomr be"*, *"breeding combo
+for Gizmos"*. At n=36 the trade read as pure upside: same accuracy, zero wrong. On harder
+input it converts directly into misses, and Gemini buys 7.9 points for one extra wrong
+answer in 76.
+
+**Qwen3's real wrong-entity rate is 22.4%, not the 10.5% previously recorded.** Nine of its
+"hits" contained an invented second entity. The local option is further from viable than
+the first measurement suggested, not closer.
+
+| difficulty | n | Opus 5 | Haiku | Gemini | Qwen3 |
+|---|---|---|---|---|---|
+| easy | 12 | 83% | 83% | 92% | 75% |
+| medium | 15 | 93% | 73% | 93% | 80% |
+| hard | 18 | 78% | 78% | **94%** | 61% |
+| variant | 5 | 60% | 80% | 80% | 80% |
+| frame_word | 4 | 50% | 50% | 75% | 50% |
+| resource | 7 | 86% | 71% | 86% | 86% |
+| **two_entity** | 6 | **17%** | **17%** | **17%** | **17%** |
+| no_entity | 9 | 100% | 100% | 100% | 100% |
+
+**Two-entity queries are broken for every model, at 1 of 6.** This is the sharpest result
+in the run and it is not a router-quality problem: STT mangles *both* names and the
+corrector has to recover both, so the failure compounds. *"is Omniscole faster than
+Mimog"* (Omascul), *"is magics better than gemmas"* (Majex/Gumoss) — every model declines
+or half-answers. **Q4 depends on this class**, so it needs its own decision rather than
+riding on the single-entity number.
+
+The false-positive test is now 9 prompts and **every model scored 9/9**, including Qwen3 —
+its lone hallucination at n=3 was noise, as the variance work predicted.
+
 ### Survey outcome (0.5 / 0.7 — complete)
 
 Source survey is **done**; see [ADR-0014](adr/0014-game-files-as-source.md). Structured data

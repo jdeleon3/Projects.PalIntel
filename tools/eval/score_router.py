@@ -80,17 +80,24 @@ def score_one(router, row: dict, kb: KnowledgeBase, entities: set[str]) -> dict:
         got = {v for v in call.args.values() if isinstance(v, str) and v in entities}
         kind = call.name
 
+    # `wrong` is any entity the speaker did not say. The earlier definition - routed but
+    # sharing nothing with `expected` - scored "breed Kitsun with Pyrdon" answered as
+    # (Kitsun, Pyrin) as a clean hit, because one of the two intersected. That is a
+    # breeding card naming the wrong parent, which is precisely the confidently-wrong
+    # answer ADR-0007 refuses to ship, so it is counted as wrong now.
+    wrong = bool(got - expected)
     if not expected:
         # No-entity prompt: naming anything is a hallucination, declining is correct.
-        hit, wrong = not got, bool(got)
+        hit = exact = not got
     else:
-        hit = bool(got & expected)
-        wrong = bool(got) and not hit
+        hit = bool(got & expected)     # lenient: kept so earlier runs stay comparable
+        exact = got == expected        # headline: every slot right, none invented
 
     u = router.last_usage
     return {"id": row["id"], "heard": heard, "group": row.get("group", "?"),
             "expected": sorted(expected), "got": sorted(got), "kind": kind,
-            "hit": hit, "wrong": wrong, "latency_ms": round(latency_ms),
+            "hit": hit, "exact": exact, "wrong": wrong,
+            "latency_ms": round(latency_ms),
             # Over-naming is a hit under set-intersection but is not a shippable
             # answer: a card cannot ask which of two Pals you meant.
             "over_named": len(got) > len(expected),
@@ -139,7 +146,8 @@ def main() -> None:
         s = score_one(router, r, kb, entities)
         scored.append(s)
 
-        mark = "OK  " if s["hit"] else ("WRONG" if s["wrong"] else "miss ")
+        mark = ("WRONG" if s["wrong"] else "OK  " if s["exact"]
+                else "part " if s["hit"] else "miss ")
         print(f"  {mark} {s['id']}  expected={s['expected']}  "
               f"got={s['got'] or s['kind']}  ({s['latency_ms']}ms)")
         print(f"        heard: {s['heard'][:70]}")
@@ -148,11 +156,12 @@ def main() -> None:
         if not rows:
             return
         n = len(rows)
+        e = sum(x["exact"] for x in rows)
         h = sum(x["hit"] for x in rows)
         w = sum(x["wrong"] for x in rows)
         d = sum(1 for x in rows if x["kind"] == "decline")
-        print(f"  {label:<24}{h}/{n} correct = {h / n * 100:5.1f}%   "
-              f"wrong {w}   declined {d}")
+        print(f"  {label:<24}{e}/{n} exact = {e / n * 100:5.1f}%   "
+              f"(lenient {h / n * 100:5.1f}%)   wrong {w}   declined {d}")
 
     # A control prompt is the bare name with no question ("Anubis."). It carries no
     # intent, so there is no tool to route it to and declining is the correct answer.
@@ -170,17 +179,26 @@ def main() -> None:
     all_scored = scored
     scored = utterances or scored
     total = len(scored)
+    exacts = sum(s["exact"] for s in scored)
     hits = sum(s["hit"] for s in scored)
     wrongs = sum(s["wrong"] for s in scored)
+    partial = sum(1 for s in scored if s["hit"] and not s["exact"])
     declines = sum(1 for s in scored if s["kind"] == "decline")
     lat = sorted(s["latency_ms"] for s in scored)
 
     print("\n" + "=" * 68)
-    print(f"  correct entity   {hits}/{total} = {hits / total * 100:5.1f}%")
+    print(f"  correct entity   {exacts}/{total} = {exacts / total * 100:5.1f}%   "
+          f"(every slot right, nothing invented)")
     print(f"  WRONG entity     {wrongs}/{total} = {wrongs / total * 100:5.1f}%   "
           f"(the failure that matters - a confident wrong answer)")
     print(f"  declined         {declines}/{total} = {declines / total * 100:5.1f}%   "
           f"(honest miss)")
+    if partial:
+        print(f"  partly right     {partial}/{total} = {partial / total * 100:5.1f}%   "
+              f"(one slot of a multi-entity query right, another invented - counted "
+              f"WRONG above, and scored as a hit before this run)")
+    print(f"  lenient accuracy {hits}/{total} = {hits / total * 100:5.1f}%   "
+          f"(any overlap with expected; the pre-v4 headline, kept for comparison)")
     print(f"\n  latency  median {lat[len(lat) // 2]}ms   p95 {lat[int(len(lat) * 0.95) - 1]}ms"
           f"   total {time.perf_counter() - t0:.0f}s")
     # Cost covers every request the run billed, not the scored subset: the controls and

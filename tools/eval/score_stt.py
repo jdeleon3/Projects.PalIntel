@@ -150,6 +150,10 @@ def main() -> None:
             f"    python tools/eval/record_stt.py --condition {args.condition}\n"
             f"  Conditions already recorded: {', '.join(have) if have else '(none)'}")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    # The manifest records what was said; prompts.json records why it was chosen. Join
+    # them so failures can be read per difficulty band rather than only in aggregate.
+    difficulty = {p["id"]: p.get("difficulty", "?") for p in
+                  json.loads((EVAL / "prompts.json").read_text(encoding="utf-8"))["prompts"]}
     forms = load_lexicon()
     hotwords = ", ".join(sorted({c for c in forms})[:400])
 
@@ -201,7 +205,8 @@ def main() -> None:
         spurious = sorted(all_found - expected)
 
         rows.append({
-            "id": pid, "group": m["group"], "expected": sorted(expected),
+            "id": pid, "group": m["group"], "difficulty": difficulty.get(pid, "?"),
+            "expected": sorted(expected),
             "raw_text": raw, "boosted_text": boosted,
             "raw": len(got_raw), "boosted": len(got_boost),
             "fuzzy": len(got_fuzzy_raw), "pipeline": len(got_pipeline),
@@ -212,17 +217,36 @@ def main() -> None:
               f"fuzzy={len(got_fuzzy_raw)} PIPE={len(got_pipeline)}/{len(expected)}{flag}"
               f"\n       raw:   {raw[:64]}\n       boost: {boosted[:64]}")
 
-    def rate(key: str, group: str | None = None) -> float:
-        sel = [r for r in rows if group is None or r["group"] == group]
+    def rate(key: str, field: str = "group", value: str | None = None) -> float:
+        sel = [r for r in rows if value is None or r[field] == value]
         tot = sum(r["n"] for r in sel)
         return (sum(r[key] for r in sel) / tot * 100) if tot else 0.0
 
-    print("\n" + "=" * 74)
-    print(f"{'group':<12}{'raw':>10}{'+hotwords':>12}{'fuzzy(raw)':>13}{'PIPELINE':>12}")
-    for g in ("control", "hard", "utterance", None):
-        label = g or "ALL"
-        print(f"{label:<12}{rate('raw', g):>9.1f}%{rate('boosted', g):>11.1f}%"
-              f"{rate('fuzzy', g):>12.1f}%{rate('pipeline', g):>11.1f}%")
+    def table(field: str, values: list[str | None], head: str) -> None:
+        print(f"{head:<12}{'raw':>10}{'+hotwords':>12}{'fuzzy(raw)':>13}{'PIPELINE':>12}"
+              f"{'n':>6}")
+        for v in values:
+            sel = [r for r in rows if v is None or r[field] == v]
+            if not sum(x["n"] for x in sel):
+                # No scored entities in this slice - the no-entity prompts, by design.
+                # Printing 0.0% for them reads as failure rather than "nothing to score".
+                print(f"{(v or 'ALL'):<12}{'-':>10}{'-':>12}{'-':>13}{'-':>12}"
+                      f"{0:>6}   (no entities to score)")
+                continue
+            print(f"{(v or 'ALL'):<12}{rate('raw', field, v):>9.1f}%"
+                  f"{rate('boosted', field, v):>11.1f}%{rate('fuzzy', field, v):>12.1f}%"
+                  f"{rate('pipeline', field, v):>11.1f}%{sum(x['n'] for x in sel):>6}")
+
+    print("\n" + "=" * 80)
+    # Groups are read off the data. A hardcoded list printed a 0.0% row for a group the
+    # prompt set no longer contains, which reads as a total failure rather than an
+    # absence.
+    groups = sorted({r["group"] for r in rows})
+    table("group", [*groups, None], "group")
+    diffs = sorted({r["difficulty"] for r in rows if r["difficulty"] != "?"})
+    if len(diffs) > 1:
+        print()
+        table("difficulty", diffs, "difficulty")
     print(f"\nPIPELINE = hotwords + fuzzy repair, i.e. what production actually runs.")
     print(f"utterance row is the realistic condition; bare names are a lower bound.")
 
