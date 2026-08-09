@@ -68,7 +68,7 @@ class VoiceConfig:
     """
     enabled: bool = False
     models: tuple[str, ...] = ("hey_pal",)
-    threshold: float = 0.5
+    threshold: float = 0.1
     device: int | str | None = None      # None = the system default input
 
 
@@ -121,7 +121,7 @@ class Config:
             discord=DiscordConfig(token=token, channel_id=channel,
                                   listen_mode=mode, prefix=d.get("prefix", "?")),
             voice=VoiceConfig(enabled=bool(v.get("enabled", False)), models=models,
-                              threshold=float(v.get("threshold", 0.5)),
+                              threshold=float(v.get("threshold", 0.1)),
                               device=device),
             data_version=os.environ.get(
                 "PALINTEL_DATA_VERSION", (raw.get("data", {}) or {}).get("version", "1.0.2")),

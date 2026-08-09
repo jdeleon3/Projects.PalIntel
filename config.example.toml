@@ -46,9 +46,19 @@ enabled = false
 models = ["hey_pal"]
 
 # Firing threshold, 0-1. Lower catches more genuine activations and more chatter.
-# ADR-0004 notes false negatives are silent failures - the player speaks and nothing
-# happens - so bias low rather than high.
-threshold = 0.5
+#
+# 0.1 is measured, not guessed. Against 236 real recordings of this phrase, hey_pal
+# recalls 91.9% at 0.1 and 79.2% at 0.5, while the highest score any non-wake-word clip
+# reached was 0.001 - so within the evidence available, lower is strictly better. Misses
+# are bunched near zero rather than just under the line (13 clips score below 0.05), so
+# 94.5% is the ceiling any threshold can reach.
+#
+# The caveat is that the negative evidence is thin: a handful of clips, no continuous
+# room chatter. ADR-0004 argues for biasing low anyway, because a false negative is
+# silent and a false positive is not - and a false positive is now *visible*, as an
+# activation with no transcript in `/palintel status`. If that count climbs during real
+# play, raise this.
+threshold = 0.1
 
 [data]
 # Which extracted dataset to load, matching a directory under data/.

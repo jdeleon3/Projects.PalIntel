@@ -3,3 +3,4 @@
 # diff, for a file the pipeline regenerates, is not a trade worth making.
 *.onnx
 *.tflite
+*.onnx.data
