@@ -32,11 +32,15 @@ the config:
      mode it prevents: the first run wrote a 176MB feature file from 22kHz audio before
      erroring, so a partial run leaves behind features that look valid and are not.
 
-  6. `data.trim_mmap` deletes its source while still holding it memory-mapped - legal on
-     Linux, PermissionError on Windows, and it strikes at the very last step after all
-     the augmentation work is done. The replacement drops both mappings first. It also
-     fixes `mmap_path.strip(".npy")`, which strips *characters* rather than a suffix and
-     produced "positive_features_trai2.npy" by eating the "n" from "train".
+  6. `data.trim_mmap` replaces a file that is still memory-mapped - legal on Linux,
+     PermissionError on Windows, and it strikes at the very last step after all the
+     augmentation work is done. The open handle belongs to the *caller*
+     (`compute_features_from_generator` opens the output, fills it, then trims while
+     still holding it), so no fix inside `trim_mmap` can reach it. The trim is deferred
+     instead: the inner call records the path, and the real work runs once the caller
+     has returned. Also fixes `mmap_path.strip(".npy")`, which strips *characters*
+     rather than a suffix and produced "positive_features_trai2.npy" by eating the "n"
+     from "train".
 
 Usage (from the repo root):
 
@@ -104,7 +108,15 @@ def _shim_torchaudio() -> None:
 
 
 def _shim_trim_mmap() -> None:
-    """Trim trailing all-zero rows without deleting an open memory map."""
+    """Trim trailing all-zero rows, after every handle on the file is closed.
+
+    `compute_features_from_generator` opens the output as a memmap, fills it, and calls
+    `trim_mmap` *while still holding it*. On Linux the replace succeeds anyway; on
+    Windows it cannot, and no fix inside `trim_mmap` can reach the caller's handle.
+
+    So the trim is deferred: the in-function call only records the path, and the real
+    work runs once the caller has returned and its mmap has gone out of scope.
+    """
     import gc
     import os as _os
 
@@ -112,8 +124,11 @@ def _shim_trim_mmap() -> None:
     from numpy.lib.format import open_memmap
 
     import openwakeword.data as data
+    import openwakeword.utils as utils
 
-    def trim_mmap(mmap_path):
+    pending: list[str] = []
+
+    def real_trim(mmap_path: str) -> None:
         src = np.load(mmap_path, mmap_mode="r")
         i = -1
         while np.all(src[i, :, :] == 0):
@@ -128,14 +143,25 @@ def _shim_trim_mmap() -> None:
             dst[j:k] = src[j:k]
         dst.flush()
 
-        # Both mappings must go before the file can be replaced on Windows. gc.collect()
-        # is not superstition here: numpy holds the mmap alive through the array's base,
-        # so dropping the names alone does not always close the handle.
+        # numpy keeps the mapping alive through the array's base, so dropping the names
+        # is not enough on its own - the collect is load-bearing, not defensive.
+        src._mmap.close()
         del dst, src
         gc.collect()
         _os.replace(tmp, mmap_path)
 
-    data.trim_mmap = trim_mmap
+    data.trim_mmap = pending.append
+
+    _orig = utils.compute_features_from_generator
+
+    def compute_features_from_generator(*args, **kwargs):
+        result = _orig(*args, **kwargs)
+        gc.collect()                     # the caller's `fp` is out of scope now
+        while pending:
+            real_trim(pending.pop())
+        return result
+
+    utils.compute_features_from_generator = compute_features_from_generator
 
 
 def _piper_path() -> str:

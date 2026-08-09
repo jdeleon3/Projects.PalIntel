@@ -142,7 +142,7 @@ def run() -> None:
     async def start_voice() -> None:
         """Join the voice channel and stream every speaker through the wake word."""
         from .stt import Transcriber
-        from .voice import WakeWordSink
+        from .voice import make_sink
 
         channel = client.get_channel(cfg.voice.channel_id)
         if channel is None:
@@ -187,9 +187,11 @@ def run() -> None:
             # loop directly, so the whole answer is handed over and forgotten.
             asyncio.run_coroutine_threadsafe(on_speech(user_id, utt), loop)
 
-        sink = WakeWordSink(dispatch, models=list(cfg.voice.models),
-                            threshold=cfg.voice.threshold)
+        sink = make_sink(dispatch, models=list(cfg.voice.models),
+                         threshold=cfg.voice.threshold)
         vc = await channel.connect()
+        # The finished-callback is required by the API and fires only when recording
+        # stops, which for this bot means shutdown. Nothing to do there.
         vc.start_recording(sink, lambda *_: None)
         log.info("voice: listening in #%s for %s", channel.name,
                  " / ".join(cfg.voice.models))

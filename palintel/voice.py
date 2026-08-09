@@ -87,42 +87,58 @@ class SpeakerStream:
 SPEECH_FLOOR = 300   # mean |int16| over an 80ms frame; below this is room tone
 
 
-class WakeWordSink:
-    """A py-cord Sink that runs the wake-word pipeline instead of writing files.
+def make_sink(on_utterance: Callable[[int, Utterance], None],
+              models: list[str] | None = None, threshold: float = 0.5):
+    """Build a py-cord Sink that runs the wake-word pipeline instead of writing files.
 
-    py-cord's built-in sinks buffer the whole recording and hand it over when recording
-    stops, which is the wrong shape here - a query has to be answered while the player is
-    still waiting for it. `Sink.write` is called per packet, so overriding it turns the
-    same API into a stream.
+    py-cord's built-in sinks buffer a whole recording and hand it over when recording
+    *stops*, which is the wrong shape here - a query has to be answered while the player
+    is still waiting for it. `Sink.write` is called per packet, so overriding it turns
+    the same API into a stream.
+
+    A factory rather than a module-level class because `discord.sinks` cannot be
+    imported without py-cord's voice extras, and importing this module must not require
+    them: the text-only path shares it.
+
+    Subclassing `Sink` is not optional decoration - `start_recording` does an isinstance
+    check and rejects a duck-typed object outright.
     """
+    from discord.sinks import Sink
 
-    def __init__(self, on_utterance: Callable[[int, Utterance], None],
-                 models: list[str] | None = None, threshold: float = 0.5):
-        self._on_utterance = on_utterance
-        self._models = models
-        self._threshold = threshold
-        self._streams: dict[int, SpeakerStream] = {}
+    class WakeWordSink(Sink):
+        def __init__(self) -> None:
+            super().__init__()
+            self._on_utterance = on_utterance
+            self._models = models
+            self._threshold = threshold
+            self._streams: dict[int, SpeakerStream] = {}
 
-    def stream_for(self, user_id: int) -> SpeakerStream:
-        if user_id not in self._streams:
-            kw = {"model": self._models} if self._models else {}
-            self._streams[user_id] = SpeakerStream(
-                wake=WakeWord(threshold=self._threshold, **kw))
-            log.info("voice: new speaker stream for %s", user_id)
-        return self._streams[user_id]
+        def stream_for(self, user_id: int) -> SpeakerStream:
+            if user_id not in self._streams:
+                kw = {"model": self._models} if self._models else {}
+                self._streams[user_id] = SpeakerStream(
+                    wake=WakeWord(threshold=self._threshold, **kw))
+                log.info("voice: new speaker stream for %s", user_id)
+            return self._streams[user_id]
 
-    def write(self, data: bytes, user: int) -> None:
-        """Called by py-cord for each decoded packet."""
-        try:
-            for utt in self.stream_for(user).feed(data):
-                self._on_utterance(user, utt)
-        except Exception:
-            # A raise here kills the receive loop for every speaker, and the failure
-            # would present as the bot having silently stopped listening.
-            log.exception("voice: dropping packet from %s after error", user)
+        def write(self, data: bytes, user: int) -> None:
+            """Called by py-cord for each decoded packet, on its decoder thread."""
+            try:
+                for utt in self.stream_for(user).feed(data):
+                    self._on_utterance(user, utt)
+            except Exception:
+                # A raise here kills the receive loop for every speaker, and it presents
+                # as the bot having silently stopped listening.
+                log.exception("voice: dropping packet from %s after error", user)
 
-    def cleanup(self) -> None:
-        self._streams.clear()
+        def cleanup(self) -> None:
+            # Deliberately not super().cleanup(): the base class formats and closes the
+            # per-user audio files it has been accumulating, and this sink never writes
+            # any - it consumes packets and discards them.
+            self.finished = True
+            self._streams.clear()
+
+    return WakeWordSink()
 
 
 def available() -> bool:
