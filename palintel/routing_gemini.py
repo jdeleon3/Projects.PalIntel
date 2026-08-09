@@ -37,6 +37,10 @@ log = logging.getLogger("palintel.routing.gemini")
 MODEL = "gemini-3.6-flash"
 API = "https://generativelanguage.googleapis.com/v1beta"
 TIMEOUT_S = 120
+# Long enough to outlast a full 1000-prompt run; the cache is deleted explicitly when the
+# router is done, so this is a backstop against a crashed run leaking storage, not the
+# normal path. Storage bills per token-hour (~$0.016/hour for this schema).
+CACHE_TTL_S = 7200
 
 # Per million tokens: (input, output).
 #
@@ -68,11 +72,18 @@ class GeminiUsage:
 
     @property
     def usd(self) -> float:
-        """0.0 when the model's price is not known. Never a guess - see PRICES."""
+        """0.0 when the model's price is not known. Never a guess - see PRICES.
+
+        `input` is Gemini's promptTokenCount, which *includes* the cached prefix, so the
+        cached portion is subtracted out and repriced rather than double-counted.
+        """
         p = PRICES.get(self.model)
         if p is None:
             return 0.0
-        return (self.input * p[0] + (self.output + self.thoughts) * p[1]) / 1e6
+        uncached = max(0, self.input - self.cache_read)
+        cached_rate = CACHED_INPUT_PRICE.get(self.model, p[0])
+        return (uncached * p[0] + self.cache_read * cached_rate
+                + (self.output + self.thoughts) * p[1]) / 1e6
 
     @property
     def priced(self) -> bool:
@@ -129,7 +140,7 @@ class GeminiRouter:
 
     def __init__(self, lexicon: Lexicon, locatable: set[str] | None = None,
                  api_key: str | None = None, extra_tools: list[dict] | None = None,
-                 model: str = MODEL):
+                 model: str = MODEL, use_cache: bool = True):
         from .routing_anthropic import _tool_schema  # one registry, one definition
 
         key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
@@ -146,6 +157,10 @@ class GeminiRouter:
         self._entities = sorted(set(lexicon.canonical_names) | set(self._resources))
         self.tool_names = [t["name"] for t in tools]
         self.last_usage: GeminiUsage | None = None
+        # Created lazily on the first route() so constructing a router costs nothing,
+        # and so a caller that never routes never pays cache storage.
+        self._use_cache = use_cache
+        self._cache: str | None = None
 
     def _user_content(self, utterance: str, candidates: list[Candidate]) -> str:
         if candidates:
@@ -157,17 +172,73 @@ class GeminiRouter:
         return (f"Utterance:\n  {utterance}\n\n"
                 f"Candidate entities, best first:\n{hints}")
 
-    def route(self, utterance: str, candidates: list[Candidate]) -> ToolCall | Decline:
+    def _create_cache(self) -> str | None:
+        """Cache the tool schemas and system prompt; return the cache resource name.
+
+        The schemas are ~16.4k tokens and identical on every request - about 93% of this
+        backend's spend when resent uncached. Cached input bills at a tenth of the
+        standard rate, taking a request from ~$0.025 to ~$0.003.
+
+        Returns None (and the caller falls back to sending schemas inline) rather than
+        raising: caching is an optimisation, and a run that silently costs more is a far
+        better outcome than a run that dies.
+        """
         body = {
+            "model": f"models/{self._model}",
+            "ttl": f"{CACHE_TTL_S}s",
+            "displayName": "palintel-router",
             "systemInstruction": {"parts": [{"text": SYSTEM}]},
+            "tools": [{"functionDeclarations": self._decls}],
+            "toolConfig": {"functionCallingConfig": {"mode": "AUTO"}},
+        }
+        req = urllib.request.Request(
+            f"{API}/cachedContents", data=json.dumps(body).encode("utf-8"),
+            headers={"Content-Type": "application/json", "x-goog-api-key": self._key})
+        try:
+            with urllib.request.urlopen(req, timeout=TIMEOUT_S) as r:
+                data = json.loads(r.read())
+        except (urllib.error.URLError, TimeoutError) as e:
+            log.warning("gemini cache creation failed (%s); sending schemas inline", e)
+            return None
+        name = data.get("name")
+        log.info("gemini cache %s created, %s tok", name,
+                 (data.get("usageMetadata") or {}).get("totalTokenCount"))
+        return name
+
+    def delete_cache(self) -> None:
+        """Release the cache. Storage bills per token-hour, so do not leave it to TTL."""
+        if not self._cache:
+            return
+        req = urllib.request.Request(f"{API}/{self._cache}", method="DELETE",
+                                     headers={"x-goog-api-key": self._key})
+        try:
+            urllib.request.urlopen(req, timeout=30)
+            log.info("gemini cache %s deleted", self._cache)
+        except (urllib.error.URLError, TimeoutError):
+            log.warning("could not delete gemini cache %s; it expires in %ss",
+                        self._cache, CACHE_TTL_S)
+        self._cache = None
+
+    def route(self, utterance: str, candidates: list[Candidate]) -> ToolCall | Decline:
+        if self._use_cache and self._cache is None:
+            self._cache = self._create_cache()
+            self._use_cache = self._cache is not None
+
+        body: dict[str, Any] = {
             "contents": [{"role": "user",
                           "parts": [{"text": self._user_content(utterance, candidates)}]}],
-            "tools": [{"functionDeclarations": self._decls}],
-            # AUTO, not ANY: declining is a real answer here, and forcing a call would
-            # remove the behaviour A5 actually measures.
-            "toolConfig": {"functionCallingConfig": {"mode": "AUTO"}},
             "generationConfig": {"temperature": 0},
         }
+        if self._cache:
+            # Schemas and system prompt come from the cache; resending them here is
+            # rejected as a duplicate definition.
+            body["cachedContent"] = self._cache
+        else:
+            body["systemInstruction"] = {"parts": [{"text": SYSTEM}]}
+            body["tools"] = [{"functionDeclarations": self._decls}]
+            # AUTO, not ANY: declining is a real answer here, and forcing a call would
+            # remove the behaviour A5 actually measures.
+            body["toolConfig"] = {"functionCallingConfig": {"mode": "AUTO"}}
         req = urllib.request.Request(
             f"{API}/models/{self._model}:generateContent",
             data=json.dumps(body).encode("utf-8"),
@@ -177,6 +248,15 @@ class GeminiRouter:
             with urllib.request.urlopen(req, timeout=TIMEOUT_S) as r:
                 data = json.loads(r.read())
         except urllib.error.HTTPError as e:
+            # A 403/404 here usually means the cache expired or was deleted underneath a
+            # long run. Drop it and retry once inline rather than failing every remaining
+            # prompt - an expensive run beats a dead one.
+            if e.code in (403, 404) and self._cache:
+                log.warning("gemini cache %s unusable (%s); retrying inline",
+                            self._cache, e.code)
+                self._cache = None
+                self._use_cache = False
+                return self.route(utterance, candidates)
             # The key rides in a header, so the URL is safe to log; the body is not.
             log.error("gemini %s on %s", e.code, self._model)
             return Decline(reason=f"gemini error {e.code}")

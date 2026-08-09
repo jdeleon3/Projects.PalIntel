@@ -253,12 +253,26 @@ def main() -> None:
     # dominates; on Opus 5 it was 14% and cache reads of the tool schema were 74%. The
     # schema is 7 query-class tools each repeating the 313-name Pal enum - a deliberate
     # fidelity choice in the harness, not waste, but it should be visible per run.
-    price = PRICES.get(args.model)
+    # Price table depends on the backend, not just the model string. Looking only in the
+    # Anthropic table silently skipped this breakdown for every Gemini run.
+    if args.model.startswith("gemini"):
+        from palintel.routing_gemini import CACHED_INPUT_PRICE
+        from palintel.routing_gemini import PRICES as GPRICES
+        price, cache_rate = GPRICES.get(args.model), CACHED_INPUT_PRICE.get(args.model)
+    else:
+        price, cache_rate = PRICES.get(args.model), None
     if price and spend:
         p_in, p_out = price
+        # Anthropic bills cache reads at 0.1x input; Gemini publishes a separate rate.
+        # `in_tok` is the whole prompt on Gemini and the uncached remainder on Anthropic,
+        # so the cached portion is subtracted out here to avoid double-counting it.
+        p_cache = cache_rate if cache_rate is not None else p_in * 0.1
+        cached = sum(s["cached_tok"] for s in all_scored)
+        raw_in = sum(s["in_tok"] for s in all_scored)
+        uncached = raw_in - cached if args.model.startswith("gemini") else raw_in
         parts = [("output (incl. thinking)", sum(s["out_tok"] for s in all_scored) * p_out),
-                 ("schema cache reads", sum(s["cached_tok"] for s in all_scored) * p_in * 0.1),
-                 ("uncached input", sum(s["in_tok"] for s in all_scored) * p_in)]
+                 ("schema cache reads", cached * p_cache),
+                 ("uncached input", uncached * p_in)]
         for label, cents in sorted(parts, key=lambda x: -x[1]):
             usd = cents / 1e6
             print(f"           {label:<24} ${usd:6.3f}  {usd / spend * 100:>3.0f}%")
@@ -278,6 +292,11 @@ def main() -> None:
         # A truncated run must never overwrite a full one. This has already destroyed
         # the Opus 5 per-prompt detail once, leaving only the summary in the roadmap.
         stem += f"_first{args.limit}"
+    # Release any provider-side cache the run created. Gemini bills cache storage per
+    # token-hour, so leaving it to a 2h TTL charges for time nobody is using.
+    if hasattr(router, "delete_cache"):
+        router.delete_cache()
+
     out = EVAL / args.condition / f"{stem}.json"
     out.write_text(json.dumps(scored, indent=2), encoding="utf-8")
     print(f"detail -> {out}")

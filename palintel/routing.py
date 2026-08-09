@@ -50,6 +50,13 @@ means Gumoss. A plural, a dropped syllable, or a misheard vowel is not ambiguity
 Decline when two or more candidates are genuinely plausible for the same slot and \
 nothing in the sentence separates them, or when no candidate fits the phrasing at all.
 
+Many Pals are a base name plus a variant suffix - Cryst, Noct, Ignis, Lux, Terra, Primo, \
+Aqua, Botan, Libero, Ryu, Gild. Every such variant shares its base name with a separate \
+Pal, so both always appear in the candidate list together. **That pairing is not \
+ambiguity.** If the speaker said a suffix, they meant the variant: "Smokey Cryst" is \
+Smokie Cryst and not Smokie, "Loop Moon Cryst" is Loupmoon Cryst. If they said no suffix, \
+they meant the base. Name one of the two, never both.
+
 Both failures are real. A card that confidently answers the wrong question is worse \
 than one that admits the miss, because the player acts on it mid-game and cannot tell \
 it was wrong. But declining a query you could have answered is also a failure, and on \
