@@ -298,7 +298,7 @@ From the moment the player stops speaking (voice) or sends a message (text).
 | Utterance endpointing | 300–800ms | — |
 | STT | ~300ms | — |
 | Lexicon correction | < 5ms | < 5ms |
-| Intent routing (LLM) | 300–600ms | 300–600ms |
+| Intent routing (LLM) | 300–600ms *(measured 3.8–4.1s — see note 4)* | same |
 | Tier 1/2 execution | < 5ms | < 5ms |
 | Tier 3 retrieval + synthesis | +400–900ms | +400–900ms |
 | Card render | < 5ms | < 5ms |
@@ -316,6 +316,26 @@ Notes:
 3. **LLM stages dominate.** Removing generative card formatting
    ([ADR-0006](adr/0006-templated-cards.md)) removed 300–800ms and the hallucination risk
    at once. The fast-path matcher targets the remaining routing call.
+4. **The routing estimate is wrong, and it is the whole budget.** Measured against Claude
+   Opus 5 the routing call takes **3.8–4.1s median**, six to thirteen times the estimate,
+   which alone exceeds the 2.5s end-to-end target. It is not a tuning problem:
+
+   | Configuration | Median | Output |
+   |---|---|---|
+   | Opus 5, `effort: low`, adaptive thinking | 4087ms | 72 tok |
+   | Opus 5, `effort: low`, thinking disabled | 3768ms | 82 tok |
+
+   Disabling thinking buys ~320ms and costs the correctness guarantee that keeps it on
+   (see `routing_anthropic.py`), and the model emitted no thinking content at `low`
+   anyway. Roughly 4s is what a frontier model costs for one tool call. Prompt caching
+   was added for the ~8k-token tool schemas — it cuts cost substantially but **not
+   latency**, since time-to-first-token is dominated by generation, not prefill.
+
+   This makes two items that were Phase 2 conveniences into requirements for the voice
+   path: the **fast-path matcher** (a confident lexicon match plus a template phrasing
+   skips the model entirely) and **routing on a small model**. Neither is measured yet —
+   the Haiku 4.5 comparison is the open question, and the A5 accuracy run must complete
+   before either is chosen on anything but latency.
 
 ## 8. Failure modes
 

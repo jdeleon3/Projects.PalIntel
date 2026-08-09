@@ -57,6 +57,31 @@ mid-game and cannot tell it was wrong.\
 """
 
 
+def pal_spawn_schema(pals: list[str]) -> dict[str, Any]:
+    """Q2's tool. Not dispatched in Phase 1 - registered only by the A5 harness.
+
+    Without it, every Pal question has nowhere to put its entity and can only be scored
+    "declined", which measures the tool registry rather than entity resolution.
+    """
+    return {
+        "name": "find_pal_spawns",
+        "description": (
+            "Locate where a Pal spawns in the wild. Call this when the player asks "
+            "where to find, catch, or encounter a specific Pal."
+        ),
+        "strict": True,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pal": {"type": "string", "enum": pals,
+                        "description": "Which Pal to locate."},
+            },
+            "required": ["pal"],
+            "additionalProperties": False,
+        },
+    }
+
+
 def _tool_schema(resources: list[str]) -> dict[str, Any]:
     """Tool definition with the resource enum generated from the live lexicon.
 
@@ -100,7 +125,8 @@ class ClaudeRouter:
     name = f"claude:{MODEL}"
 
     def __init__(self, lexicon: Lexicon, locatable: set[str] | None = None,
-                 api_key: str | None = None):
+                 api_key: str | None = None, extra_tools: list[dict] | None = None,
+                 model: str = MODEL):
         try:
             import anthropic
         except ImportError as e:  # pragma: no cover
@@ -114,7 +140,9 @@ class ClaudeRouter:
                         else anthropic.Anthropic())
         self._resources = sorted(locatable if locatable is not None
                                  else set(lexicon.resources()))
-        self._tools = [_tool_schema(self._resources)]
+        self._model = model
+        self.name = f"claude:{model}"
+        self._tools = [_tool_schema(self._resources), *(extra_tools or [])]
 
     def _user_content(self, utterance: str, candidates: list[Candidate]) -> str:
         if candidates:
@@ -129,9 +157,14 @@ class ClaudeRouter:
     def route(self, utterance: str, candidates: list[Candidate]) -> ToolCall | Decline:
         try:
             response = self._client.messages.create(
-                model=MODEL,
+                model=self._model,
                 max_tokens=MAX_TOKENS,
-                system=SYSTEM,
+                # Cache the stable prefix. Render order is tools -> system -> messages,
+                # so a breakpoint on the system block covers the tool schemas too - and
+                # those dominate: the Pal enum alone is 313 names shipped every request.
+                # The breakpoint must NOT go on the user turn, which differs every time.
+                system=[{"type": "text", "text": SYSTEM,
+                         "cache_control": {"type": "ephemeral"}}],
                 thinking={"type": "adaptive"},
                 output_config={"effort": EFFORT},
                 tools=self._tools,
@@ -161,8 +194,9 @@ class ClaudeRouter:
         # strict:true guarantees the schema, but null-valued optionals still arrive as
         # keys - drop them so the dispatcher's defaults apply.
         args = {k: v for k, v in dict(tool_use.input).items() if v is not None}
-        log.info("router -> %s(%s) [%s in, %s out]", tool_use.name, args,
-                 response.usage.input_tokens, response.usage.output_tokens)
+        u = response.usage
+        log.info("router -> %s(%s) [in %s new / %s cached, out %s]", tool_use.name, args,
+                 u.input_tokens, getattr(u, "cache_read_input_tokens", 0), u.output_tokens)
         return ToolCall(name=tool_use.name, args=args,
                         rationale=f"{self.name} chose {tool_use.name}")
 
