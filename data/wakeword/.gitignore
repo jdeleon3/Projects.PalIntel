@@ -1,0 +1,5 @@
+# Trained models are build artefacts of tools/wakeword/train.py, reproducible from the
+# config plus ~20GB of public datasets. Committing a binary blob that no reviewer can
+# diff, for a file the pipeline regenerates, is not a trade worth making.
+*.onnx
+*.tflite
