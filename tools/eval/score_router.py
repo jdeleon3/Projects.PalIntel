@@ -42,6 +42,10 @@ def main() -> None:
     ap.add_argument("--condition", default="quiet")
     ap.add_argument("--model", default="claude-opus-5")
     ap.add_argument("--limit", type=int, default=0, help="score only the first N")
+    ap.add_argument("--think", action="store_true",
+                    help="local models only: enable the model's own thinking mode. "
+                         "Both hosted baselines thought, so this is the fair comparison; "
+                         "without it the local run is the latency variant.")
     args = ap.parse_args()
 
     results_path = EVAL / args.condition / "results.json"
@@ -59,12 +63,28 @@ def main() -> None:
     locatable = {n.resource for n in kb.nodes}
     pals = kb.lexicon.pals()
     entities = set(kb.lexicon.canonical_names)
-    router = ClaudeRouter(kb.lexicon, locatable, model=args.model,
-                          extra_tools=[pal_spawn_schema(pals),
-                                       *eval_tool_schemas(pals)])
+    extra = [pal_spawn_schema(pals), *eval_tool_schemas(pals)]
+
+    # A "local:" prefix selects the Ollama-backed router. Same registry, same prompts,
+    # same scoring - the enum moves from the tool schema into a decoding grammar.
+    if args.model.startswith("local:"):
+        from palintel.routing_local import LocalRouter
+        router = LocalRouter(kb.lexicon, locatable,
+                             model=args.model.split(":", 1)[1], extra_tools=extra,
+                             think=args.think)
+        tool_names = router._schema["properties"]["tool"]["enum"]
+    else:
+        router = ClaudeRouter(kb.lexicon, locatable, model=args.model,
+                              extra_tools=extra)
+        tool_names = [t["name"] for t in router._tools]
 
     print(f"model={args.model}  condition={args.condition}  prompts={len(rows)}")
-    print(f"tools={[t['name'] for t in router._tools]}\n")
+    print(f"tools={tool_names}\n")
+
+    # Load weights before timing: a cold load is seconds and would land in the p95 as if
+    # it were per-query latency.
+    if hasattr(router, "warmup"):
+        print(f"warmup: model loaded in {router.warmup():.1f}s\n")
 
     scored = []
     t0 = time.perf_counter()
@@ -151,10 +171,17 @@ def main() -> None:
     spend = sum(s["usd"] for s in all_scored)
     out_toks = sorted(s["out_tok"] for s in all_scored)
     schema_tok = max((s["cached_tok"] for s in all_scored), default=0)
+    in_toks = sorted(s["in_tok"] for s in all_scored)
     print(f"  cost     ${spend:.2f} over {len(all_scored)} requests"
           f"  = ${spend / len(all_scored):.4f}/req")
-    print(f"           tool schemas {schema_tok} tok cached (billed once at 1.25x, "
-          f"then 0.1x)")
+    if schema_tok:
+        print(f"           tool schemas {schema_tok} tok cached (billed once at 1.25x, "
+              f"then 0.1x)")
+    else:
+        # The local path has no cached schema block: the enum is in the grammar, so the
+        # prompt carries only the utterance, the tool prose, and the candidate list.
+        print(f"           no cached schema - prompt median {in_toks[len(in_toks) // 2]} "
+              f"tok (enum is in the grammar, not the context)")
     print(f"           output median {out_toks[len(out_toks) // 2]} tok, "
           f"max {out_toks[-1]} tok")
     for k in ("routed", "decline"):
