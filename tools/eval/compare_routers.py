@@ -38,9 +38,25 @@ def exact(r: dict) -> bool:
     return set(r["got"]) == set(r["expected"])
 
 
+_LEX = None
+
+
 def wrong(r: dict) -> bool:
-    """Any entity the speaker did not say - including one slot of a correct pair."""
-    return bool(set(r["got"]) - set(r["expected"]))
+    """Any entity the speaker did not say, except a variant of one they did.
+
+    Must stay identical to score_router.score_one. It did not: this kept the pre-family
+    rule and reported 4.3% where the harness reported 3.4% for the same run, which is
+    exactly the drift that having two implementations invites.
+    """
+    global _LEX
+    if _LEX is None:
+        import sys
+        sys.path.insert(0, str(REPO))
+        from palintel.knowledge import KnowledgeBase
+        _LEX = KnowledgeBase.load("1.0.2").lexicon
+    extra = set(r["got"]) - set(r["expected"])
+    over = {e for e in extra if any(_LEX.same_family(e, x) for x in r["expected"])}
+    return bool(extra - over)
 
 
 def summarise(rows: list[dict], label: str) -> None:

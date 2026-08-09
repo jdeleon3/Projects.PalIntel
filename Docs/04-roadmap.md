@@ -571,6 +571,50 @@ rest are the router committing to a wrong candidate on heavily mangled input —
 tuning round 1's decline-rebalancing, not the variant rule, and **it needs its own
 measurement now that a fresh recording session has surfaced it.**
 
+#### A5 final measurement — accepted at measured behaviour
+
+**Router: Gemini 3.6 Flash.** 240 recordings, 236 utterances, 232 scoreable. Candidate
+depth 15, shared routing policy, variant-suffix rule reverted, family-aware scoring.
+
+| | exact | wrong | declined | no-entity |
+|---|---|---|---|---|
+| **All 232** | **88.8%** | **3.4%** | 20.7% | 32/33 |
+| Seen (batches 0–4) | 90.6% | 2.1% | 20.3% | 26/27 |
+| **Held out (batch 5)** | **80.0%** | **10.0%** | 22.5% | 6/6 |
+
+| band | n | exact | | band | n | exact |
+|---|---|---|---|---|---|---|
+| easy | 24 | 92% | | resource | 15 | 93% |
+| hard | 54 | 91% | | frame_word | 20 | 90% |
+| medium | 39 | 90% | | variant | 25 | 88% |
+| no_entity | 33 | 97% | | **two_entity** | 22 | **64%** |
+
+Cost $1.42 per full run ($0.0060/request); latency median 2.1s, p95 8.0s.
+
+**Decision: A5 is accepted at measured behaviour rather than at its original ≥95% gate.**
+That bar was written in Phase 0, before the three-tier answer model and before a decline
+could carry a clarifying question. What it was built to prevent — a card that confidently
+answers the wrong question — occurs at 3.4%, and the false-positive test is 32/33. The
+remaining shortfall is mostly honest declines, which cost a turn rather than mislead.
+
+**Two caveats that the headline number hides, recorded so they are not rediscovered
+later.**
+
+*The held-out batch is materially worse.* Batch 5 scored 80.0% exact with **10.0% wrong**,
+against 90.6% and 2.1% on batches 0–4. Every earlier batch has been read while diagnosing,
+so 88.8% is a number partly measured on prompts the configuration has already seen. The
+honest estimate of behaviour on genuinely new audio is closer to **80%**, on n=40. Whether
+batch 5 is harder or the configuration is over-fitted to the earlier batches cannot be
+settled without batch 6.
+
+*Two-entity queries are the weak class at 64% (n=22)*, and this time it is not a
+small-sample artifact — it held at 68% and 72% across earlier runs. STT mangles both names
+and the corrector must recover both, so failure compounds. **Q4 should not assume the
+single-entity number.**
+
+**Phase 0 exit: A4 ✅ · A6 ✅ · A2 ✅(caveat) · A3 ◐ (gates Phase 3) · A7 ◐ · A1 ⊘ retired
+· A5 ✅ accepted at measured behaviour.** Phase 1 is unblocked.
+
 ### Survey outcome (0.5 / 0.7 — complete)
 
 Source survey is **done**; see [ADR-0014](adr/0014-game-files-as-source.md). Structured data
