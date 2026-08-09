@@ -30,7 +30,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from palintel.knowledge import KnowledgeBase  # noqa: E402
 from palintel.routing import CANDIDATE_LIMIT  # noqa: E402
-from palintel.routing_anthropic import (ClaudeRouter,  # noqa: E402
+from palintel.routing_anthropic import (PRICES, ClaudeRouter,  # noqa: E402
                                         pal_spawn_schema)
 from _router_tools import eval_tool_schemas  # noqa: E402
 from palintel.tools import Decline  # noqa: E402
@@ -110,7 +110,11 @@ def score_one(router, row: dict, kb: KnowledgeBase, entities: set[str]) -> dict:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--condition", default="quiet")
-    ap.add_argument("--model", default="claude-opus-5")
+    # No default. Opus 5 used to be it, and at $1.11 per 80-prompt run an accidental
+    # bare invocation is an expensive mistake - especially now that Opus is out of the
+    # evaluation on cost grounds. Make the caller name the model they are paying for.
+    ap.add_argument("--model", required=True,
+                    help="claude-haiku-4-5 | gemini-3.6-flash | local:qwen3:8b | ...")
     ap.add_argument("--limit", type=int, default=0, help="score only the first N")
     ap.add_argument("--think", action="store_true",
                     help="local models only: enable the model's own thinking mode. "
@@ -225,6 +229,19 @@ def main() -> None:
         print(f"           no cached schema - prompt median {med} tok ({where})")
     print(f"           output median {out_toks[len(out_toks) // 2]} tok, "
           f"max {out_toks[-1]} tok")
+    # Where the money actually went. Without this the natural assumption is that output
+    # dominates; on Opus 5 it was 14% and cache reads of the tool schema were 74%. The
+    # schema is 7 query-class tools each repeating the 313-name Pal enum - a deliberate
+    # fidelity choice in the harness, not waste, but it should be visible per run.
+    price = PRICES.get(args.model)
+    if price and spend:
+        p_in, p_out = price
+        parts = [("output (incl. thinking)", sum(s["out_tok"] for s in all_scored) * p_out),
+                 ("schema cache reads", sum(s["cached_tok"] for s in all_scored) * p_in * 0.1),
+                 ("uncached input", sum(s["in_tok"] for s in all_scored) * p_in)]
+        for label, cents in sorted(parts, key=lambda x: -x[1]):
+            usd = cents / 1e6
+            print(f"           {label:<24} ${usd:6.3f}  {usd / spend * 100:>3.0f}%")
     for k in ("routed", "decline"):
         g = [s for s in all_scored
              if (s["kind"] == "decline") == (k == "decline")]
