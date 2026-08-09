@@ -85,9 +85,17 @@ class Lexicon:
         self.game_version: str = data["game_version"]
         self._forms: dict[str, tuple[str, list[tuple[str, str]]]] = {}
 
+        # Paldeck slot per Pal. A base form and its element variant ("Menasting" and
+        # "Menasting Terra", internally DarkScorpion and DarkScorpion_Ground) share an
+        # index, which makes this the game's own definition of a variant family - better
+        # than matching on a name prefix, which only happens to agree.
+        self._family: dict[str, int] = {}
+
         for p in data["pals"]:
             surfaces = [p["canonical"].lower(), *(a.lower() for a in p["aliases"])]
             self._forms[p["canonical"]] = ("pal", [(s, squash(s)) for s in surfaces])
+            if p.get("zukan_index") is not None:
+                self._family[p["canonical"]] = p["zukan_index"]
         for r in data["resources"]:
             surfaces = [r["canonical"].replace("_", " ").lower(),
                         *(a.lower() for a in r["aliases"])]
@@ -104,6 +112,24 @@ class Lexicon:
 
     def resources(self) -> list[str]:
         return sorted(c for c, (k, _) in self._forms.items() if k == "resource")
+
+    def same_family(self, a: str, b: str) -> bool:
+        """True when two Pals are the base and variant of one Paldeck slot.
+
+        Naming both is a different failure from naming an unrelated Pal: the answer is
+        over-specified rather than wrong, and on a second screen it renders as two
+        titled cards the player picks between. Naming Pyrin when Pierdon was meant has
+        no such reading.
+        """
+        fa, fb = self._family.get(a), self._family.get(b)
+        return fa is not None and fa == fb and a != b
+
+    def family(self, name: str) -> list[str]:
+        """Every Pal sharing `name`'s Paldeck slot, including itself. Always 1 or 2."""
+        f = self._family.get(name)
+        if f is None:
+            return [name]
+        return sorted(c for c, i in self._family.items() if i == f)
 
     def rank(self, text: str, limit: int = 10) -> list[Candidate]:
         """Rank entities against an utterance, best first. Never filters."""

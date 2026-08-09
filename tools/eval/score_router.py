@@ -81,12 +81,15 @@ def score_one(router, row: dict, kb: KnowledgeBase, entities: set[str]) -> dict:
         got = {v for v in call.args.values() if isinstance(v, str) and v in entities}
         kind = call.name
 
-    # `wrong` is any entity the speaker did not say. The earlier definition - routed but
-    # sharing nothing with `expected` - scored "breed Kitsun with Pyrdon" answered as
-    # (Kitsun, Pyrin) as a clean hit, because one of the two intersected. That is a
-    # breeding card naming the wrong parent, which is precisely the confidently-wrong
-    # answer ADR-0007 refuses to ship, so it is counted as wrong now.
-    wrong = bool(got - expected)
+    # `wrong` is any entity the speaker did not say - except a variant of one they did.
+    # The output is two titled Discord cards on a second screen, so naming Menasting
+    # alongside Menasting Terra is an over-answer the player resolves at a glance, while
+    # naming Pyrin for Pierdon is the confidently-wrong answer ADR-0007 refuses to ship.
+    # Collapsing the two hid which failure a model actually had: Qwen3's over-naming was
+    # mostly cross-family and stayed wrong under this rule, Gemini's was not.
+    extra = got - expected
+    over = {e for e in extra if any(kb.lexicon.same_family(e, x) for x in expected)}
+    wrong = bool(extra - over)
     if not expected:
         # No-entity prompt: naming anything is a hallucination, declining is correct.
         hit = exact = not got
@@ -99,9 +102,12 @@ def score_one(router, row: dict, kb: KnowledgeBase, entities: set[str]) -> dict:
             "expected": sorted(expected), "got": sorted(got), "kind": kind,
             "hit": hit, "exact": exact, "wrong": wrong,
             "latency_ms": round(latency_ms),
-            # Over-naming is a hit under set-intersection but is not a shippable
-            # answer: a card cannot ask which of two Pals you meant.
-            "over_named": len(got) > len(expected),
+            # Named a variant of the right Pal as well as the right Pal. Renders as a
+            # second card rather than a wrong answer - but capped: beyond two cards the
+            # answer should become a clarifying follow-up, so this is tracked, not waved
+            # through.
+            "over_answered": bool(over),
+            "cards": len(got),
             "in_tok": u.input if u else 0,
             # Billable output. Gemini reports reasoning separately as thoughtsTokenCount
             # and bills it at the output rate, so recording candidatesTokenCount alone
