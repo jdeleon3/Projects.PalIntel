@@ -71,7 +71,7 @@ def main() -> None:
 
     state = PlayerState(
         player_level=args.level,
-        base_coords=tuple(float(v) for v in args.at.split(",")) if args.at else None,
+        player_coords=tuple(float(v) for v in args.at.split(",")) if args.at else None,
     )
 
     if args.utterance:

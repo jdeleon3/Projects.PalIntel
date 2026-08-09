@@ -113,7 +113,8 @@ def clarify_card(options: list[str]) -> Card:
     )
 
 
-def status_card(log, *, voice: str, window_label: str = "last hour") -> Card:
+def status_card(log, *, voice: str, save: str = "not configured",
+                window_label: str = "last hour") -> Card:
     """Report what the pipeline has actually seen, stage by stage.
 
     The breakdown is the whole point. ADR-0004 flags wake-word false negatives as silent
@@ -128,6 +129,10 @@ def status_card(log, *, voice: str, window_label: str = "last hour") -> Card:
     c = log.counts()
     fired = c.get("wake", 0)
     lines = [f"**Voice:** {voice}",
+             # Worth its own line: a stale or unread save is invisible in the answers -
+             # "nearest" silently falls back to ranking by cluster size and still returns
+             # a confident-looking coordinate.
+             f"**Save:** {save}",
              f"**Up:** {duration(log.uptime())}",
              "",
              f"__In the {window_label}__",

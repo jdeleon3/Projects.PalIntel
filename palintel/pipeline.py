@@ -19,9 +19,18 @@ log = logging.getLogger("palintel.pipeline")
 
 @dataclass(frozen=True)
 class PlayerState:
-    """Live game state. Populated by the save watcher; absent until then."""
+    """Live game state, read from the save. Every field is optional and absent is normal.
+
+    `player_coords` is the position at the last autosave, in map units - what "nearest"
+    resolves against. It lags the player by up to one autosave interval, which is
+    inherent to reading a save rather than the game's memory and fine for a question
+    answered against a region.
+
+    `player_level` is still always None: it lives in a `Level.sav` blob whose decoder is
+    stale for 1.0.2 (see saves.py), so level gating is not yet on.
+    """
     player_level: int | None = None
-    base_coords: tuple[float, float] | None = None
+    player_coords: tuple[float, float] | None = None
 
 
 # One answer may be several cards. A Paldeck slot holds a base Pal and its element
@@ -128,8 +137,8 @@ class Pipeline:
         #    "nearest" must resolve against where the player actually is.
         if call.name == "find_resource_nodes":
             args = dict(call.args)
-            if state.base_coords is not None:
-                args.setdefault("near", state.base_coords)
+            if state.player_coords is not None:
+                args.setdefault("near", state.player_coords)
             if state.player_level is not None:
                 args.setdefault("max_player_level", state.player_level)
 

@@ -236,6 +236,6 @@ def test_decline_card_names_unrecognised_token_when_known():
 
 def test_player_state_is_injected_not_parsed(pipe: Pipeline):
     """'nearest' must resolve against live state, not text."""
-    far = pipe.handle("where's the nearest coal", PlayerState(base_coords=(800.0, 400.0)))
-    near = pipe.handle("where's the nearest coal", PlayerState(base_coords=(20.0, -153.0)))
+    far = pipe.handle("where's the nearest coal", PlayerState(player_coords=(800.0, 400.0)))
+    near = pipe.handle("where's the nearest coal", PlayerState(player_coords=(20.0, -153.0)))
     assert far.card.lines[0] != near.card.lines[0]

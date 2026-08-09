@@ -52,6 +52,28 @@ def to_embed(card: Card) -> "discord.Embed":
     return embed
 
 
+def _build_watcher(cfg: Config):
+    """The save watcher, or None if there is nothing to watch.
+
+    Returning None rather than raising is the point: without a save the bot still answers
+    every question, it just ranks by cluster size instead of distance. A missing or
+    misconfigured save path degrades one word - "nearest" - and must not prevent startup.
+    """
+    if cfg.save_dir is None:
+        log.info("no game.save_dir configured: 'nearest' will rank by cluster size")
+        return None
+    if not (cfg.save_dir / "Players").is_dir():
+        log.warning("game.save_dir has no Players/ directory: %s - "
+                    "'nearest' will rank by cluster size", cfg.save_dir)
+        return None
+
+    from .saves import SaveWatcher
+    w = SaveWatcher(cfg.save_dir)
+    w.poll()          # one read now, so the first query does not have to wait for a tick
+    log.info("save: %s", w.describe())
+    return w
+
+
 def _voice_status(cfg: Config, mic) -> str:
     """One line describing where voice actually stands.
 
@@ -72,16 +94,20 @@ def build_pipeline(cfg: Config) -> Pipeline:
 
 
 async def _answer(channel, pipe: Pipeline, text: str, who: str,
-                  activity: ActivityLog | None = None) -> None:
+                  activity: ActivityLog | None = None, watcher=None) -> None:
     """Route `text` and post the cards. Shared by the text and voice paths.
 
     Routing is a network call and transcription is GPU work, so both run in the default
     executor: doing them inline would block the event loop and, with voice, stall the
     audio receive path behind an answer nobody is waiting on yet.
     """
+    # Read at answer time, not cached at startup: the player moves, and "nearest" is
+    # only worth answering against where they are now.
+    state = PlayerState(player_coords=watcher.player_coords() if watcher else None)
+
     loop = asyncio.get_running_loop()
     try:
-        outcome = await loop.run_in_executor(None, pipe.handle, text, PlayerState())
+        outcome = await loop.run_in_executor(None, pipe.handle, text, state)
     except Exception:
         # Never leave a query unanswered: silence is indistinguishable from the bot
         # being down, and the player is mid-game and cannot investigate.
@@ -120,6 +146,7 @@ def run() -> None:
 
     pipe = build_pipeline(cfg)
     activity = ActivityLog()
+    watcher = _build_watcher(cfg)
     summary = pipe.kb.summary()
     log.info("config: %s", cfg.redacted())
     log.info("loaded: %s", summary)
@@ -131,6 +158,10 @@ def run() -> None:
     intents.message_content = True
     client = discord.Client(intents=intents)
 
+    # Boxed, because a reconnect re-fires on_ready and a second polling task would double
+    # the save reads for no benefit.
+    tasks: dict[str, object] = {"save": None}
+
     @client.event
     async def on_ready() -> None:
         channel = client.get_channel(cfg.discord.channel_id)
@@ -139,6 +170,8 @@ def run() -> None:
         if channel is None:
             log.error("channel not visible: check the id, and that the bot was invited "
                       "to that server with permission to view the channel")
+        if watcher is not None and not tasks["save"]:
+            tasks["save"] = client.loop.create_task(watch_saves())
 
     @client.event
     async def on_message(message: "discord.Message") -> None:
@@ -157,8 +190,10 @@ def run() -> None:
         # for. A plain message rather than a registered slash command: this needs no
         # command sync, no extra intent, and works the moment the bot connects.
         if text.lower() in ("/palintel status", "/palintel", "palintel status"):
-            await message.channel.send(embed=to_embed(
-                status_card(activity, voice=_voice_status(cfg, listener["mic"]))))
+            await message.channel.send(embed=to_embed(status_card(
+                activity,
+                voice=_voice_status(cfg, listener["mic"]),
+                save=watcher.describe() if watcher else "not configured")))
             return
 
         mode = cfg.discord.listen_mode
@@ -175,7 +210,26 @@ def run() -> None:
             return
 
         log.info("query from %s: %r", message.author.display_name, text)
-        await _answer(message.channel, pipe, text, message.author.display_name, activity)
+        await _answer(message.channel, pipe, text, message.author.display_name,
+                      activity, watcher)
+
+    async def watch_saves() -> None:
+        """Re-read the save on a timer for as long as the bot runs.
+
+        In an executor because a poll is file IO plus a parse. It is milliseconds on a
+        player save, but it sits on the same loop as voice dispatch, and a stalled loop
+        there drops audio rather than merely delaying it.
+        """
+        loop = asyncio.get_running_loop()
+        while True:
+            await asyncio.sleep(watcher.interval)
+            try:
+                await loop.run_in_executor(None, watcher.poll)
+            except Exception:
+                # poll() swallows its own failures; this catches anything above it, so a
+                # bad save can never end the polling task and silently freeze "nearest"
+                # at whatever position it last saw.
+                log.exception("save poll failed")
 
     listener = {"mic": None}   # boxed so on_ready can see it across re-fires
 
@@ -225,7 +279,7 @@ def run() -> None:
                 activity.record("empty", f"{utt.seconds:.1f}s")
                 return
             activity.record("heard", text[:80])
-            await _answer(text_channel, pipe, text, "voice", activity)
+            await _answer(text_channel, pipe, text, "voice", activity, watcher)
 
         def dispatch(utt) -> None:
             # Called on sounddevice's audio thread. Nothing here may block or touch the
