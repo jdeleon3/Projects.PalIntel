@@ -31,5 +31,10 @@ PyNaCl>=1.5
 # profile - a bare client works with any of them.
 anthropic>=0.60
 
+# --- configuration ---
+# Loads a repo-root .env at package import. The SDKs read os.environ only;
+# without this a key sitting in .env is silently ignored.
+python-dotenv>=1.0
+
 # --- tests ---
 pytest>=8.0

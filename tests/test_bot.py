@@ -6,6 +6,8 @@ test_pipeline.py, where it can be tested without Discord installed at all.
 """
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from palintel.cards import Card, decline_card
@@ -68,6 +70,29 @@ def test_rejects_unknown_listen_mode(tmp_path):
                '[discord]\ntoken = "abc"\nchannel_id = 1\nlisten_mode = "shout"\n')
     with pytest.raises(ConfigError, match="listen_mode"):
         Config.load(p)
+
+
+def test_dotenv_is_loaded_and_real_env_wins(tmp_path, monkeypatch):
+    """A key in .env must reach os.environ, and an exported one must beat it.
+
+    .gitignore listed .env before anything loaded it, so a key placed there was
+    silently ignored - the config looked correct and wasn't.
+    """
+    import importlib
+    import palintel
+
+    env_file = tmp_path / ".env"
+    env_file.write_text("PALINTEL_TEST_KEY=from-dotenv
+", encoding="utf-8")
+    monkeypatch.setattr(palintel, "__file__", str(tmp_path / "palintel" / "__init__.py"))
+    monkeypatch.delenv("PALINTEL_TEST_KEY", raising=False)
+    palintel._load_dotenv()
+    assert os.environ.get("PALINTEL_TEST_KEY") == "from-dotenv"
+
+    # An already-set variable is not overwritten (override=False).
+    monkeypatch.setenv("PALINTEL_TEST_KEY", "from-real-env")
+    palintel._load_dotenv()
+    assert os.environ["PALINTEL_TEST_KEY"] == "from-real-env"
 
 
 def test_environment_overrides_file(tmp_path, monkeypatch):
