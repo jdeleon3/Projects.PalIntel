@@ -231,6 +231,60 @@ median output against Opus's 140 is most of the gap; a smaller budget would like
 it. And cost came in 3.7× apart rather than the 5× the price ratio implies, for the same
 reason: Haiku spent about twice the output tokens.
 
+#### Local model (Qwen3 8B) — matches the headline, fails the bar
+
+`--model local:qwen3:8b`, Ollama 0.32.6, RTX 5080, grammar-constrained output. The Pal
+enum is compiled into a GBNF grammar rather than shipped as a tool schema, so the prompt
+is **557 tokens against Opus's 21,741** — the economic case for local is real.
+
+| | Opus 5 | Haiku 4.5 | Qwen3 8B *think* | Qwen3 8B *no think* |
+|---|---|---|---|---|
+| Correct entity | 86.1% | 83.3% | **86.1%** | 77.8% |
+| **Wrong entity** | **0** | **0** | **4 (11.1%)** | **5 (13.9%)** |
+| Invented an entity on a no-entity prompt | 0/3 | 0/3 | **1/3** | 0/3 |
+| Latency median / p95 | 2.9s / 6.6s | 3.6s / 7.6s | 3.8s / 7.4s | **0.9s / 1.5s** |
+| Cost per 40-prompt run | $0.70 | $0.19 | **$0** | **$0** |
+
+**Qwen3 8B with thinking reproduces Opus 5's headline number exactly — 31/36 — and is not
+close to shippable.** Read the accuracy row alone and the conclusion is that an 8B local
+model equals a frontier one and saves $0.70 a run. The wrong-entity row is the whole
+argument for why that row was never the gate: same accuracy, four confidently wrong
+answers, and a Pal invented for *"what does the Artisan tree do?"* — the false-positive
+test both hosted models passed cleanly.
+
+**The failure has a single mechanism, and it indicts the architecture rather than the
+model.** [ADR-0016](adr/0016-entity-resolution-in-router.md) makes the corrector rank
+without deciding — *"This class ranks. It does not decide."* — and delegates judgment to
+the router. That delegation assumes the router **has** judgment. Without thinking, Qwen3
+takes the ranked list as an answer key:
+
+| | It picked | Which were | Matched on |
+|---|---|---|---|
+| P11 "against the first tower" | Maraith + Gorirat Terra | candidates #1 and #2 | `"against the"`, `"first tower"` |
+| P37 "show me courts near my base" | Nitemary + Shroomer | candidates #1 and #2 | `"near my"`, `"show me"` |
+
+Both are matches on **frame words** — the phrasing of the question, not the entity in it.
+The hosted models discard those on sight. An 8B model cannot tell a spurious candidate
+from a real one, so every unfiltered match the corrector emits becomes a live wrong
+answer. Thinking mode recovers most of the accuracy (77.8% → 86.1%) but only reduces
+wrong entities 5 → 4: **reasoning fixes the ranking, not the judgment.**
+
+A second, related tell: the local model **over-names on 6 of 36 utterances**, returning
+two Pals where the query means one (*"where can I find Kitsun?"* → `Kitsun` **and**
+`Kitsun Noct`). The scorer counts that as a hit because it intersects the expected set,
+which flatters the local number — but a card cannot ask which one you meant, so it is a
+wrong answer wearing a hit's clothing. Both hosted models over-named zero times. An
+explicit prompt instruction against it did not stop it.
+
+**Verdict: not viable as the router, on the safety bar rather than the accuracy one.** The
+latency and cost results are genuinely attractive — 0.9s median, free, 3× faster than Opus
+— which is exactly what makes the accuracy-only reading dangerous. Two things would have
+to change before local is worth revisiting: the corrector would need to stop emitting
+frame-word matches (a length- and stopword-aware filter, cheap and local), and the
+candidate list would need to reach the router already trustworthy rather than merely
+ranked. That is the same corrector-recall work the 95% gate needs — it is now blocking
+two things instead of one.
+
 ### Survey outcome (0.5 / 0.7 — complete)
 
 Source survey is **done**; see [ADR-0014](adr/0014-game-files-as-source.md). Structured data

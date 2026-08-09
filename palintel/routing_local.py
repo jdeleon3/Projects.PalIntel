@@ -59,6 +59,11 @@ Pal that is not in the list, you may still name it.
 Pick a tool when you can identify both the intent and its parameters. Otherwise pick \
 "decline" and return no entities.
 
+Return exactly the entities the query is about - one for a question about a single Pal, \
+two only when the query genuinely names two. Never list variants, alternatives, or \
+runners-up. Naming two Pals when the speaker meant one is a wrong answer, not a hedge: \
+the answer is a card, and a card cannot ask which one you meant.
+
 Do not guess between two plausible entities. A card that confidently answers the wrong \
 question is worse than one that admits the miss, because the player acts on it mid-game \
 and cannot tell it was wrong. Prefer "decline" over a coin flip.\

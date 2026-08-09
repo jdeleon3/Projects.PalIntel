@@ -194,7 +194,8 @@ def main() -> None:
     print(f"\nA5 target: >=95% entity accuracy.  Achieved: {hits / total * 100:.1f}%  "
           f"-> {'PASS' if hits / total >= 0.95 else 'FAIL'}")
 
-    out = EVAL / args.condition / f"router_{args.model}.json"
+    # ":" is legal in a model id and illegal in a Windows filename.
+    out = EVAL / args.condition / f"router_{args.model.replace(':', '-')}.json"
     out.write_text(json.dumps(scored, indent=2), encoding="utf-8")
     print(f"detail -> {out}")
 
