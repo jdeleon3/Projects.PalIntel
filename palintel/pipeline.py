@@ -35,14 +35,34 @@ class Outcome:
 def build_router(kb: KnowledgeBase, prefer: str = "auto") -> RouterBackend:
     """Select a router backend.
 
-    `auto` uses Claude when a credential resolves and falls back to the stub otherwise,
-    so the pipeline stays runnable without an API key. The fallback is logged rather
-    than silent - a router quietly downgrading to keyword matching would look like a
-    capability regression with no visible cause.
+    `auto` tries Gemini, then Claude, then the stub, so the pipeline stays runnable with
+    no credential at all. Gemini leads because it was measured to: on 232 utterances it
+    scored 88.8% exact against Haiku 4.5's 72.9%, winning 35 paired comparisons to 3
+    (McNemar p = 6.7e-08), with a lower wrong-entity rate and half the latency. See the
+    A5 tables in Docs/04-roadmap.md. Opus 5 is not in the chain - it was dropped on cost
+    after Gemini beat it 35-0 on the same test.
+
+    Every fallback is logged rather than silent. A router quietly downgrading to keyword
+    matching would look like a capability regression with no visible cause.
     """
     from .routing import StubRouter
 
     locatable = {n.resource for n in kb.nodes}
+
+    if prefer in ("auto", "gemini"):
+        try:
+            from . import routing_gemini
+            if routing_gemini.available():
+                return routing_gemini.GeminiRouter(kb.lexicon, locatable)
+            if prefer == "gemini":
+                raise RuntimeError(
+                    "No Gemini credential found. Set GEMINI_API_KEY in .env.")
+            log.info("no Gemini credential - trying Claude")
+        except ImportError:
+            if prefer == "gemini":
+                raise
+            log.info("could not load the Gemini backend - trying Claude")
+
     if prefer in ("auto", "claude"):
         try:
             from . import routing_anthropic
@@ -57,6 +77,13 @@ def build_router(kb: KnowledgeBase, prefer: str = "auto") -> RouterBackend:
             if prefer == "claude":
                 raise
             log.info("anthropic SDK not installed - falling back to the stub router")
+
+    if prefer == "local":
+        from . import routing_local
+        if not routing_local.available():
+            raise RuntimeError("No local model server - start `ollama serve`.")
+        return routing_local.LocalRouter(kb.lexicon, locatable)
+
     return StubRouter(kb.lexicon, locatable)
 
 

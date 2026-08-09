@@ -41,6 +41,9 @@ TIMEOUT_S = 120
 # router is done, so this is a backstop against a crashed run leaking storage, not the
 # normal path. Storage bills per token-hour (~$0.016/hour for this schema).
 CACHE_TTL_S = 7200
+# Gemini will not create a cache below this; see the pricing/caching docs. Production Q1
+# sits under it, so context caching is an evaluation-time saving rather than a runtime one.
+CACHE_MIN_TOKENS = 2048
 
 # Per million tokens: (input, output).
 #
@@ -183,6 +186,16 @@ class GeminiRouter:
         raising: caching is an optimisation, and a run that silently costs more is a far
         better outcome than a run that dies.
         """
+        # Gemini refuses to cache below 2048 tokens. Production Q1 registers one tool and
+        # comes to ~650, so caching is an eval-only win: the A5 harness registers all
+        # seven query classes at ~16.4k. Checking first avoids a guaranteed-400 API call
+        # and a misleading warning on every single startup.
+        approx = (len(json.dumps(self._decls)) + len(SYSTEM)) // 4
+        if approx < CACHE_MIN_TOKENS:
+            log.debug("schema ~%d tok is below Gemini's %d-token cache minimum; "
+                      "sending inline", approx, CACHE_MIN_TOKENS)
+            return None
+
         body = {
             "model": f"models/{self._model}",
             "ttl": f"{CACHE_TTL_S}s",
@@ -293,6 +306,17 @@ class GeminiRouter:
         log.info("gemini -> %s(%s) %s", call["name"], args, self.last_usage)
         return ToolCall(name=call["name"], args=args,
                         rationale=f"{self.name} chose {call['name']}")
+
+
+def available(api_key: str | None = None) -> bool:
+    """True when a Gemini credential is resolvable.
+
+    Credential-only, deliberately: this runs during startup backend selection, and a
+    network probe there would add latency to every launch and would report a transient
+    outage as "no Gemini configured" - sending the pipeline silently down to the stub.
+    A bad key surfaces on the first route as an honest decline instead.
+    """
+    return bool(api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
 
 
 def list_models(api_key: str | None = None) -> list[str]:
