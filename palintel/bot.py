@@ -28,7 +28,8 @@ import sys
 import wave
 from tempfile import TemporaryDirectory
 
-from .cards import Card
+from .activity import ActivityLog
+from .cards import Card, status_card
 from .config import Config, ConfigError
 from .knowledge import KnowledgeBase
 from .pipeline import Pipeline, PlayerState, build_router
@@ -51,12 +52,27 @@ def to_embed(card: Card) -> "discord.Embed":
     return embed
 
 
+def _voice_status(cfg: Config, mic) -> str:
+    """One line describing where voice actually stands.
+
+    Distinguishes "off by configuration" from "configured on and not running", which are
+    the same silence to a player and completely different problems to fix.
+    """
+    if not cfg.voice.enabled:
+        return "off (voice.enabled = false)"
+    if mic is None:
+        return "**enabled but not running** - check the startup log"
+    return (f"{mic.device_name} - {'+'.join(mic.wake.names)} "
+            f"@ {cfg.voice.threshold:g}")
+
+
 def build_pipeline(cfg: Config) -> Pipeline:
     kb = KnowledgeBase.load(cfg.data_version)
     return Pipeline(kb, build_router(kb))
 
 
-async def _answer(channel, pipe: Pipeline, text: str, who: str) -> None:
+async def _answer(channel, pipe: Pipeline, text: str, who: str,
+                  activity: ActivityLog | None = None) -> None:
     """Route `text` and post the cards. Shared by the text and voice paths.
 
     Routing is a network call and transcription is GPU work, so both run in the default
@@ -70,13 +86,18 @@ async def _answer(channel, pipe: Pipeline, text: str, who: str) -> None:
         # Never leave a query unanswered: silence is indistinguishable from the bot
         # being down, and the player is mid-game and cannot investigate.
         log.exception("pipeline failed on %r", text)
+        if activity is not None:
+            activity.record("failed", text[:80])
         await channel.send(embed=discord.Embed(
             title="Something broke",
             description="That query hit an internal error. It's logged.",
             color=0xC62828))
         return
 
-    kind = "decline" if isinstance(outcome.call, Decline) else outcome.call.name
+    declined = isinstance(outcome.call, Decline)
+    if activity is not None:
+        activity.record("declined" if declined else "answered", text[:80])
+    kind = "decline" if declined else outcome.call.name
     log.info("%s -> %s (%d card%s)", who, kind, len(outcome.cards),
              "" if len(outcome.cards) == 1 else "s")
     # One message, several embeds. A query that resolves to a base Pal and its variant
@@ -98,6 +119,7 @@ def run() -> None:
         sys.exit(f"config error: {e}")
 
     pipe = build_pipeline(cfg)
+    activity = ActivityLog()
     summary = pipe.kb.summary()
     log.info("config: %s", cfg.redacted())
     log.info("loaded: %s", summary)
@@ -128,6 +150,17 @@ def run() -> None:
             return
 
         text = message.content.strip()
+
+        # Checked before listen_mode, deliberately. Status is what you reach for when the
+        # bot seems not to be listening, so gating it behind the same prefix or mention
+        # rules that might be the problem would make it useless in the one case it is
+        # for. A plain message rather than a registered slash command: this needs no
+        # command sync, no extra intent, and works the moment the bot connects.
+        if text.lower() in ("/palintel status", "/palintel", "palintel status"):
+            await message.channel.send(embed=to_embed(
+                status_card(activity, voice=_voice_status(cfg, listener["mic"]))))
+            return
+
         mode = cfg.discord.listen_mode
         if mode == "prefix":
             if not text.startswith(cfg.discord.prefix):
@@ -142,7 +175,7 @@ def run() -> None:
             return
 
         log.info("query from %s: %r", message.author.display_name, text)
-        await _answer(message.channel, pipe, text, message.author.display_name)
+        await _answer(message.channel, pipe, text, message.author.display_name, activity)
 
     listener = {"mic": None}   # boxed so on_ready can see it across re-fires
 
@@ -187,9 +220,12 @@ def run() -> None:
             if not text.strip():
                 # Wake word fired on something that was not speech. Silence is right:
                 # posting "I didn't catch that" to a false trigger is channel noise for
-                # a query nobody made.
+                # a query nobody made - but it is recorded, because a pile of these is
+                # the signature of a detector firing on background noise.
+                activity.record("empty", f"{utt.seconds:.1f}s")
                 return
-            await _answer(text_channel, pipe, text, "voice")
+            activity.record("heard", text[:80])
+            await _answer(text_channel, pipe, text, "voice", activity)
 
         def dispatch(utt) -> None:
             # Called on sounddevice's audio thread. Nothing here may block or touch the
@@ -198,7 +234,8 @@ def run() -> None:
             asyncio.run_coroutine_threadsafe(on_speech(utt), loop)
 
         mic = MicListener(dispatch, models=list(cfg.voice.models),
-                          threshold=cfg.voice.threshold, device=cfg.voice.device)
+                          threshold=cfg.voice.threshold, device=cfg.voice.device,
+                          log=activity)
         mic.start()
         listener["mic"] = mic
 

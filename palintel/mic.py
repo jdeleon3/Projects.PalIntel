@@ -48,9 +48,11 @@ class MicListener:
 
     def __init__(self, on_utterance: Callable[[Utterance], None],
                  models: list[str] | None = None, threshold: float = 0.5,
-                 device: int | str | None = None):
+                 device: int | str | None = None, log=None):
         self._on_utterance = on_utterance
         self._device = device
+        self._log = log
+        self.device_name = "(not started)"
         kw = {"model": models} if models else {}
         self.wake = WakeWord(threshold=threshold, **kw)
         self.buffer = UtteranceBuffer()
@@ -59,15 +61,20 @@ class MicListener:
 
     def _callback(self, indata, frames, time_info, status) -> None:
         if status:
-            # Overflow means frames were dropped before reaching us. Worth logging: it
-            # presents as a wake word that intermittently fails to fire.
+            # Overflow means frames were dropped before reaching us. Worth recording: it
+            # presents as a wake word that intermittently fails to fire, which is
+            # otherwise indistinguishable from a bad model.
             log.warning("mic: %s", status)
+            if self._log is not None:
+                self._log.record("overflow", str(status))
         try:
             with self._lock:
                 pcm = bytes(indata)
                 score = self.wake.push(pcm)
                 if self.wake.fired(score):
                     log.info("mic: wake word %r at %.2f", self.wake.last_fired, score)
+                    if self._log is not None:
+                        self._log.record("wake", f"{self.wake.last_fired} at {score:.2f}")
                     self.buffer.trigger()
                 import numpy as np
                 amp = np.abs(np.frombuffer(pcm, dtype=np.int16)).mean()
@@ -91,8 +98,9 @@ class MicListener:
             samplerate=SAMPLE_RATE, channels=1, dtype="int16",
             blocksize=FRAME_SAMPLES, device=self._device, callback=self._callback)
         self._stream.start()
-        name = sd.query_devices(self._device or sd.default.device[0])["name"]
-        log.info("mic: listening on %r for %s", name, "+".join(self.wake.names))
+        self.device_name = sd.query_devices(self._device or sd.default.device[0])["name"]
+        log.info("mic: listening on %r for %s", self.device_name,
+                 "+".join(self.wake.names))
 
     def stop(self) -> None:
         if self._stream is not None:

@@ -54,6 +54,11 @@ than anything wrong with the config:
      features are already memory-mapped, so the loader slices arrays rather than
      decoding audio and the throughput cost is irrelevant.
 
+  9. `torch.onnx.export` logs progress with emoji, and a Windows console is cp1252, so
+     the export raises UnicodeEncodeError on a *decorative* character. This lands after
+     training finishes and before the model is written, so the entire run is lost to a
+     print. Output is set to replace unencodable characters rather than raise.
+
 Usage (from the repo root):
 
     python tools/wakeword/train.py --generate_clips
@@ -265,7 +270,23 @@ def _bind_voice(piper_dir: str) -> None:
     gs.generate_samples = functools.partial(gs.generate_samples, model=voice)
 
 
+def _shim_console() -> None:
+    """Stop a decorative emoji from destroying a finished training run.
+
+    `torch.onnx.export` prints progress with emoji. A Windows console is cp1252, which
+    cannot encode them, and the resulting UnicodeEncodeError is raised *after* training
+    completes and *before* the model is written - so the whole run is lost to a
+    character in a log line. Errors are set to replace instead of raise.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="replace")
+        except (AttributeError, ValueError):     # already-wrapped or non-text stream
+            pass
+
+
 def main() -> None:
+    _shim_console()
     _shim_scipy()
     _shim_torchaudio()
     _shim_trim_mmap()

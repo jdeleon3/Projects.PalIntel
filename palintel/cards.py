@@ -113,6 +113,44 @@ def clarify_card(options: list[str]) -> Card:
     )
 
 
+def status_card(log, *, voice: str, window_label: str = "last hour") -> Card:
+    """Report what the pipeline has actually seen, stage by stage.
+
+    The breakdown is the whole point. ADR-0004 flags wake-word false negatives as silent
+    failures, but "voice is broken" has four distinct causes that feel identical to the
+    player, and each shows a different shape here: no activations at all points at the
+    detector or the mic; activations without transcripts means it fired on noise;
+    transcripts without answers means routing. Reporting a single health figure would
+    throw away exactly the information needed to tell them apart.
+    """
+    from .activity import duration
+
+    c = log.counts()
+    fired = c.get("wake", 0)
+    lines = [f"**Voice:** {voice}",
+             f"**Up:** {duration(log.uptime())}",
+             "",
+             f"__In the {window_label}__",
+             f"- Wake word fired: **{fired}**",
+             f"- Transcribed: **{c.get('heard', 0)}**"
+             + (f"  (+{c['empty']} silent)" if c.get("empty") else ""),
+             f"- Answered: **{c.get('answered', 0)}**"
+             + (f"  ({c['declined']} declined)" if c.get("declined") else "")]
+
+    if c.get("failed"):
+        lines.append(f"- Errors: **{c['failed']}** (see the log)")
+    if c.get("overflow"):
+        # Dropped input frames present as a wake word that intermittently misses, which
+        # is the hardest voice failure to diagnose from the outside.
+        lines.append(f"- Audio dropped: **{c['overflow']}** (mic overruns)")
+
+    last = log.ago("wake")
+    lines.append("")
+    lines.append(f"Last activation: **{last}**" if last
+                 else "_No activation yet this session._")
+    return Card(title="PalIntel status", lines=lines, colour=TIER_REFERENCE)
+
+
 def decline_card(decline: Decline) -> Card:
     lines = ["I didn't catch that."]
     if decline.unrecognized:
