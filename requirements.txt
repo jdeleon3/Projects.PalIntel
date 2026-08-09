@@ -22,6 +22,9 @@ nvidia-cudnn-cu12
 # py-cord, not discord.py: both install as `discord` and conflict, and
 # py-cord is the one with voice RECEIVE support the wake-word path needs.
 py-cord>=2.6
+# Voice encryption. Not used by text intake, but py-cord warns loudly without
+# it and voice receive (Phase 3) cannot work at all.
+PyNaCl>=1.5
 
 # --- tests ---
 pytest>=8.0
