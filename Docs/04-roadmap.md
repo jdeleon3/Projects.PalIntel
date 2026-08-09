@@ -856,7 +856,7 @@ Deliberately narrow: **one** query class, **one** resource type, end to end.
 **1.5 Answer + presentation**
 - `find_resource_nodes` + unit tests
 - Save watcher → `PlayerState` → dispatcher injection
-- `ResourceNodeCard` template tuned for overlay legibility
+- `ResourceNodeCard` template tuned for at-a-glance legibility
 - Discord publisher with backoff
 
 **Exit criteria**
@@ -864,6 +864,76 @@ Deliberately narrow: **one** query class, **one** resource type, end to end.
 - Zero fabricated coordinates across the eval set
 - Every failure mode in [01-architecture.md](01-architecture.md) §8 produces its card
 - **Used during a real play session without disrupting it** — the only test that matters
+
+### Phase 1 progress — voice input, wake word, and save state (2026-08-09)
+
+**Voice input is the local microphone, not a Discord voice channel.** Discord's DAVE
+end-to-end encryption broke reception in py-cord
+([pycord#3139](https://github.com/Pycord-Development/pycord/issues/3139)): the connection
+succeeds, a sink attaches, and no audio ever arrives — a failure indistinguishable from a
+wake word that never fires. Not fixable from this side. Output is still a Discord channel.
+Amended into [ADR-0004](adr/0004-wake-word-activation.md) and
+[ADR-0012](adr/0012-dual-input-channels.md), where the real loss lands: **party members
+can no longer ask by voice.** `listening.py`, `wakeword.py` and `stt.py` were untouched by
+the switch — the utterance buffer was already transport-agnostic — and the mic turns out to
+suit the detector better, since 16 kHz mono int16 in 1280-sample blocks is exactly the
+detector's frame.
+
+**`hey_pal` trained and measured.** 30k synthetic samples via Piper, 50k steps, nine
+compatibility shims documented in `tools/wakeword/train.py`. Scored against the 236 A5
+recordings that actually open with the phrase:
+
+| threshold | recall | non-wake-word clips firing |
+|---|---|---|
+| 0.1 | **91.9%** | 0/4 (max score 0.001) |
+| 0.3 | 83.1% | 0/4 |
+| 0.5 | 79.2% | 0/4 |
+
+13 clips score below 0.05, so **94.5% is the ceiling for any threshold** — those are hard
+failures, not near misses, which is why the curve is nearly flat above 0.1 and why the
+default threshold is 0.1. For contrast, none of openWakeWord's pretrained models fire on
+"hey pal" at all (`hey_mycroft` scores a literal zero); the phrase is "hey + one syllable"
+and they are all trained on longer shapes.
+
+*A measurement error worth recording.* The first run reported 77.9%, because the evaluator
+assumed every recording opens with the wake word. Four do not — the `control` prompts are
+bare Pal names — so they were scored as recall failures. The understatement is the smaller
+problem: had those clips *fired*, they would have counted as successes while actually being
+false positives. The label now comes from `prompts.json` rather than from assumption.
+
+**The false-positive side is genuinely unmeasured.** Four negative clips and no continuous
+room chatter cannot support a rate. It becomes measurable in use, which is what
+`/palintel status` is for.
+
+**`/palintel status` shipped** — ADR-0004's named mitigation, and overdue. A wake-word
+false negative is silent, and "voice is broken" has four causes that feel identical to the
+player. The breakdown separates them: no activations points at the mic or the model,
+activations without transcripts means it is firing on noise, transcripts without answers
+means routing. Mic overruns are counted too — dropped input frames present as a wake word
+that intermittently misses. Events are memory-only; persisting them would mean writing
+transcripts of everything said near the microphone to disk.
+
+**Save watcher shipped — "nearest" now means nearest.** `PlayerState` was never populated,
+so `find_resource_nodes` had been silently ranking by deposit count the whole time.
+Measured against the real save, player at map (287, 623):
+
+| | top answer | distance |
+|---|---|---|
+| Without save state | (321, 500) — 9 deposits | ~128 map units (≈590 m) |
+| With save state | (300, 616) — 1 deposit | **15 map units (≈69 m)** |
+
+The player transform comes from `Players/<uid>.sav` alone — no need for `Level.sav` or the
+`RawData` blob decoders that are stale for 1.0.2. **Player level therefore stays `None` and
+level gating stays off**, since it lives in exactly those blobs. The container handles both
+`PlZ` (zlib) and `PlM` (Oodle); format drift is demonstrated, not hypothetical, so every
+failure path keeps the last good snapshot rather than raising, and a torn read deliberately
+does not consume the file's mtime so the next poll retries immediately.
+
+**A1's retirement propagated** into `00-overview.md`, `01-architecture.md`, ADR-0006 and
+ADR-0009, which still described tuning cards for an overlay that will not exist.
+
+**Still open in Phase 1:** the latency and real-play exit criteria, both of which need a
+session rather than a test run.
 
 ---
 
