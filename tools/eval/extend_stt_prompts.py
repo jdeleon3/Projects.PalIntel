@@ -130,7 +130,17 @@ RESOURCE_TEMPLATES = [
     "hey pal any {res} worth mining nearby",
 ]
 
-RESOURCES = ["coal", "ore", "sulfur", "quartz", "crude oil"]
+# Only resources the locate tool can actually name. crude_oil is in the lexicon but has
+# no extracted map nodes, so it never enters the tool's enum - 17 prompts asking for it
+# were unanswerable by construction, and the router's correct declines were being scored
+# as misses. Derived from the knowledge base rather than listed, so a resource gaining or
+# losing node data cannot silently reintroduce the same bug.
+def _locatable_resources() -> list[str]:
+    import sys
+    sys.path.insert(0, str(REPO))
+    from palintel.knowledge import KnowledgeBase
+    kb = KnowledgeBase.load("1.0.2")
+    return sorted({n.resource for n in kb.nodes})
 
 # The false-positive test, built combinatorially so it can supply ~120 distinct prompts
 # without hand-writing them. Topics are deliberately entity-shaped nouns - traits, tech,
@@ -221,7 +231,8 @@ def _pools(lex: dict, rng: random.Random) -> dict[str, list[tuple[str, list[str]
                          for n in bands["hard"] + bands["medium"]
                          for i, t in enumerate(FRAME_WORD_TEMPLATES)]
     raw["resource"] = [(t.format(res=r), [r.replace(" ", "_")], i)
-                       for r in RESOURCES for i, t in enumerate(RESOURCE_TEMPLATES)]
+                       for r in _locatable_resources()
+                       for i, t in enumerate(RESOURCE_TEMPLATES)]
     raw["no_entity"] = [(f.format(topic=t), [], i)
                         for t in NO_ENTITY_TOPICS for i, f in enumerate(NO_ENTITY_FRAMES)]
 

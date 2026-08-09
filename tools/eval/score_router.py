@@ -137,6 +137,22 @@ def main() -> None:
     entities = set(kb.lexicon.canonical_names)
     router, tool_names = build_router(args.model, kb, think=args.think)
 
+    # A prompt asking for an entity no registered tool can name is unanswerable by
+    # construction, and the router is right to decline it. Scoring it as a miss measures
+    # the prompt set, not the router. This caught 4 crude_oil prompts: crude_oil is in
+    # the lexicon but has no extracted map nodes, so it never enters the resource tool's
+    # enum - the declines were correct behaviour being counted as failures.
+    expressible = set(kb.lexicon.pals()) | {n.resource for n in kb.nodes}
+    unscoreable = [r for r in rows
+                   if r["expected"] and not set(r["expected"]) <= expressible]
+    if unscoreable:
+        missing = sorted({e for r in unscoreable for e in r["expected"]}
+                         - expressible)
+        print(f"  excluding {len(unscoreable)} prompt(s): no tool can name "
+              f"{missing} - declining them is correct, so scoring them is a "
+              f"measurement of the prompt set\n")
+        rows = [r for r in rows if r not in unscoreable]
+
     print(f"model={args.model}  condition={args.condition}  prompts={len(rows)}")
     print(f"tools={tool_names}\n")
 

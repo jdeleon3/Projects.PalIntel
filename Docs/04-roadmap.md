@@ -436,6 +436,61 @@ Attribution is inferred rather than isolated — three changes landed together �
 failure shapes make it fairly legible: Haiku's gains are all decline→resolve (change 2),
 Qwen3's losses are all added-distractor (change 3).
 
+#### 200 recordings — Gemini 3.6 Flash wins decisively; A5 still fails
+
+196 utterances, 192 scoreable. Qwen3 8B and Opus 5 are both out (accuracy and cost
+respectively), so this is the two-horse result.
+
+| | exact | wrong | declined | latency median |
+|---|---|---|---|---|
+| **Gemini 3.6 Flash** | **89.6%** | **3.1%** | 20.9% | **2.3s** |
+| Haiku 4.5 | 72.9% | 5.2% | 36.7% | 4.6s |
+
+**Paired McNemar: Gemini wins 35, Haiku wins 3, p = 6.7 × 10⁻⁸.** On the held-out batches
+alone it is 28–2, same p. This is not a close call and does not need more data.
+
+**Tuning round 1 generalised.** Gemini's held-out batches (2–4, never seen when the
+decline wording was rewritten) score **88.3% with 1.7% wrong**, *better* than the 86.8%
+and 5.3% on the batches it was tuned against. Haiku went the other way — 78.9% tuned-on
+against 66.7% held out, declining 42.5% of held-out queries — which is what overfitting
+looks like when it does happen, and a reason to keep reporting the split.
+
+**Two corrections to earlier entries in this document.**
+
+*"Two-entity queries are broken for every model" was a 6-prompt artifact.* At n=18 Gemini
+scores 72%, and split by batch: **2/6 on batches 0–1, 11/12 on batches 2–4.** The original
+six were disproportionately loaded with the hardest entities in the corpus — Majex (rank
+193), Omascul (47), Pierdon (51). The recommendation that Q4 needed its own separate
+decision is withdrawn.
+
+*Four prompts were unanswerable by construction.* `crude_oil` is in the lexicon but has no
+extracted map nodes, so it never enters the locate tool's enum — the router **cannot** name
+it, and declining is correct. Those declines were being scored as misses. The v3 generator
+introduced this by adding "crude oil" to the resource templates without checking it was
+locatable; 17 such prompts exist across the 1000, 4 of them already recorded. The
+generator now derives its resource list from the knowledge base, and `score_router.py`
+excludes any prompt whose expected entities no registered tool can name — a general guard,
+so a future lexicon/tool mismatch is caught rather than silently costing points.
+
+**Where the remaining 10.4 points are**, now that the model question is settled:
+
+| band | n | Gemini | note |
+|---|---|---|---|
+| hard | 45 | **98%** | acoustically hard names are effectively solved |
+| medium | 33 | 91% | |
+| easy | 21 | 90% | |
+| frame_word | 16 | 88% | the corrector's spurious matches are being rejected |
+| no_entity | 27 | **100%** | safety bar holds at n=27 |
+| two_entity | 18 | 72% | |
+| **variant** | 20 | **70%** | base-vs-variant disambiguation |
+| resource | 16 | 69% → **100%** once crude_oil is excluded | |
+
+**Variant handling is now the single largest recoverable gap.** Failures are `Celaray` for
+*Celaray Lux*, `Solmora`+`Solmora Lux` returned together, and clean transcripts like
+*"Smokey Cryst"* and *"Loop Moon Cryst"* declined outright. The corrector ranks base and
+variant as independent entities that both match the same audio, and nothing downstream
+knows they are the same family.
+
 ### Survey outcome (0.5 / 0.7 — complete)
 
 Source survey is **done**; see [ADR-0014](adr/0014-game-files-as-source.md). Structured data
