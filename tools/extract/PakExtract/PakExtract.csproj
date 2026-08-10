@@ -9,6 +9,10 @@
 
   <ItemGroup>
     <PackageReference Include="CUE4Parse" Version="1.2.2.202608" />
+    <!-- Texture decoding only. The pak stores every image as BCn (the world map is
+         PF_DXT1, Pal icons PF_DXT5), and CUE4Parse itself hands back the compressed
+         blocks - Conversion is what turns them into pixels. -->
+    <PackageReference Include="CUE4Parse-Conversion" Version="1.2.2.202608" />
   </ItemGroup>
 
 </Project>

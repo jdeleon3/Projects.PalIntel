@@ -3,8 +3,11 @@ using CUE4Parse.MappingsProvider.Usmap;
 using CUE4Parse.UE4.Assets.Exports;
 using CUE4Parse.UE4.Objects.Core.Math;
 using CUE4Parse.UE4.Objects.UObject;
+using CUE4Parse.UE4.Assets.Exports.Texture;
 using CUE4Parse.UE4.Versions;
+using CUE4Parse_Conversion.Textures;
 using Newtonsoft.Json;
+using SkiaSharp;
 
 // Extract resource-node and Pal-spawn placements from Palworld's World Partition cells.
 //
@@ -17,20 +20,73 @@ using Newtonsoft.Json;
 // (-344, 271) - a real-looking spot on the map with nothing there. This program walks
 // each actor's Owner chain and composes the parent transforms to recover world space.
 //
-//   dotnet run                 full scan
+// NOTE THE `--`. It is dotnet's own argument separator, not part of the mode name:
+// `dotnet run -- tables` reaches this program, `dotnet run --tables` does not and used
+// to fall through to a 3.6-minute full scan instead. No arguments now prints this list.
+//
+//   dotnet run -- cells        full scan
 //   dotnet run -- 200          first 200 cells (smoke test)
 //   dotnet run -- sheets       spawner sheet -> Pal species tables
 //   dotnet run -- drops        resource spawner -> the item it actually yields
 //   dotnet run -- items        item id -> English name and category
+//   dotnet run -- textures     world map basemaps + Pal icons -> PNG
+//   dotnet run -- paldrops     what each Pal drops when defeated or captured
+//   dotnet run -- ranch        which Pals can be ranched (roster only - see the spike)
 //   dotnet run -- probe <s>    list pak paths containing <s> (asset discovery)
 //   dotnet run -- dump <path>  print one asset's exports as JSON
+//   dotnet run -- tables [s]   list every data table (optionally filtered)
+//   dotnet run -- table <name> write one table's rows to data/raw/tables/, list fields
+//   dotnet run -- export <s>   write every table matching <s>, same output
 //
 // The cell scan says WHERE a BP_PalSpawner_Sheets_* actor stands; it says nothing about
 // which Pal it spawns. That lives in the sheet blueprint's own default object, which is
 // a different asset tree entirely - hence the second mode.
 
-var mode = args.Length > 0 && !int.TryParse(args[0], out _) ? args[0] : "cells";
+// UTF-8 on stdout. Redirected output otherwise goes out in the console codepage, which
+// turns every non-ASCII character in a text table into a byte no JSON parser accepts -
+// and the failure looks like a malformed dump rather than an encoding one.
+Console.OutputEncoding = System.Text.Encoding.UTF8;
+
+// Modes that read the pak and write a dataset. Anything not on this list is a typo, and
+// a typo must not silently start the most expensive mode there is - which is what
+// happened when `dotnet run --tables` (no separator) delivered zero arguments and the
+// default was a full World Partition scan.
+var MODES = new[] { "cells", "sheets", "drops", "items", "textures", "paldrops",
+                    "probe", "dump", "tables", "table", "export", "ranch" };
+
+var mode = args.Length > 0 && !int.TryParse(args[0], out _) ? args[0] : "";
 var limit = args.Length > 0 && int.TryParse(args[0], out var l) ? l : int.MaxValue;
+
+if (mode.Length > 0 && !MODES.Contains(mode))
+{
+    Console.WriteLine($"Unknown mode '{mode}'.");
+    mode = "";
+}
+
+if (mode.Length == 0 && limit == int.MaxValue)
+{
+    Console.WriteLine("""
+        PakExtract - read Palworld's pak. Note the `--`: it separates dotnet's own
+        arguments from this program's, so `dotnet run -- tables`, not `--tables`.
+
+          cells        full World Partition scan (~3.6 min) -> placements.json
+          <n>          first n cells, as a smoke test
+          sheets       spawner sheet -> Pal species tables
+          drops        resource spawner -> the item it actually yields
+          items        item id -> English name and category
+          paldrops     what each Pal drops when defeated or captured
+          ranch        which Pals can be ranched (roster only)
+          textures     world map basemaps + Pal and item icons -> PNG
+          probe <s>    pak paths containing <s>
+          dump <path>  one asset's exports as JSON, to stdout
+          tables [s]   every data table, optionally filtered
+          table <name> one table's rows -> data/raw/tables/, and its field list
+          export <s>   every table whose path contains <s>, same output
+        """);
+    return;
+}
+
+if (mode.Length == 0) mode = "cells";      // a bare cell count is still a cell scan
 
 var pakDir = @"C:\Program Files (x86)\Steam\steamapps\common\Palworld\Pal\Content\Paks";
 var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
@@ -63,6 +119,11 @@ if (mode == "probe")
         .OrderBy(p => p).ToList();
     Console.WriteLine($"{hits.Count:N0} paths containing '{needle}'");
     foreach (var h in hits.Take(200)) Console.WriteLine("  " + h);
+    // Say so when the list is cut. A silent truncation here reads as a complete answer,
+    // and counting the printed lines instead of the header is how an asset survey ends
+    // up short - it did, while scoping the icon work.
+    if (hits.Count > 200)
+        Console.WriteLine($"  ... {hits.Count - 200:N0} more (narrow the needle)");
     return;
 }
 
@@ -71,6 +132,365 @@ if (mode == "dump")
     var path = args[1];
     var pkg = provider.LoadPackage(path);
     Console.WriteLine(JsonConvert.SerializeObject(pkg.GetExports(), Formatting.Indented));
+    return;
+}
+
+if (mode == "tables")
+{
+    // Every data table, so a search for "surely there is a table for X" can be answered
+    // by looking rather than by guessing names. L10N is collapsed to the English copy:
+    // the same table ships once per language and thirty copies is noise.
+    var needle = args.Length > 1 ? args[1] : "";
+    var all = provider.Files.Keys
+        .Where(p => p.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase)
+                    && Path.GetFileName(p).StartsWith("DT_", StringComparison.Ordinal)
+                    && !p.Contains("_Generated_", StringComparison.OrdinalIgnoreCase))
+        .Where(p => !p.Contains("/L10N/", StringComparison.OrdinalIgnoreCase)
+                    || p.Contains("/L10N/en/", StringComparison.OrdinalIgnoreCase))
+        .Where(p => needle.Length == 0
+                    || p.Contains(needle, StringComparison.OrdinalIgnoreCase))
+        .OrderBy(p => p, StringComparer.Ordinal)
+        .ToList();
+
+    foreach (var p in all) Console.WriteLine("  " + p[..p.LastIndexOf('.')]);
+    Console.WriteLine($"\n{all.Count:N0} data tables"
+                      + (needle.Length > 0 ? $" matching '{needle}'" : ""));
+    return;
+}
+
+if (mode == "table" || mode == "export")
+{
+    // One table's rows, written straight to a UTF-8 file rather than to stdout. That is
+    // the whole point: redirecting `dump` sends the text through the console codepage,
+    // where a curly quote in a Paldeck description (U+201C, and several have one) turns
+    // into a byte that terminates the JSON string early. The dump then looks corrupt in
+    // a way that reads like a serializer bug rather than an encoding one - it cost a
+    // wrong diagnosis here before the bytes were actually looked at.
+    var wanted = args.Length > 1 ? args[1] : "";
+    if (wanted.Length == 0)
+    {
+        Console.WriteLine($"Usage: dotnet run -- {mode} <{(mode == "table" ? "name" : "substring")}>");
+        return;
+    }
+
+    // `table` takes one exact name; `export` takes a substring and writes every match.
+    // Both skip the non-English L10N copies - the same table ships once per language and
+    // thirty identical files is not a browsable directory.
+    var candidates = provider.Files.Keys
+        .Where(p => p.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase)
+                    && Path.GetFileName(p).StartsWith("DT_", StringComparison.Ordinal)
+                    && !p.Contains("_Generated_", StringComparison.OrdinalIgnoreCase)
+                    && (!p.Contains("/L10N/", StringComparison.OrdinalIgnoreCase)
+                        || p.Contains("/L10N/en/", StringComparison.OrdinalIgnoreCase)))
+        .Where(p => mode == "table"
+                    ? Path.GetFileNameWithoutExtension(p).Equals(wanted, StringComparison.OrdinalIgnoreCase)
+                    : p.Contains(wanted, StringComparison.OrdinalIgnoreCase))
+        .OrderBy(p => p, StringComparer.Ordinal)
+        .ToList();
+
+    if (candidates.Count == 0)
+    {
+        Console.WriteLine($"Nothing matching '{wanted}'. Try: dotnet run -- tables {wanted}");
+        return;
+    }
+
+    var tableDir = Path.Combine(outDir, "tables");
+    Directory.CreateDirectory(tableDir);
+    int written = 0, empty = 0;
+
+    // A table name is not unique across the pak: DT_ItemNameText_Common exists both at
+    // Pal/DataTable/Text (whose LocalizedString is Japanese) and at L10N/en (English).
+    // Writing both to one filename let the base table silently overwrite the English
+    // one, so a browser of data/raw/tables would conclude item names are Japanese.
+    // Localised copies are prefixed with their locale instead.
+    static string FileNameFor(string path)
+    {
+        var name = Path.GetFileNameWithoutExtension(path);
+        var i = path.IndexOf("/L10N/", StringComparison.OrdinalIgnoreCase);
+        if (i < 0) return name;
+        var locale = path[(i + 6)..].Split('/')[0];
+        return $"{locale}_{name}";
+    }
+
+    var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    foreach (var match in candidates)
+    {
+        var name = FileNameFor(match);
+        if (!seen.Add(name))
+        {
+            // Should be impossible now, and says so rather than overwriting if it is not.
+            Console.WriteLine($"  {name,-46} SKIPPED  name collision with an earlier table");
+            continue;
+        }
+        Newtonsoft.Json.Linq.JObject rows;
+        try
+        {
+            var pkg = provider.LoadPackage(match[..match.LastIndexOf('.')]);
+            var json = Newtonsoft.Json.Linq.JObject.Parse(
+                JsonConvert.SerializeObject(pkg.GetExports().First()));
+            rows = json["Rows"] as Newtonsoft.Json.Linq.JObject
+                   ?? new Newtonsoft.Json.Linq.JObject();
+        }
+        catch (Exception e)
+        {
+            // Named, not swallowed: a table that will not load is a gap in the export,
+            // and a silent one would be indistinguishable from a table that is empty.
+            Console.WriteLine($"  {name,-46} FAILED  {e.GetType().Name}");
+            continue;
+        }
+
+        if (rows.Count == 0) { empty++; }
+
+        var dest = Path.Combine(tableDir, $"{name}.json");
+        File.WriteAllText(dest, rows.ToString(Formatting.Indented),
+                          new System.Text.UTF8Encoding(false));
+        written++;
+
+        // Fields are unioned over a sample rather than the first row: several tables
+        // leave optional columns off rows that do not use them.
+        var fields = rows.Properties().Take(50)
+            .SelectMany(r => (r.Value as Newtonsoft.Json.Linq.JObject)?.Properties()
+                                 .Select(f => f.Name) ?? Enumerable.Empty<string>())
+            .Distinct().OrderBy(f => f, StringComparer.Ordinal).ToList();
+
+        if (mode == "table")
+        {
+            Console.WriteLine($"{match}\n  {rows.Count:N0} rows, {fields.Count} fields");
+            foreach (var f in fields) Console.WriteLine("    " + f);
+        }
+        else
+        {
+            Console.WriteLine($"  {name,-46} {rows.Count,7:N0} rows  {fields.Count,3} fields");
+        }
+    }
+
+    Console.WriteLine($"\n{written:N0} table{(written == 1 ? "" : "s")} -> {tableDir}"
+                      + (empty > 0 ? $"  ({empty} with no rows)" : ""));
+    return;
+}
+
+if (mode == "ranch")
+{
+    // The ranch ROSTER, and only the roster. Which Pals can be assigned to a ranch is in
+    // the pak - one BP_Action_SpawnItem_<CharacterID> asset each - but *what each one
+    // produces* is not: it lives in blueprint bytecode, and all 284 data tables were
+    // enumerated without finding it (Docs/04-roadmap.md, ranch spike). The items are
+    // sourced from the community wiki instead, and this list is what validates them:
+    // a wiki row naming a Pal that is not here, or a Pal here that the wiki omits, is a
+    // discrepancy the ingest has to surface rather than absorb.
+    const string prefix = "BP_Action_SpawnItem_";
+    var roster = provider.Files.Keys
+        .Where(p => p.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase))
+        .Select(p => Path.GetFileNameWithoutExtension(p))
+        .Where(n => n.StartsWith(prefix, StringComparison.Ordinal)
+                    && n.Length > prefix.Length)
+        .Select(n => n[prefix.Length..])
+        .Distinct(StringComparer.Ordinal)
+        .OrderBy(n => n, StringComparer.Ordinal)
+        .ToList();
+
+    var dest = Path.Combine(outDir, "ranch_roster.json");
+    File.WriteAllText(dest, JsonConvert.SerializeObject(new
+    {
+        source = "BP_Action_SpawnItem_<CharacterID> assets in Pal-Windows.pak",
+        note = "Roster only. The produced item is not in any extractable table.",
+        character_ids = roster,
+    }, Formatting.Indented));
+    Console.WriteLine($"{roster.Count:N0} ranchable Pals -> {dest}");
+    foreach (var r in roster) Console.WriteLine("  " + r);
+    return;
+}
+
+if (mode == "paldrops")
+{
+    // What a Pal drops when defeated or captured. Ten fixed item slots per row, each
+    // with its own rate and count range, keyed by CharacterID - so this is emitted
+    // verbatim and the inversion (item -> the Pals that drop it) happens in the ingest,
+    // where the lexicon lives.
+    var pkg = provider.LoadPackage(
+        "Pal/Content/Pal/DataTable/Character/DT_PalDropItem_Common");
+    var rows = Newtonsoft.Json.Linq.JObject.Parse(
+        JsonConvert.SerializeObject(pkg.GetExports().First()))["Rows"]
+        as Newtonsoft.Json.Linq.JObject ?? new Newtonsoft.Json.Linq.JObject();
+
+    var out_ = new List<object>();
+    foreach (var row in rows)
+    {
+        var v = row.Value!;
+        var drops = new List<object>();
+        for (var n = 1; n <= 10; n++)
+        {
+            var item = v[$"ItemId{n}"]?.ToString();
+            if (string.IsNullOrEmpty(item) || item == "None") continue;
+            drops.Add(new
+            {
+                item,
+                // Carried rather than filtered here: a rate of 0 is a real row in the
+                // table and the ingest has to decide what it means, not the extractor.
+                rate = v[$"Rate{n}"]?.ToObject<double>() ?? 0,
+                min = v[$"min{n}"]?.ToObject<int>() ?? 0,
+                max = v[$"Max{n}"]?.ToObject<int>() ?? 0,
+            });
+        }
+        if (drops.Count == 0) continue;
+        out_.Add(new
+        {
+            row_key = row.Key,
+            character_id = v["CharacterID"]?.ToString(),
+            level = v["Level"]?.ToObject<int>() ?? 0,
+            drops,
+        });
+    }
+
+    var dest = Path.Combine(outDir, "pal_drops.json");
+    File.WriteAllText(dest, JsonConvert.SerializeObject(out_, Formatting.None));
+    Console.WriteLine($"{out_.Count:N0} drop rows (of {rows.Count:N0}) -> {dest}");
+    return;
+}
+
+if (mode == "textures")
+{
+    // Card artwork: the two world-map basemaps and one icon per Pal.
+    //
+    // The map bounds are NOT fitted here. DT_WorldMapUIData carries the world-space
+    // rectangle each basemap covers, so the world -> pixel mapping is the game's own
+    // rather than another regression like data/coord_transform.json. It also says there
+    // are TWO maps: placements in the World Tree region sit outside MainMap's rectangle
+    // entirely, and drawing them on the main island would put markers in open sea.
+    var texDir = Path.Combine(outDir, "textures");
+    Directory.CreateDirectory(Path.Combine(texDir, "map"));
+    Directory.CreateDirectory(Path.Combine(texDir, "icon"));
+
+    bool WritePng(string assetPath, string dest)
+    {
+        try
+        {
+            var pkg = provider.LoadPackage(assetPath);
+            var tex = pkg.GetExports().OfType<UTexture2D>().FirstOrDefault();
+            if (tex is null) return false;
+            var decoded = tex.Decode(ETexturePlatform.DesktopMobile);
+            if (decoded is null) return false;
+            using var bitmap = decoded.ToSkBitmap();
+            if (bitmap is null) return false;
+            using var image = SKImage.FromBitmap(bitmap);
+            using var data = image.Encode(SKEncodedImageFormat.Png, 100);
+            using var file = File.Create(dest);
+            data.SaveTo(file);
+            return true;
+        }
+        catch { return false; }
+    }
+
+    // "/Game/Pal/Texture/UI/Map/T_WorldMap.T_WorldMap" -> a mounted pak path.
+    static string FromAssetPath(string p)
+    {
+        p = p.Replace("/Game/", "Pal/Content/", StringComparison.Ordinal);
+        var dot = p.LastIndexOf('.');
+        return dot >= 0 ? p[..dot] : p;
+    }
+
+    var uiData = provider.LoadPackage(
+        "Pal/Content/Pal/DataTable/WorldMapUIData/DT_WorldMapUIData");
+    var uiRows = Newtonsoft.Json.Linq.JObject.Parse(
+        JsonConvert.SerializeObject(uiData.GetExports().First()))["Rows"]
+        as Newtonsoft.Json.Linq.JObject ?? new Newtonsoft.Json.Linq.JObject();
+
+    var regions = new List<object>();
+    foreach (var row in uiRows)
+    {
+        var v = row.Value!;
+        var textures = v["textureDataMap"] ?? new Newtonsoft.Json.Linq.JArray();
+        // One basemap per region is what 1.0.2 ships (mapBlockNum is 1x1 for both). A
+        // tiled region would need the grid composited, so fail loudly rather than
+        // silently exporting the first tile as if it were the whole map.
+        var blockX = v["mapBlockNum"]?["X"]?.ToObject<double>() ?? 1;
+        var blockY = v["mapBlockNum"]?["Y"]?.ToObject<double>() ?? 1;
+        if (blockX != 1 || blockY != 1)
+        {
+            Console.WriteLine($"  {row.Key}: SKIPPED - {blockX}x{blockY} tile grid, " +
+                              $"this mode only handles single-texture regions");
+            continue;
+        }
+
+        var asset = textures.FirstOrDefault()?["Value"]?["Texture"]?["AssetPathName"]
+                    ?.ToString();
+        if (string.IsNullOrEmpty(asset) || asset == "None") continue;
+
+        var file = $"{row.Key.ToLowerInvariant()}.png";
+        var ok = WritePng(FromAssetPath(asset), Path.Combine(texDir, "map", file));
+        var mn = v["landScapeRealPositionMin"]!;
+        var mx = v["landScapeRealPositionMax"]!;
+        regions.Add(new
+        {
+            region = row.Key,
+            file = ok ? $"map/{file}" : null,
+            priority = v["WorldMapPriority"]?.ToObject<int>() ?? 0,
+            world_min_x = mn["X"]!.ToObject<double>(),
+            world_min_y = mn["Y"]!.ToObject<double>(),
+            world_max_x = mx["X"]!.ToObject<double>(),
+            world_max_y = mx["Y"]!.ToObject<double>(),
+        });
+        Console.WriteLine($"  {row.Key,-10} {(ok ? "ok" : "FAILED")}  {asset}");
+    }
+
+    var icons = provider.Files.Keys
+        .Where(p => p.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase)
+                    && p.Contains("Texture/PalIcon/Normal/", StringComparison.OrdinalIgnoreCase))
+        .OrderBy(p => p, StringComparer.Ordinal).ToList();
+    Console.WriteLine($"\ndecoding {icons.Count:N0} Pal icons");
+
+    var written = new List<string>();
+    var failedIcons = new List<string>();
+    foreach (var p in icons)
+    {
+        // T_Anubis_icon_normal -> Anubis, the CharacterID the lexicon already keys on.
+        var stem = Path.GetFileNameWithoutExtension(p);
+        var id = stem.StartsWith("T_", StringComparison.Ordinal) ? stem[2..] : stem;
+        if (id.EndsWith("_icon_normal", StringComparison.Ordinal))
+            id = id[..^"_icon_normal".Length];
+
+        if (WritePng(p[..p.LastIndexOf('.')], Path.Combine(texDir, "icon", $"{id}.png")))
+            written.Add(id);
+        else failedIcons.Add(id);
+    }
+
+    // Item icons, for the resource cards. Category is part of the filename and varies
+    // (Material, Food, Ammo...), so the stem is kept whole rather than parsed here -
+    // item ids contain underscores of their own (Pal_crystal_S, Wood_Ancient) and
+    // splitting on them upstream would be guessing at where the id starts.
+    Directory.CreateDirectory(Path.Combine(texDir, "item"));
+    var itemIcons = provider.Files.Keys
+        .Where(p => p.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase)
+                    && Path.GetFileName(p).StartsWith("T_itemicon_", StringComparison.Ordinal))
+        .OrderBy(p => p, StringComparer.Ordinal).ToList();
+    Console.WriteLine($"\ndecoding {itemIcons.Count:N0} item icons");
+
+    var itemsWritten = new List<string>();
+    foreach (var p in itemIcons)
+    {
+        var stem = Path.GetFileNameWithoutExtension(p)["T_itemicon_".Length..];
+        if (WritePng(p[..p.LastIndexOf('.')], Path.Combine(texDir, "item", $"{stem}.png")))
+            itemsWritten.Add(stem);
+    }
+    Console.WriteLine($"  item icons written : {itemsWritten.Count:N0}");
+
+    var manifest = Path.Combine(texDir, "manifest.json");
+    File.WriteAllText(manifest, JsonConvert.SerializeObject(new
+    {
+        game_version = "1.0.2",
+        source = "Pal-Windows.pak: DT_WorldMapUIData, Texture/UI/Map, Texture/PalIcon/Normal",
+        note = "World -> pixel comes from landScapeRealPosition, the game's own map "
+             + "bounds, not from a fit. A coordinate outside every region has no map.",
+        map_regions = regions,
+        icons = written,
+        item_icons = itemsWritten,
+    }, Formatting.Indented));
+
+    Console.WriteLine($"\n  icons written : {written.Count:N0}");
+    Console.WriteLine($"  icons failed  : {failedIcons.Count:N0}"
+                      + (failedIcons.Count > 0 ? "  " + string.Join(", ", failedIcons.Take(10)) : ""));
+    Console.WriteLine($"\n-> {manifest}");
     return;
 }
 
