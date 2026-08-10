@@ -65,12 +65,33 @@ the answer is a card, and a card cannot ask which one you meant.\
 """
 
 
+# How the shared conversation context is worded for every backend. One function rather
+# than three, for the reason ROUTING_POLICY is one string: the backends were once given
+# subtly different instructions and compared as though they were not.
+CONTEXT_POLICY = """\
+Earlier turns from this speaker are listed below, oldest first. Use them ONLY to resolve \
+a reference the current utterance cannot resolve on its own - "what about the alpha", \
+"where's the closest one", "and coal?". If the current utterance names its own entity and \
+reads as a fresh question, ignore the history entirely: a stale referent produces a card \
+that looks authoritative and answers a question nobody asked.\
+"""
+
+
+def context_block(context: "list | None") -> str:
+    """Render recent turns for a model prompt, or empty string when there are none."""
+    if not context:
+        return ""
+    lines = "\n".join(f"  {i}. {turn}" for i, turn in enumerate(context, 1))
+    return f"{CONTEXT_POLICY}\n\nEarlier turns:\n{lines}\n\n"
+
+
 class RouterBackend(Protocol):
     """Anything that can turn an utterance into a tool call or an honest decline."""
 
     name: str
 
-    def route(self, utterance: str, candidates: list[Candidate]) -> ToolCall | Decline:
+    def route(self, utterance: str, candidates: list[Candidate],
+              context: list | None = None) -> ToolCall | Decline:
         ...
 
 
@@ -103,12 +124,19 @@ class FastPathRouter:
         # `last_usage` and friends belong to the model, which is where the cost is.
         return getattr(self.full, item)
 
-    def route(self, utterance: str, candidates: list[Candidate]) -> ToolCall | Decline:
-        call = self.fast.route(utterance, candidates)
+    def route(self, utterance: str, candidates: list[Candidate],
+              context: list | None = None) -> ToolCall | Decline:
+        call = self.fast.route(utterance, candidates, context)
         if isinstance(call, ToolCall):
             log.info("fast path: %s(%s) - no model call", call.name, call.args)
             return call
-        return self.full.route(utterance, candidates)
+        # A stub decline asking for restatement is a considered answer, not a miss: the
+        # speaker referred back to something that has expired, and the model cannot see
+        # further back than the stub just did. Asking it would spend a round trip to
+        # reach the same conclusion, or worse, to invent a referent.
+        if isinstance(call, Decline) and call.needs_restatement:
+            return call
+        return self.full.route(utterance, candidates, context)
 
 
 class FallbackRouter:
@@ -143,12 +171,13 @@ class FallbackRouter:
         # site aware of it.
         return getattr(self.primary, item)
 
-    def route(self, utterance: str, candidates: list[Candidate]) -> ToolCall | Decline:
-        call = self.primary.route(utterance, candidates)
+    def route(self, utterance: str, candidates: list[Candidate],
+              context: list | None = None) -> ToolCall | Decline:
+        call = self.primary.route(utterance, candidates, context)
         if isinstance(call, Decline) and call.transient:
             log.warning("%s did not answer (%s) - falling back to %s",
                         self.primary.name, call.reason, self.backstop.name)
-            fallback = self.backstop.route(utterance, candidates)
+            fallback = self.backstop.route(utterance, candidates, context)
             if isinstance(fallback, ToolCall):
                 return ToolCall(name=fallback.name, args=fallback.args,
                                 rationale=f"{call.reason}; {fallback.rationale}")
@@ -259,6 +288,58 @@ BACKSTOP_CONFIDENT = 0.68
 # to the model, which has the sentence context to resolve it (ADR-0016).
 PAL_CONFIDENT = 0.85
 
+# Phrasings that refer back to an earlier turn rather than naming their own subject.
+#
+# Deliberately narrow. A false positive here answers a FRESH question with a STALE entity,
+# which is the exact failure ADR-0013 names as the price of having memory at all - and it
+# produces a card that looks entirely authoritative. Missing a follow-up only costs the
+# speaker a restatement, so the asymmetry is not close.
+#
+# "one" and "it" are load-bearing and risky in equal measure: "where's the closest one"
+# is unambiguously a follow-up, while "is it any good" is not a location question and
+# never reaches this branch because the cue gate rejects it first.
+_FOLLOWUP = re.compile(
+    r"^\s*(what|how)\s+about\b"
+    r"|^\s*and\b"
+    r"|\b(that one|those|the same|the other one|the closest one|the nearest one)\b"
+    r"|\b(it|one|them)\s*\??\s*$",
+    re.I)
+
+
+# Words that carry no subject of their own: the follow-up openers, and the modifiers a
+# follow-up is allowed to add. Everything else left in an utterance is content, and
+# content the router cannot place is a reason to defer rather than to inherit.
+_OPENER_WORDS = frozenset({"about"})
+_CONTRACTION_TAILS = frozenset({"s", "t", "re", "ve", "ll", "m", "d"})
+_MODIFIER_WORDS = frozenset("""
+alpha alphas lord lords predator predators boss night nighttime nocturnal dark
+closest nearest close near nearby one ones other another same next else
+spot spots place places area areas around here
+""".split())
+
+
+def _residue(utterance: str, matched_text: str = "") -> set[str]:
+    """Content words left after the opener, the function words and the named entity.
+
+    This is what separates the three cases the inheritance rule has to tell apart:
+
+      "and coal?"                  -> nothing left. Elliptical; inherit the verb.
+      "what about the alpha?"      -> modifiers only. Inherit the entity too.
+      "how about breeding Anubis"  -> "breeding" left. Its own verb; do not inherit.
+      "and Banner and Cryst?"      -> "banner", "cryst" left. It names SOMETHING and we
+                                      could not place it, so answering about the
+                                      previous turn's coal would be a wrong card.
+    """
+    from .knowledge import STOPWORDS, WAKE_WORDS
+
+    # Split contractions rather than keeping them whole. STOPWORDS holds "where", not
+    # "where's", so tokenising with the apostrophe left "where's" looking like content
+    # and turned every "where's the closest one" into a restatement request.
+    words = set(re.findall(r"[a-z]+", utterance.lower()))
+    words -= STOPWORDS | WAKE_WORDS | _OPENER_WORDS | _CONTRACTION_TAILS
+    words -= set(re.findall(r"[a-z]+", matched_text.lower()))
+    return words - _MODIFIER_WORDS
+
 
 class StubRouter:
     """Deterministic keyword router. No model, no network.
@@ -323,7 +404,94 @@ class StubRouter:
                      + (f"@{resource_floor:g}" if resource_floor != MIN_CONFIDENT else "")
                      + (f"+pals@{pal_floor:g}" if pal_spawns else ""))
 
-    def route(self, utterance: str, candidates: list[Candidate]) -> ToolCall | Decline:
+    def _subject(self, candidates: list[Candidate]) -> tuple[str, str, str] | None:
+        """(tool, slot, canonical) for the subject this utterance names, if any.
+
+        Candidates arrive ranked, so the first to clear its own bar wins - and the bars
+        differ by kind, which is the point: 4 resources against 313 Pals means a top Pal
+        candidate is a much weaker signal than a top resource one.
+        """
+        for c in candidates:
+            if c.kind == "resource" and c.canonical in self._resources \
+                    and c.score >= self._floor:
+                return "find_resource_nodes", "resource", c.canonical
+            if c.kind == "pal" and self._pal_spawns and c.score >= self._pal_floor:
+                return "find_pal_spawns", "pal", c.canonical
+        return None
+
+    def _names_an_entity(self, candidates: list[Candidate]) -> bool:
+        return self._subject(candidates) is not None
+
+    def _inherit(self, utterance: str, candidates: list[Candidate],
+                 context: list) -> ToolCall | None:
+        """Reuse the last turn's tool, and its entity when this utterance names none.
+
+        Only turns that produced a TOOL CALL are usable. A previous decline resolves
+        nothing - "what about the alpha" after a decline has no referent, and inheriting
+        the decline's best-guess candidate would manufacture one.
+        """
+        prior = next((t for t in reversed(context) if t.tool and t.entities), None)
+        if prior is None:
+            return None
+
+        # A follow-up that names its own subject keeps only the VERB from the previous
+        # turn, never the entity - and the subject decides the tool, not memory. "and
+        # coal?" after a Pal query is a resource question; matching the remembered tool
+        # instead answered it with the Pal, which is the confidently-wrong card this
+        # whole feature is supposed to avoid.
+        named = self._subject(candidates)
+        if named is not None:
+            tool, slot, canonical = named
+            matched = next((c.matched_text for c in candidates
+                            if c.canonical == canonical), "")
+            if _residue(utterance, matched):
+                # It names an entity AND carries its own content words, so it is a new
+                # question with its own verb - "how about breeding Anubis" - and the verb
+                # is not one this router knows. Inheriting "where is" from the last turn
+                # would answer a breeding question with a map location. Fall through to
+                # the ordinary cue gate, which will decline it.
+                return None
+            return ToolCall(name=tool, args={slot: canonical},
+                            rationale=f"follow-up naming {canonical}; verb from: {prior}")
+
+        if _residue(utterance):
+            # It names something this router could not place - a mangled Pal name, most
+            # often. Inheriting the previous turn's entity would quietly answer about
+            # coal a question that was asked about a Pal, which is worse than deferring
+            # to a model that can read the sentence.
+            return None
+
+        slot = "resource" if prior.tool == "find_resource_nodes" else "pal"
+        if slot not in prior.entities:
+            # The remembered turn used the other tool's slot, so there is nothing to
+            # carry. Better to defer than to invent a subject.
+            return None
+        return ToolCall(name=prior.tool, args=dict(prior.entities),
+                        rationale=f"follow-up, inherited from: {prior}")
+
+    def route(self, utterance: str, candidates: list[Candidate],
+              context: list | None = None) -> ToolCall | Decline:
+        # A follow-up is handled before the cue gate, because most of them have no cue:
+        # "what about the alpha?" and "and coal?" are location questions only by
+        # inheritance from the previous turn, which is precisely what storing the tool is
+        # for. Resolving here is not guessing at intent - it is reading the intent the
+        # last turn already established.
+        if _FOLLOWUP.search(utterance):
+            if context:
+                inherited = self._inherit(utterance, candidates, context)
+                if inherited is not None:
+                    return inherited
+            # Nothing to inherit. If the utterance names no subject of its own, it is
+            # referring to something that is gone, and ADR-0013 requires saying so rather
+            # than silently ignoring it - answering "what about the alpha" against no
+            # referent is how a confident card about the wrong Pal gets made.
+            if not self._names_an_entity(candidates):
+                return Decline(
+                    reason="I've lost track of what that refers to",
+                    needs_restatement=True)
+            # It names something but there is no verb and no history - "and coal?" out of
+            # nowhere. Not a restatement problem; fall through to the ordinary path.
+
         if not self._cues.search(utterance):
             # Name what we *can* answer here too. The other two branches always did, and
             # the difference only became visible once this decline could reach a player

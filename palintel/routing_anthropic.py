@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .knowledge import Candidate, Lexicon
-from .routing import ROUTING_POLICY
+from .routing import ROUTING_POLICY, context_block
 from .tools import Decline, ToolCall
 
 log = logging.getLogger("palintel.routing.claude")
@@ -230,17 +230,20 @@ class ClaudeRouter:
         self._tools = [*registry(self._resources, lexicon.pals()), *(extra_tools or [])]
         self.last_usage: Usage | None = None
 
-    def _user_content(self, utterance: str, candidates: list[Candidate]) -> str:
+    def _user_content(self, utterance: str, candidates: list[Candidate],
+                      context: list | None = None) -> str:
         if candidates:
             hints = "\n".join(
                 f"  {c.score:.2f}  {c.canonical}  ({c.kind}, matched {c.matched_text!r})"
                 for c in candidates)
         else:
             hints = "  (none)"
-        return (f"Utterance:\n  {utterance}\n\n"
+        return (f"{context_block(context)}"
+                f"Utterance:\n  {utterance}\n\n"
                 f"Candidate entities, best first:\n{hints}")
 
-    def route(self, utterance: str, candidates: list[Candidate]) -> ToolCall | Decline:
+    def route(self, utterance: str, candidates: list[Candidate],
+              context: list | None = None) -> ToolCall | Decline:
         try:
             response = self._client.messages.create(
                 model=self._model,
@@ -254,7 +257,8 @@ class ClaudeRouter:
                 **_reasoning_params(self._model),
                 tools=self._tools,
                 messages=[{"role": "user",
-                           "content": self._user_content(utterance, candidates)}],
+                           "content": self._user_content(utterance, candidates,
+                                                         context)}],
             )
         except self._anthropic.RateLimitError:
             return Decline(reason="router rate limited - try again shortly",

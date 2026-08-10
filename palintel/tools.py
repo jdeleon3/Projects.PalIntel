@@ -35,6 +35,12 @@ class Decline:
     # be reached. Distinct from a considered decline, because a backstop router can
     # usefully retry this one and cannot usefully second-guess the other.
     transient: bool = False
+    # The utterance referred back to something that is no longer remembered. A third kind
+    # of decline, because it asks for something specific and achievable - say the name
+    # again - rather than reporting a failure. ADR-0013 requires expired context to be
+    # named rather than silently ignored: answering "what about the alpha" against no
+    # referent is how a confident card about the wrong Pal gets made.
+    needs_restatement: bool = False
 
 
 def find_resource_nodes_schema(resources: list[str]) -> dict[str, Any]:

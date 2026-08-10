@@ -29,7 +29,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .knowledge import Candidate, Lexicon
-from .routing import ROUTING_POLICY
+from .routing import ROUTING_POLICY, context_block
 from .tools import Decline, ToolCall
 
 log = logging.getLogger("palintel.routing.local")
@@ -135,7 +135,8 @@ class LocalRouter:
                                       [t["name"] for t in tools])
         self.last_usage: LocalUsage | None = None
 
-    def _user_content(self, utterance: str, candidates: list[Candidate]) -> str:
+    def _user_content(self, utterance: str, candidates: list[Candidate],
+                      context: list | None = None) -> str:
         if candidates:
             hints = "\n".join(
                 f"  {c.score:.2f}  {c.canonical}  ({c.kind}, matched {c.matched_text!r})"
@@ -143,6 +144,7 @@ class LocalRouter:
         else:
             hints = "  (none)"
         return (f"Tools:\n{self._tool_block}\n\n"
+                f"{context_block(context)}"
                 f"Utterance:\n  {utterance}\n\n"
                 f"Candidate entities, best first:\n{hints}")
 
@@ -169,7 +171,8 @@ class LocalRouter:
         })
         return time.perf_counter() - t
 
-    def route(self, utterance: str, candidates: list[Candidate]) -> ToolCall | Decline:
+    def route(self, utterance: str, candidates: list[Candidate],
+              context: list | None = None) -> ToolCall | Decline:
         try:
             data = self._post("/api/chat", {
                 "model": self._model,
@@ -178,7 +181,8 @@ class LocalRouter:
                 "format": self._schema,
                 "system": SYSTEM,
                 "messages": [{"role": "user",
-                              "content": self._user_content(utterance, candidates)}],
+                              "content": self._user_content(utterance, candidates,
+                                                            context)}],
                 # Greedy: this is a classification with one right answer, and run-to-run
                 # variance is already the thing being controlled for.
                 "options": {"temperature": 0.0},

@@ -36,6 +36,7 @@ from .knowledge import Candidate, Lexicon
 # `{}` in the text half of a decline, which rendered verbatim on the player's card.
 # routing.py's module docstring always said the output-format sentence is the one thing
 # that differs per backend; this import was the exception that proved it.
+from .routing import context_block
 from .routing_anthropic import SYSTEM
 from .tools import Decline, ToolCall
 
@@ -203,14 +204,19 @@ class GeminiRouter:
         self._use_cache = use_cache
         self._cache: str | None = None
 
-    def _user_content(self, utterance: str, candidates: list[Candidate]) -> str:
+    def _user_content(self, utterance: str, candidates: list[Candidate],
+                      context: list | None = None) -> str:
         if candidates:
             hints = "\n".join(
                 f"  {c.score:.2f}  {c.canonical}  ({c.kind}, matched {c.matched_text!r})"
                 for c in candidates)
         else:
             hints = "  (none)"
-        return (f"Utterance:\n  {utterance}\n\n"
+        # The context block sits in the user turn, not the cached system prefix: it
+        # changes on every request, and putting it in the cache would invalidate 16.4k
+        # tokens of tool schemas on each follow-up.
+        return (f"{context_block(context)}"
+                f"Utterance:\n  {utterance}\n\n"
                 f"Candidate entities, best first:\n{hints}")
 
     def _create_cache(self) -> str | None:
@@ -272,7 +278,8 @@ class GeminiRouter:
                         self._cache, CACHE_TTL_S)
         self._cache = None
 
-    def route(self, utterance: str, candidates: list[Candidate]) -> ToolCall | Decline:
+    def route(self, utterance: str, candidates: list[Candidate],
+              context: list | None = None) -> ToolCall | Decline:
         if self._use_cache and self._cache is None:
             self._cache = self._create_cache()
             self._use_cache = self._cache is not None
@@ -284,7 +291,8 @@ class GeminiRouter:
             gen["thinkingConfig"] = {"thinkingLevel": self._thinking_level}
         body: dict[str, Any] = {
             "contents": [{"role": "user",
-                          "parts": [{"text": self._user_content(utterance, candidates)}]}],
+                          "parts": [{"text": self._user_content(
+                              utterance, candidates, context)}]}],
             "generationConfig": gen,
         }
         if self._cache:
