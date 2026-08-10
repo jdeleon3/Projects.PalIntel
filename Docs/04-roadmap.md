@@ -1472,6 +1472,52 @@ find: …", and alphabetically that opened with Ancient Bark, Ancient Bone and A
 — seven clusters each, on Feybreak, nobody's question. The list is now ordered by how much
 data backs each resource and capped at six with "and N more".
 
+### Phase 2 progress — conversation memory (2026-08-10)
+
+[ADR-0013](adr/0013-conversation-memory.md) shipped at its stated defaults: 4 turns,
+5 minutes, per user, in-process only. **22/22 on the follow-up eval set**
+(`tools/eval/score_followups.py`), which is the phase's "follow-up resolution correct on a
+20-case eval set" criterion — met on the deterministic router, not yet on the model.
+
+**The eval has two columns and the second is the one that matters.** Twelve cases are
+coverage: does the referent resolve. Ten are *negative* — cases where memory must **not**
+fire, because the question is fresh, or opens like a follow-up but carries its own verb,
+or has nothing left to refer to. A run that scores 12/12 on the first and loses the second
+has made the system worse, since a stale referent produces a card that looks entirely
+authoritative. Both columns are clean, and the single-turn fast path is unchanged at
+14/18 · 23/49 · 0 stolen, so memory costs nothing when there is nothing to remember.
+
+**Only answered turns are stored, and only resolved entities.** A decline resolved
+nothing, so storing its best-guess candidate would manufacture a referent — the exact
+failure the ADR warns about. `"where can I find Chillet"` → `"what should I research
+next"` (declines) → `"where's the closest one"` correctly reaches back past the decline to
+Chillet.
+
+**The inheritance rule took three attempts, and driving a real conversation found each
+one.** What a follow-up may borrow from the previous turn is the *verb*, never the entity:
+
+- `"and coal?"` after a Pal query is a **resource** question. Matching the remembered tool
+  instead of the named subject answered it with the Pal again.
+- `"how about breeding Anubis"` opens like a follow-up and carries its own verb. Lending
+  it the previous turn's verb answers a breeding question with a map location.
+- `"and Banner and Cryst?"` names something the ranker cannot place. Falling back to the
+  remembered entity answered a Pal question with the previous turn's coal.
+
+All three are the same rule: strip the opener, the function words and the named entity,
+and look at what is left. Nothing left means elliptical — inherit. Modifiers only
+(`alpha`, `at night`, `the closest one`) — inherit the entity too. Anything else is
+content this router cannot place, and the honest move is to defer to a model that can read
+the sentence.
+
+**A tokenisation bug hid inside that rule for one commit.** `STOPWORDS` holds `where`, not
+`where's`, so tokenising with the apostrophe attached made `"where's the closest one"` look
+like it carried content, and every anaphoric follow-up became a restatement request.
+
+**Voice follow-ups are shared, and that is an input limitation rather than a choice.** The
+local microphone cannot tell two people apart, so the voice path keys memory on the
+literal `"voice"` while each Discord user's typed follow-ups are their own. Multi-speaker
+attribution is the phase item that would fix it.
+
 ---
 
 ## Phase 3 — Graph search and scoring: Q3 + Q5 (target: 3 weeks)
