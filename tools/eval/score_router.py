@@ -30,8 +30,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from palintel.knowledge import KnowledgeBase  # noqa: E402
 from palintel.routing import CANDIDATE_LIMIT  # noqa: E402
-from palintel.routing_anthropic import (PRICES, ClaudeRouter,  # noqa: E402
-                                        pal_spawn_schema)
+from palintel.routing_anthropic import PRICES, ClaudeRouter  # noqa: E402
 from _router_tools import eval_tool_schemas  # noqa: E402
 from palintel.tools import Decline  # noqa: E402
 
@@ -47,7 +46,9 @@ def build_router(model: str, kb: KnowledgeBase, think: bool = False,
     """
     locatable = {n.resource for n in kb.nodes}
     pals = kb.lexicon.pals()
-    extra = [pal_spawn_schema(pals), *eval_tool_schemas(pals)]
+    # find_pal_spawns is production from Phase 2 and comes from the shared registry;
+    # only the not-yet-built tools are still injected here.
+    extra = eval_tool_schemas(pals)
 
     # A "local:" prefix selects the Ollama-backed router. Same registry, same prompts,
     # same scoring - the enum moves from the tool schema into a decoding grammar.

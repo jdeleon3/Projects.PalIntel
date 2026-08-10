@@ -111,16 +111,34 @@ class Usage:
 
 
 def pal_spawn_schema(pals: list[str]) -> dict[str, Any]:
-    """Q2's tool. Not dispatched in Phase 1 - registered only by the A5 harness.
+    """Q2's tool, dispatched from Phase 2. Registered by every backend and by the A5
+    harness, which needs it so a Pal question has somewhere to put its entity - without
+    it those prompts can only be scored "declined", measuring the tool registry rather
+    than entity resolution.
 
-    Without it, every Pal question has nowhere to put its entity and can only be scored
-    "declined", which measures the tool registry rather than entity resolution.
+    The descriptions carry more weight than Q1's did. With one tool registered the router
+    only had to decide "is this a resource question or nothing"; with two it has to
+    separate classes that share almost every phrasing, since "where's the nearest coal"
+    and "where's the nearest Chillet" differ only in the entity. Naming the other tool
+    here puts the discriminator where the model applies it.
+
+    The parameter list stays exactly what the A5 runs measured - `pal` alone. Encounter
+    kind ("the ALPHA Anubis") and time of day are read off the utterance by the
+    dispatcher instead, for two reasons. Strict tool use expresses an optional parameter
+    as a nullable type that is still `required`, which has no clean form for an enum, and
+    inventing one would need validating against both hosted APIs. And the modifiers are
+    the deterministic part: `StubRouter` already lifts "level 30" out of the utterance
+    with a regex, and doing the same here means the fast path and the model path derive
+    them identically rather than one of them guessing.
     """
     return {
         "name": "find_pal_spawns",
         "description": (
-            "Locate where a Pal spawns in the wild. Call this when the player asks "
-            "where to find, catch, or encounter a specific Pal."
+            "Locate where a Pal species is found in the overworld. Call this when the "
+            "player asks where to find, catch, or encounter a specific Pal - for "
+            "example \"where can I find Chillet\", \"where do Foxparks spawn\", or "
+            "\"where's the alpha Anubis\". The subject is a Pal, a creature; use "
+            "find_resource_nodes for mineable resources like ore, coal and quartz."
         ),
         "strict": True,
         "input_schema": {
@@ -133,6 +151,16 @@ def pal_spawn_schema(pals: list[str]) -> dict[str, Any]:
             "additionalProperties": False,
         },
     }
+
+
+def registry(resources: list[str], pals: list[str]) -> list[dict[str, Any]]:
+    """The tools PalIntel actually dispatches. One definition, three backends.
+
+    Both hosted backends and the local grammar build from this list, so a tool cannot be
+    registered with one router and not another - which would make their measurements
+    incomparable while still looking like a fair test.
+    """
+    return [_tool_schema(resources), pal_spawn_schema(pals)]
 
 
 def _tool_schema(resources: list[str]) -> dict[str, Any]:
@@ -199,7 +227,7 @@ class ClaudeRouter:
                                  else set(lexicon.resources()))
         self._model = model
         self.name = f"claude:{model}"
-        self._tools = [_tool_schema(self._resources), *(extra_tools or [])]
+        self._tools = [*registry(self._resources, lexicon.pals()), *(extra_tools or [])]
         self.last_usage: Usage | None = None
 
     def _user_content(self, utterance: str, candidates: list[Candidate]) -> str:

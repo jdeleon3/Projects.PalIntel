@@ -118,7 +118,7 @@ class LocalRouter:
     def __init__(self, lexicon: Lexicon, locatable: set[str] | None = None,
                  extra_tools: list[dict] | None = None, model: str = MODEL,
                  host: str = HOST, think: bool = False):
-        from .routing_anthropic import _tool_schema  # same registry, one definition
+        from .routing_anthropic import registry  # same registry, one definition
 
         self._resources = sorted(locatable if locatable is not None
                                  else set(lexicon.resources()))
@@ -127,7 +127,7 @@ class LocalRouter:
         self._think = think
         self.name = f"local:{model}"
 
-        tools = [_tool_schema(self._resources), *(extra_tools or [])]
+        tools = [*registry(self._resources, lexicon.pals()), *(extra_tools or [])]
         self._tool_block = _render_tools(tools)
         # Every name the grammar may emit: the full lexicon plus locatable resources.
         self._entities = sorted(set(lexicon.canonical_names) | set(self._resources))

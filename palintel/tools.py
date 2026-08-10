@@ -74,5 +74,9 @@ def find_resource_nodes_schema(resources: list[str]) -> dict[str, Any]:
 # Registered tools for Phase 1. Exactly one: the vertical slice is deliberately narrow
 # so a failure is unambiguously in the pipeline rather than in domain logic
 # (Docs/adr/0009-v1-vertical-slice.md).
+#
+# NOTE: this is not the registry the backends read. They share
+# `routing_anthropic._tool_schema` and `pal_spawn_schema` - one definition, rendered into
+# Gemini's function declarations and the local grammar from the same Anthropic form.
 def schemas(resources: list[str]) -> list[dict[str, Any]]:
     return [find_resource_nodes_schema(resources)]

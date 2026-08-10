@@ -30,8 +30,7 @@ sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(Path(__file__).parent))
 
 from palintel.knowledge import KnowledgeBase  # noqa: E402
-from palintel.routing_anthropic import (ClaudeRouter,  # noqa: E402
-                                        pal_spawn_schema)
+from palintel.routing_anthropic import ClaudeRouter  # noqa: E402
 from _router_tools import eval_tool_schemas  # noqa: E402
 from palintel.tools import Decline  # noqa: E402
 
@@ -80,8 +79,7 @@ def main() -> None:
     # timeout_s=None keeps the SDK default: this measures run-to-run variance, and a
     # request cut off at the runtime bound would enter the tally as a decline.
     router = ClaudeRouter(kb.lexicon, {n.resource for n in kb.nodes}, model=args.model,
-                          extra_tools=[pal_spawn_schema(kb.lexicon.pals()),
-                                       *eval_tool_schemas(kb.lexicon.pals())],
+                          extra_tools=eval_tool_schemas(kb.lexicon.pals()),
                           timeout_s=None)
 
     print(f"model={args.model}  boundary prompts={len(selected)}  reps={args.reps}  "

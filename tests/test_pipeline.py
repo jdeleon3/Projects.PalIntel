@@ -184,17 +184,36 @@ def test_plain_generic_resource_still_wins_alone(pipe: Pipeline):
     assert pipe.handle("find me an ore spot").call.args["resource"] == "ore"
 
 
-def test_pal_question_declines_instead_of_grabbing_a_weak_resource(pipe: Pipeline):
+def test_pal_question_never_grabs_a_weak_resource(pipe: Pipeline):
     """"Where can I find Suzaku" answered with a coal location.
 
     Suzaku ranked first at 1.00, but the stub skipped it (Pal, not resource) and took
     the first resource candidate at any score - coal, matched at 0.57 against the word
     "pal" in the wake phrase. ADR-0016 moved the confidence judgement to the router;
     the stub has no context to judge with, so it needs its own floor.
+
+    Phase 2 changes what follows the guard, not the guard: with `find_pal_spawns`
+    registered a confident Pal is answered rather than declined. What must never happen
+    - then or now - is the query landing on the resource tool.
     """
     out = pipe.handle("Hey Pal, where can I find Suzaku?")
-    assert isinstance(out.call, Decline)
-    assert "Suzaku" in out.call.reason
+    assert isinstance(out.call, ToolCall)
+    assert out.call.name == "find_pal_spawns"
+    assert out.call.args["pal"] == "Suzaku"
+
+
+def test_pal_guard_still_declines_when_no_pal_tool_is_registered(kb: KnowledgeBase):
+    """The Phase 1 router, reachable via `pal_spawns=False`, is unchanged.
+
+    Keeping it constructible is what lets a Phase 2 regression be attributed to
+    registering the second tool rather than to the cue width.
+    """
+    from palintel.routing import StubRouter
+    utterance = "Hey Pal, where can I find Suzaku?"
+    r = StubRouter(kb.lexicon, {n.resource for n in kb.nodes}, pal_spawns=False)
+    call = r.route(utterance, kb.lexicon.rank(utterance))
+    assert isinstance(call, Decline)
+    assert "Suzaku" in call.reason
 
 
 def test_wake_word_never_matches_an_entity(kb: KnowledgeBase):
@@ -407,15 +426,21 @@ def test_backstop_rescues_what_the_fast_path_would_not(kb: KnowledgeBase):
 
 def test_backstop_does_not_loosen_the_pal_guard(kb: KnowledgeBase):
     """A permissive backstop answers weaker RESOURCE matches. It must not become quicker
-    to call something a Pal question and give up, which is what happened when one
-    constant gated both."""
+    to decide an utterance names a Pal, which is what happened when one constant gated
+    both - and which now steals the query from the resource branch rather than merely
+    giving up on it."""
     locatable = {n.resource for n in kb.nodes}
     backstop = StubRouter(kb.lexicon, locatable, cues="wide",
                           resource_floor=BACKSTOP_CONFIDENT)
     utterance = "hey pal, where can I find Suzaku?"
     call = backstop.route(utterance, kb.lexicon.rank(utterance))
-    assert isinstance(call, Decline)
-    assert "Suzaku" in call.reason
+    assert isinstance(call, ToolCall) and call.name == "find_pal_spawns"
+
+    # The guard's own bar is unmoved by the lower resource floor: "near a store" ranks
+    # ore at 0.75 against a Pal at 0.75, and must still reach the resource branch.
+    heard = "we're sitting near a store"
+    out = backstop.route(heard, kb.lexicon.rank(heard))
+    assert isinstance(out, ToolCall) and out.name == "find_resource_nodes"
 
 
 def test_backstop_floor_stays_above_where_wrong_answers_start(kb: KnowledgeBase):

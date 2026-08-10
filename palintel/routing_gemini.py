@@ -179,7 +179,7 @@ class GeminiRouter:
                  model: str = MODEL, use_cache: bool = True,
                  thinking_level: str | None = None,
                  timeout_s: float = RUNTIME_TIMEOUT_S):
-        from .routing_anthropic import _tool_schema  # one registry, one definition
+        from .routing_anthropic import registry  # one registry, one definition
 
         key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
         if not key:
@@ -193,7 +193,7 @@ class GeminiRouter:
 
         self._resources = sorted(locatable if locatable is not None
                                  else set(lexicon.resources()))
-        tools = [_tool_schema(self._resources), *(extra_tools or [])]
+        tools = [*registry(self._resources, lexicon.pals()), *(extra_tools or [])]
         self._decls = _to_function_declarations(tools)
         self._entities = sorted(set(lexicon.canonical_names) | set(self._resources))
         self.tool_names = [t["name"] for t in tools]

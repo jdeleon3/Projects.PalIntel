@@ -196,11 +196,50 @@ class ResourceNode:
         return math.dist((self.map_x, self.map_y), (x, y))
 
 
+@dataclass(frozen=True)
+class SpawnArea:
+    """Somewhere a Pal can be encountered in the overworld.
+
+    An area is a place to stand, not a pinpoint: `spawn_points` spawner actors within
+    `spread` of the reported coordinate. `encounter_share` is the weight share of the
+    sheets involved - the chance a spawner here rolls this species at all - and it is the
+    difference between "one of the three things in this field" and "a 1-in-100 roll".
+    Reporting a location without it sends the player to camp a spot they will never see
+    the Pal at. See tools/ingest/build_pal_spawns.py.
+    """
+    area_id: str
+    pal: str
+    kind: str          # "normal" | "alpha" | "predator"
+    map_x: float
+    map_y: float
+    spawn_points: int
+    spread: float
+    level_min: int
+    level_max: int
+    night_only: bool
+    encounter_share: float
+
+    def distance_to(self, x: float, y: float) -> float:
+        return math.dist((self.map_x, self.map_y), (x, y))
+
+    @property
+    def density(self) -> float:
+        """Expected encounters if you stand here. The ordering key when position is
+        unknown, and the reason a rare Pal's 40-point area can outrank a common one's."""
+        return self.spawn_points * self.encounter_share
+
+
 @dataclass
 class KnowledgeBase:
     game_version: str
     lexicon: Lexicon
     nodes: list[ResourceNode] = field(default_factory=list)
+    spawns: list[SpawnArea] = field(default_factory=list)
+    # Pals the game knows but the overworld never places: tower pairs, raid bosses, the
+    # Terraria collab, dungeon-only species. Held separately so "Jetragon does not spawn
+    # in the overworld" and "I have no data for that" stay different answers - only one
+    # of them is true, and a player acts differently on each.
+    pals_without_areas: frozenset[str] = frozenset()
 
     @classmethod
     def load(cls, version: str = "1.0.2", root: Path | None = None) -> "KnowledgeBase":
@@ -218,7 +257,18 @@ class KnowledgeBase:
                 danger=n.get("danger"), area_hint=n.get("area_hint"),
             ))
 
-        return cls(game_version=raw["game_version"], lexicon=lexicon, nodes=nodes)
+        spawn_raw = json.loads((base / "pal_spawns.json").read_text(encoding="utf-8"))
+        spawns = [SpawnArea(
+            area_id=a["area_id"], pal=a["pal"], kind=a["kind"],
+            map_x=a["map_x"], map_y=a["map_y"],
+            spawn_points=a["spawn_points"], spread=a["spread_map_units"],
+            level_min=a["level_min"], level_max=a["level_max"],
+            night_only=a["night_only"], encounter_share=a["encounter_share"],
+        ) for a in spawn_raw["areas"]]
+
+        return cls(game_version=raw["game_version"], lexicon=lexicon, nodes=nodes,
+                   spawns=spawns,
+                   pals_without_areas=frozenset(spawn_raw["pals_without_areas"]))
 
     def summary(self) -> dict[str, object]:
         by_res: dict[str, int] = {}
@@ -230,4 +280,6 @@ class KnowledgeBase:
             "resources": self.lexicon.resources(),
             "node_clusters": len(self.nodes),
             "by_resource": dict(sorted(by_res.items())),
+            "spawn_areas": len(self.spawns),
+            "pals_locatable": len({s.pal for s in self.spawns}),
         }

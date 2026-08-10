@@ -6,6 +6,7 @@ wake-word detection and transcription already done (Docs/adr/0012-dual-input-cha
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -49,6 +50,29 @@ class PlayerState:
 # pipeline asks a clarifying question instead. Variant families are always exactly 2, so
 # the cap only binds on multi-entity queries where more than one slot is ambiguous.
 MAX_CARDS = 2
+
+
+# Encounter-kind and time-of-day modifiers, read off the utterance rather than asked of
+# the model. See routing_anthropic.pal_spawn_schema for why they are not tool parameters:
+# strict tool use has no clean nullable-enum form, and deriving them here means the fast
+# path and the model path agree by construction instead of by luck.
+#
+# "boss" is deliberately absent. Players call tower bosses, raid bosses and field alphas
+# all "boss", and only the last is in this dataset - so matching it would answer "where's
+# the Zoe boss" with a field location for a tower fight. "alpha" and "lord" are
+# unambiguous; "boss" is not, and the model still sees the word and can route on it.
+_ALPHA = re.compile(r"\b(alpha|lord)\b", re.I)
+_PREDATOR = re.compile(r"\bpredator\b", re.I)
+_NIGHT = re.compile(r"\b(at night|night-?time|nocturnal|after dark)\b", re.I)
+
+
+def spawn_kind(utterance: str) -> str | None:
+    """Which encounter the phrasing asks for, or None to fall through the kinds."""
+    if _ALPHA.search(utterance):
+        return "alpha"
+    if _PREDATOR.search(utterance):
+        return "predator"
+    return None
 
 
 @dataclass
@@ -99,6 +123,11 @@ def build_router(kb: KnowledgeBase, prefer: str = "auto",
     # single query: the fast path had already asked that exact stub the same question, so
     # the fallthrough was guaranteed to re-decline. Sharing looked like the careful choice
     # and was actually what made the safety net decorative.
+    # Both now register `find_pal_spawns`, gated at PAL_CONFIDENT and on the narrower cue
+    # set. Measured over the A5 transcripts, adding the Pal class to either stub claimed
+    # nothing outside the two query classes and produced no wrong card - which is the
+    # result that had to be established rather than assumed, since Phase 1's "claimed
+    # nothing outside Q1" was scored when there was no other tool to claim for.
     fast = StubRouter(kb.lexicon, locatable, cues=cfg.cues)
     backstop = StubRouter(kb.lexicon, locatable, cues="wide",
                           resource_floor=BACKSTOP_CONFIDENT)
@@ -193,6 +222,33 @@ class Pipeline:
             log.info("find_resource_nodes(%s) -> %d/%d",
                      args, len(result.nodes), result.total_available)
             return Outcome([cards.resource_card(result)], call, candidates)
+
+        if call.name == "find_pal_spawns":
+            pal = call.args.get("pal")
+            if not pal:
+                # Same failure the resource tool sees: a model can name a registered tool
+                # and omit its only required argument. An honest decline, not a TypeError.
+                log.warning("router called %s with no pal: %s", call.name, call.args)
+                return self._decline(
+                    Decline(reason="no Pal identified"), candidates)
+
+            kind = spawn_kind(utterance)
+            night = True if _NIGHT.search(utterance) else None
+            near = state.player_coords
+
+            def render(name: str) -> Card:
+                result = execution.find_pal_spawns(
+                    self.kb, name, kind=kind, near=near, night=night)
+                log.info("find_pal_spawns(%s, kind=%s, night=%s) -> %d/%d",
+                         name, kind, night, len(result.areas), result.total_available)
+                return cards.spawn_card(result)
+
+            # A Paldeck slot holding a base Pal and its element variant has two correct
+            # answers, and they spawn in different places - Menasting in the desert,
+            # Menasting Terra in the dunes. Answering only the base would be wrong half
+            # the time, so both render.
+            return Outcome(self._cards_for(self.kb.lexicon.family(pal), render),
+                           call, candidates)
 
         # A tool the router knows about but the dispatcher does not is a wiring bug.
         # Fail loudly here rather than rendering something plausible.

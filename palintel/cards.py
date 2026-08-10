@@ -12,7 +12,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 
-from .execution import ResourceResult
+from .execution import ResourceResult, SpawnResult
 from .tools import Decline
 
 # Tier colours, so a reader can tell fact from recommendation from reference at a glance
@@ -91,6 +91,71 @@ def resource_card(result: ResourceResult) -> Card:
         # Say what the ordering means rather than letting "1." imply nearest.
         footer += SEP + "sorted by size (no position known)"
     return Card(title=f"{name} locations", lines=lines, footer=footer, colour=TIER_FACT)
+
+
+KIND_LABEL = {"alpha": "field alpha", "predator": "predator"}
+
+
+def spawn_card(result: SpawnResult) -> Card:
+    """Where a Pal is found. Same shape as the resource card, one column different.
+
+    That column is `encounter_share`, and it is the field that stops this being a worse
+    answer than no answer. A coordinate alone reads as "go here and you will find one";
+    for a Pal sitting at 2% weight in a shared sheet, standing there for ten minutes and
+    seeing nothing is the normal outcome. The percentage is what makes the card honest
+    about that rather than the player concluding the data is wrong.
+    """
+    if not result.in_overworld:
+        # Not a miss. The game genuinely never places this one in the world - a tower
+        # boss, a raid boss, a dungeon-only species - and "keep looking" is wrong advice.
+        return Card(
+            title=f"{result.pal} isn't found in the overworld",
+            lines=[f"**{result.pal}** has no wild spawn on the map. It comes from a "
+                   f"tower, a raid, a dungeon or breeding, not from a location I can "
+                   f"point you at."],
+            colour=TIER_DECLINE,
+        )
+
+    if not result.areas:
+        detail = " at night" if result.kind is None else ""
+        return Card(
+            title=f"No {result.pal} spawns found",
+            lines=[f"Nothing matched in my data{detail}."],
+            colour=TIER_DECLINE,
+        )
+
+    lines = []
+    if result.kind_substituted:
+        # The player asked where to find one and the only answer is a level 55 boss.
+        # Leading with that, because walking in expecting an ordinary encounter is how
+        # a technically-correct coordinate gets someone killed.
+        lines.append(f"_The only {result.pal} out there is a "
+                     f"{KIND_LABEL.get(result.kind, result.kind)}._")
+
+    for i, a in enumerate(result.areas, 1):
+        bits = [f"**{i}. ({a.map_x:.0f}, {a.map_y:.0f})**"]
+        bits.append(f"lvl {a.level_min}" if a.level_min == a.level_max
+                    else f"lvl {a.level_min}-{a.level_max}")
+        if result.near is not None:
+            bits.append(f"{a.distance_to(*result.near):.0f} units away")
+        # A one-point area is a single spawner, not a region. Saying "1 spawn point"
+        # sets the right expectation for standing there.
+        bits.append(f"{a.spawn_points} spawn point"
+                    f"{'s' if a.spawn_points != 1 else ''}")
+        if a.kind != "normal":
+            bits.append(KIND_LABEL.get(a.kind, a.kind))
+        elif a.encounter_share < 0.99:
+            bits.append(f"{a.encounter_share:.0%} of spawns here")
+        if a.night_only:
+            bits.append("night only")
+        lines.append(SEP.join(bits))
+
+    footer = f"{result.total_available} area{'s' if result.total_available != 1 else ''} known"
+    if result.near is None:
+        # Say what the ordering means rather than letting "1." imply nearest.
+        footer += SEP + "sorted by likelihood (no position known)"
+    return Card(title=f"{result.pal} locations", lines=lines, footer=footer,
+                colour=TIER_FACT)
 
 
 def clarify_card(options: list[str]) -> Card:
