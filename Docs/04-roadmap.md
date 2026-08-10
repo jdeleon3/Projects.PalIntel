@@ -1242,7 +1242,11 @@ grinding out fourteen more resource queries against a build that is about to cha
 
 ---
 
-## Phase 2 — Breadth and conversation: Q2 (target: 2 weeks)
+## Phase 2 — Breadth and conversation: Q2 (target: 2 weeks) — **closed 2026-08-10**
+
+*Intent, entity and follow-up criteria all met on the delivered classes. End-to-end
+latency is carried into Phase 3, unmeasured for a second phase; the A5 entity gate
+remains where Phase 0 left it. See the exit section below.*
 
 - Full Paldeck + spawn ingest; complete lexicon generation
 - All resource types for Q1
@@ -1589,6 +1593,67 @@ a speaker-embedding model and an enrolment step, and **no evidence has been gath
 the case arises here**: it requires two people at one microphone, which is not the
 setup any session so far has used. Building it now would be building for a hypothetical,
 so it is recorded as a decision rather than an omission.
+
+### Phase 2 exit — closed on its own bars, with A5 still open (2026-08-10)
+
+**Phase 2 exit: intent ✅ · entity ✅ on the delivered classes · follow-ups ✅ ·
+latency ◐ carried forward again.**
+
+Scored on the full 232-utterance A5 set against Gemini 3.6 Flash, $1.34, 654s:
+
+| criterion | outcome |
+|---|---|
+| ≥ 90% intent accuracy across both classes | ✅ **98.2%** (56/57) |
+| ≥ 95% entity extraction | ✅ **96.5%** (55/57) on Q1 + Q2 |
+| Follow-up resolution on a 20-case set | ✅ **22/22** |
+
+| class | n | intent | entity |
+|---|---|---|---|
+| Q1 resource | 14 | **100%** | **100%** |
+| Q2 pal | 43 | 97.7% | 95.3% |
+
+**The wider enum cost nothing.** Q1 went from 4 resources to 19 and `find_pal_spawns`
+gained a real description, and the headline moved the right way against Phase 1's final
+measurement — 89.2% → **90.1%** exact, 3.4% → **3.0%** wrong, p95 6673ms → **6030ms**.
+That is inside the ±1.5-point measurement band, so the honest claim is *unchanged, and
+specifically not worse*, which is the thing that had to be established.
+
+**Two denominators, and conflating them would flatter this.** 96.5% is entity extraction
+on the two classes Phase 2 actually dispatches. Across all 232 utterances — seven query
+classes, five of which have no implementation and exist in the harness only so an entity
+has somewhere to go — it is **90.1%**. That is the A5 gate, it has been failing since
+Phase 0, and it was accepted at measured behaviour there and again in Phase 1. Phase 2
+does not change it and does not claim to.
+
+**One genuinely wrong entity in 57**: *"where can I find Leithbunk"* → Lifmunk, where
+Leezpunk was meant — the same hard case Phase 1 named when it rejected `thinkingLevel:
+minimal`. One honest decline on a mangled name (*"Hippow where do Vidrus spawn?"*). Five
+out-of-class prompts landed on `find_pal_spawns` with **the right entity every time**, and
+at least two are defensible rather than wrong: the spawn card reports `encounter_share`,
+which is a direct answer to *"how rare is Titrois?"*.
+
+**A measurement bug found while scoring, and it was mine.** The class labeller folded
+"how do I get X" into the location templates, so *"how do I get Broncherry Aqua"* was
+scored as a location question and the model's correct `get_breeding_combo` counted as a
+routing failure. Six of seven apparent intent failures were that. For a resource the
+phrase means "where"; for a Pal it means breeding or catching. Fixing it also corrected
+the fast-path Q2 denominator from 49 to 43 — every conclusion there held, since the
+numbers that mattered were zeros.
+
+**Latency, carried forward a second time.** The question Phase 1 posed was *what fraction
+of a realistic two-class mix the fast path can still carry*, and the answer is **61%**
+(37 of 61), down from 78% when Q1 was the only class — the drop it predicted, for the
+reason it predicted. Router p95 is 6.0s on transcripts, but end-to-end voice p95 with STT
+and rendering in the path still has no sample: that needs a play session, not a harness,
+and it is the one Phase 1 exit criterion that has now been open across two phases.
+
+**Known issue, not fixed here.** `crude_oil` is in the lexicon but not in the tool enum,
+which is built from resources that *have* nodes — so the model cannot route it and cannot
+reach the honest "crude oil isn't a mineable node, it comes from oil rigs" card; it
+declines with something vaguer instead. The fast path claims it first in the shipped
+stack, so the player sees the right card today, but that is the stub getting there first
+rather than a design that holds. Recorded rather than fixed because changing the tool
+schema immediately after measuring against it would invalidate the baseline above.
 
 ---
 
