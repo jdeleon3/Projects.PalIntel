@@ -85,8 +85,12 @@ def _voice_status(cfg: Config, mic) -> str:
         return "off (voice.enabled = false)"
     if mic is None:
         return "**enabled but not running** - check the startup log"
+    # Who the mic is attributed to belongs here rather than nowhere: it decides whose
+    # conversation memory a spoken query joins, and unattributed voice silently not
+    # sharing a thread with the same person's typed follow-ups is invisible otherwise.
+    heard_as = cfg.voice.speaker or "voice (unattributed - set voice.speaker)"
     return (f"{mic.device_name} - {'+'.join(mic.wake.names)} "
-            f"@ {cfg.voice.threshold:g}")
+            f"@ {cfg.voice.threshold:g}, heard as {heard_as}")
 
 
 def build_pipeline(cfg: Config) -> Pipeline:
@@ -339,7 +343,13 @@ def run() -> None:
                 activity.record("empty", f"{utt.seconds:.1f}s")
                 return
             activity.record("heard", text[:80])
-            await _answer(text_channel, pipe, text, "voice", activity, watcher,
+            # The mic cannot say who spoke, so attribution is configuration: naming the
+            # person at the machine is what lets a spoken question be followed up in
+            # text, which is what ADR-0012 promises. Unset, it stays "voice" - guessing
+            # which Discord user is sitting there would attribute speech to the wrong
+            # person in a shared channel, and that is worse than not joining the two.
+            await _answer(text_channel, pipe, text, cfg.voice.speaker or "voice",
+                          activity, watcher,
                           started=utt.ended_at, channel_kind="voice")
 
         def _report(fut) -> None:

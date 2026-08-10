@@ -65,11 +65,22 @@ class VoiceConfig:
     `models` is a list because a pretrained model can run alongside a custom one during
     a transition - inference is CPU-bound at a realtime factor near 0.015, so the second
     model is close to free, and the highest score wins.
+
+    `speaker` is who the microphone belongs to, and it exists because the mic cannot say.
+    Conversation memory is per person (ADR-0013) and text keys on the Discord display
+    name, so without this the voice path keys on the literal "voice" and one person's own
+    spoken question cannot be followed up in text - which is exactly what ADR-0012
+    promises works. Set it to your Discord display name to join the two.
+
+    Left unset it stays "voice", because guessing which Discord user is sitting at the
+    machine would be wrong in a shared channel, and silently attributing speech to the
+    wrong person is worse than not joining the two at all.
     """
     enabled: bool = False
     models: tuple[str, ...] = ("hey_pal",)
     threshold: float = 0.1
     device: int | str | None = None      # None = the system default input
+    speaker: str | None = None
 
 
 @dataclass(frozen=True)
@@ -151,7 +162,8 @@ class Config:
                                   listen_mode=mode, prefix=d.get("prefix", "?")),
             voice=VoiceConfig(enabled=bool(v.get("enabled", False)), models=models,
                               threshold=float(v.get("threshold", 0.1)),
-                              device=device),
+                              device=device,
+                              speaker=(v.get("speaker") or None)),
             router=RouterConfig(fast_path=bool(r.get("fast_path", True)), cues=cues),
             data_version=os.environ.get(
                 "PALINTEL_DATA_VERSION", (raw.get("data", {}) or {}).get("version", "1.0.2")),

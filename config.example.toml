@@ -38,6 +38,14 @@ enabled = false
 # Run `python -c "from palintel.mic import devices; print(devices())"` to list them.
 # device = 1
 
+# Who the microphone belongs to. Conversation memory is per person, and the text path
+# keys on your Discord display name - so setting this to the same name is what lets you
+# ask by voice and follow up by text ("where can I find Chillet" ... "what about the
+# alpha?"). Left unset, spoken queries are attributed to "voice" and keep their own
+# thread, because guessing which Discord user is at the machine would attribute speech
+# to the wrong person in a shared channel.
+# speaker = "YourDiscordName"
+
 # Wake-word models. Bare names are openWakeWord's pretrained set
 # (hey_jarvis, hey_mycroft, hey_rhasspy, alexa); "hey_pal" is the custom model built
 # by tools/wakeword/. Several can run at once - inference is CPU-bound at a realtime

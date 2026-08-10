@@ -134,3 +134,33 @@ def test_redacted_never_exposes_the_token(tmp_path, monkeypatch):
     shown = Config.load(p).redacted()["token"]
     assert secret not in shown
     assert "SUPERSECRET" not in shown
+
+
+def test_voice_speaker_defaults_to_unattributed(tmp_path):
+    """Unset, spoken queries keep their own memory thread.
+
+    Guessing which Discord user is at the machine would attribute speech to the wrong
+    person in a shared channel, which is worse than not joining voice and text at all.
+    """
+    p = _write(tmp_path, '[discord]\ntoken = "abc"\nchannel_id = 1\n[voice]\n')
+    assert Config.load(p).voice.speaker is None
+
+
+def test_voice_speaker_is_read_from_config(tmp_path):
+    """What joins a spoken question to its typed follow-up.
+
+    Conversation memory is per person and the text path keys on the Discord display
+    name, so naming the person at the microphone is what makes ADR-0012's "ask by voice,
+    follow up in text" actually work.
+    """
+    p = _write(tmp_path,
+               '[discord]\ntoken = "abc"\nchannel_id = 1\n'
+               '[voice]\nspeaker = "jdeleon3"\n')
+    assert Config.load(p).voice.speaker == "jdeleon3"
+
+
+def test_blank_speaker_is_treated_as_unset(tmp_path):
+    """An empty string would otherwise become a memory key that no text path ever uses."""
+    p = _write(tmp_path,
+               '[discord]\ntoken = "abc"\nchannel_id = 1\n[voice]\nspeaker = ""\n')
+    assert Config.load(p).voice.speaker is None

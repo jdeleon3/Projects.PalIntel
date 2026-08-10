@@ -144,10 +144,24 @@ def test_a_follow_up_inherits_the_tool_not_just_the_entity(pipe: Pipeline):
 
 
 def test_follow_ups_span_input_channels(pipe: Pipeline):
-    """Ask by voice, follow up by text. Both paths key memory by the same speaker."""
-    pipe.handle("where can I find Chillet", who="jd")
-    out = pipe.handle("where's the closest one", who="jd")
+    """Ask by voice, follow up by text - ADR-0012's promise, and the whole reason
+    `voice.speaker` exists.
+
+    The microphone cannot say who spoke, so the voice path keys memory on the configured
+    speaker name. Set it to the same Discord display name the text path uses and the two
+    channels share one thread; leave it unset and they do not, which is the honest
+    default because guessing would attribute speech to the wrong person.
+    """
+    pipe.handle("where can I find Chillet", who="jd")          # spoken
+    out = pipe.handle("where's the closest one", who="jd")     # typed
     assert isinstance(out.call, ToolCall) and out.call.args["pal"] == "Chillet"
+
+
+def test_unattributed_voice_keeps_its_own_thread(pipe: Pipeline):
+    """The default. Not joining the two is a limitation; joining them wrongly is a bug."""
+    pipe.handle("where can I find Chillet", who="voice")
+    out = pipe.handle("where's the closest one", who="jd")
+    assert isinstance(out.call, Decline) and out.call.needs_restatement
 
 
 # --- follow-ups that must NOT resolve ------------------------------------------------

@@ -1557,6 +1557,39 @@ trading a measured loss for an assumed benefit is the move this project keeps re
 A miss here is not a wrong answer either way; the floors still hold, and the cost is a
 model round trip.
 
+### Phase 2 progress — speaker attribution, and an item the pivot had already answered (2026-08-10)
+
+"Multi-speaker attribution in a shared channel" was written when voice arrived over
+Discord, tagged per user. The DAVE pivot removed that channel, and with it most of the
+item: `SpeakerStream` already does per-speaker attribution and is dead code held for the
+day reception is fixed, the text path has always keyed on the Discord display name, and
+**party members cannot reach a local microphone at all**. What remained was not detection
+but identity — and one live bug.
+
+**Conversation memory had broken ADR-0012's cross-channel promise, and nothing caught
+it.** Memory is per person; the text path keys on the display name and the voice path had
+no identity to key on, so it used the literal `"voice"`. The same human's spoken question
+and typed follow-up therefore landed in two separate threads:
+
+```
+voice:  "where can I find Chillet"     -> answered, remembered under "voice"
+text:   "what about the alpha?"        -> "I've lost track of what that refers to"
+```
+
+`voice.speaker` names the person at the machine and joins the two. **Unset, it stays
+`"voice"` and they stay separate** — inferring which Discord user is sitting there would
+attribute speech to the wrong person in a shared channel, which is worse than not joining
+them. `/palintel status` reports which of the two is in force, because unattributed voice
+is otherwise invisible until a follow-up mysteriously fails.
+
+**What is genuinely unbuilt: telling two people in the same room apart.** That needs
+speaker diarisation from one mixed stream — a different problem from the one
+`SpeakerStream` solved, where Discord tagged every packet and the split was free. It wants
+a speaker-embedding model and an enrolment step, and **no evidence has been gathered that
+the case arises here**: it requires two people at one microphone, which is not the
+setup any session so far has used. Building it now would be building for a hypothetical,
+so it is recorded as a decision rather than an omission.
+
 ---
 
 ## Phase 3 — Graph search and scoring: Q3 + Q5 (target: 3 weeks)
