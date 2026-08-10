@@ -206,3 +206,13 @@ def test_a_pal_call_with_no_pal_declines_rather_than_raising(kb: KnowledgeBase):
 
     out = Pipeline(kb, _Fixed()).handle("where can I find something")
     assert isinstance(out.call, Decline)
+
+
+def test_a_rare_encounter_is_not_reported_as_never(kb: KnowledgeBase):
+    """1,432 of 19,272 areas sit under half a percent. Rounding those to "0%" says the
+    encounter never happens, in the one field that exists to stop the player camping a
+    spot for nothing."""
+    r = find_pal_spawns(kb, "Jormuntide", limit=1)
+    assert 0 < r.areas[0].encounter_share < 0.005
+    line = spawn_card(r).lines[0]
+    assert "<1% of spawns here" in line and "0% of spawns" not in line

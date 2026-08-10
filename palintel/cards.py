@@ -153,7 +153,13 @@ def spawn_card(result: SpawnResult) -> Card:
         if a.kind != "normal":
             bits.append(KIND_LABEL.get(a.kind, a.kind))
         elif a.encounter_share < 0.99:
-            bits.append(f"{a.encounter_share:.0%} of spawns here")
+            # "<1%" rather than "0%". 1,432 of 19,272 areas sit under half a percent, and
+            # rounding them to zero says the encounter never happens when the honest
+            # statement is that it is rare - a false claim in the one field that exists
+            # to stop the player camping a spot for nothing.
+            share = (f"{a.encounter_share:.0%}" if a.encounter_share >= 0.005
+                     else "<1%")
+            bits.append(f"{share} of spawns here")
         if a.night_only:
             bits.append("night only")
         lines.append(SEP.join(bits))
