@@ -83,3 +83,64 @@ def test_formatting_is_coarse():
     assert ago(7200) == "2.0h ago"
     assert duration(90) == "1m"
     assert duration(7500) == "2h 5m"
+
+
+# ---------------------------------------------------------------------- latency
+
+def test_percentiles_are_none_until_something_is_timed():
+    log = ActivityLog()
+    log.record("answered", "where is coal")
+    assert log.percentiles("voice") is None
+
+
+def test_untimed_events_stay_out_of_the_percentiles():
+    """`record` and `timed` write to the same buffer; only the latter has a duration."""
+    log = ActivityLog()
+    log.record("voice", "not a timing")
+    log.timed("voice", 1200.0)
+    assert log.percentiles("voice") == (1, 1200.0, 1200.0)
+
+
+def test_percentiles_are_nearest_rank():
+    log = ActivityLog()
+    for ms in range(1, 21):        # 1..20
+        log.timed("text", float(ms * 100))
+    n, p50, p95 = log.percentiles("text")
+    assert n == 20
+    assert p50 == 1100.0           # index 10 of 0..19
+    # int(20 * 0.95) = 19, the slowest sample. With 20 points that IS the honest p95 -
+    # an interpolated 1905 would imply a resolution twenty samples cannot support.
+    assert p95 == 2000.0
+
+
+def test_status_card_omits_latency_before_any_query():
+    assert "Latency" not in status_card(ActivityLog(), voice="x").to_text()
+
+
+def test_status_card_will_not_call_a_thin_sample_a_pass():
+    """Under budget on six queries is not the exit criterion, and must not read as one."""
+    log = ActivityLog()
+    for _ in range(6):
+        log.timed("voice", 900.0)
+    text = status_card(log, voice="x").to_text()
+    assert "6/30 queries" in text
+    assert "✅" not in text
+
+
+def test_status_card_grades_against_the_budget():
+    slow, fast = ActivityLog(), ActivityLog()
+    for _ in range(30):
+        slow.timed("voice", 4000.0)     # over the 2.5s bar
+        fast.timed("voice", 1200.0)     # under it
+    assert "❌" in status_card(slow, voice="x").to_text()
+    assert "✅" in status_card(fast, voice="x").to_text()
+
+
+def test_status_card_shows_where_the_time_went():
+    log = ActivityLog()
+    for _ in range(30):
+        log.timed("voice", 4000.0)
+        log.timed("stt", 800.0)
+        log.timed("route", 2100.0)
+    text = status_card(log, voice="x").to_text()
+    assert "stt" in text and "route" in text

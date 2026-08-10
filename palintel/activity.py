@@ -27,12 +27,26 @@ from dataclasses import dataclass
 MAX_EVENTS = 2000
 DEFAULT_WINDOW = 3600.0
 
+# Stage durations, in milliseconds. `voice` and `text` are the two the Phase 1 exit
+# criteria are written against (p95 <= 2.5s and <= 1.5s over >= 30 real queries each);
+# the rest exist to say *where* the time went when one of those fails, which is the
+# whole reason a session is worth instrumenting rather than just timing by hand.
+#
+# `voice` is measured from end of speech, per the budget in 00-overview.md - not from
+# the wake word. The player is not waiting while they are still talking, and starting
+# the clock earlier would charge the pipeline for the length of the question.
+TIMED_KINDS = ("voice", "text", "stt", "route", "post")
+
 
 @dataclass(frozen=True)
 class Event:
     at: float
     kind: str          # wake | heard | empty | answered | declined | failed | overflow
     detail: str = ""
+    # Milliseconds, for the timing kinds only (voice, text, stt, route, post). None
+    # everywhere else - an event that merely happened has no duration, and storing 0
+    # would put it in the percentiles as if it were instant.
+    ms: float | None = None
 
 
 class ActivityLog:
@@ -52,6 +66,27 @@ class ActivityLog:
     def record(self, kind: str, detail: str = "") -> None:
         with self._lock:
             self._events.append(Event(time.monotonic(), kind, detail))
+
+    def timed(self, kind: str, ms: float, detail: str = "") -> None:
+        """Record a stage duration. `kind` is one of TIMED_KINDS."""
+        with self._lock:
+            self._events.append(Event(time.monotonic(), kind, detail, ms))
+
+    def percentiles(self, kind: str,
+                    window: float | None = None) -> tuple[int, float, float] | None:
+        """`(n, p50, p95)` in milliseconds, or None when nothing was timed.
+
+        Nearest-rank, not interpolated: with the ~30 samples the exit criterion asks for,
+        interpolation invents precision the sample size does not support, and p95 of 30
+        is "the second slowest" however it is dressed up. Returning `n` alongside is not
+        decoration - a p95 over four queries is not a p95, and the reader has to be able
+        to see that.
+        """
+        xs = sorted(e.ms for e in self.since(window)
+                    if e.kind == kind and e.ms is not None)
+        if not xs:
+            return None
+        return len(xs), xs[len(xs) // 2], xs[min(len(xs) - 1, int(len(xs) * 0.95))]
 
     def since(self, window: float | None = None) -> list[Event]:
         cutoff = time.monotonic() - (self.window if window is None else window)

@@ -25,11 +25,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import sys
+import time
 import wave
 from tempfile import TemporaryDirectory
 
 from .activity import ActivityLog
-from .cards import Card, status_card
+from .cards import Card, recent_card, status_card
 from .config import Config, ConfigError
 from .knowledge import KnowledgeBase
 from .pipeline import Pipeline, PlayerState, build_router
@@ -90,22 +91,29 @@ def _voice_status(cfg: Config, mic) -> str:
 
 def build_pipeline(cfg: Config) -> Pipeline:
     kb = KnowledgeBase.load(cfg.data_version)
-    return Pipeline(kb, build_router(kb))
+    return Pipeline(kb, build_router(kb, router_config=cfg.router))
 
 
 async def _answer(channel, pipe: Pipeline, text: str, who: str,
-                  activity: ActivityLog | None = None, watcher=None) -> None:
+                  activity: ActivityLog | None = None, watcher=None,
+                  started: float | None = None, channel_kind: str = "text") -> None:
     """Route `text` and post the cards. Shared by the text and voice paths.
 
     Routing is a network call and transcription is GPU work, so both run in the default
     executor: doing them inline would block the event loop and, with voice, stall the
     audio receive path behind an answer nobody is waiting on yet.
+
+    `started` is when the player began waiting - end of speech for voice, message arrival
+    for text - so the total covers everything they experience, including the Discord round
+    trip. Passed in rather than taken here because the two paths start the clock in
+    different places and only the caller knows where.
     """
     # Read at answer time, not cached at startup: the player moves, and "nearest" is
     # only worth answering against where they are now.
     state = PlayerState(player_coords=watcher.player_coords() if watcher else None)
 
     loop = asyncio.get_running_loop()
+    t_route = time.monotonic()
     try:
         outcome = await loop.run_in_executor(None, pipe.handle, text, state)
     except Exception:
@@ -120,16 +128,36 @@ async def _answer(channel, pipe: Pipeline, text: str, who: str,
             color=0xC62828))
         return
 
+    route_ms = (time.monotonic() - t_route) * 1000
     declined = isinstance(outcome.call, Decline)
     if activity is not None:
-        activity.record("declined" if declined else "answered", text[:80])
+        activity.timed("route", route_ms, text[:60])
     kind = "decline" if declined else outcome.call.name
-    log.info("%s -> %s (%d card%s)", who, kind, len(outcome.cards),
+    log.info("%s -> %s in %.0fms (%d card%s)", who, kind, route_ms, len(outcome.cards),
              "" if len(outcome.cards) == 1 else "s")
     # One message, several embeds. A query that resolves to a base Pal and its variant
     # has two correct answers; separate messages would let channel traffic interleave
     # and break the pairing that makes them readable.
-    await channel.send(embeds=[to_embed(c) for c in outcome.cards])
+    t_post = time.monotonic()
+    try:
+        await channel.send(embeds=[to_embed(c) for c in outcome.cards])
+    except Exception:
+        # A card that was built and never delivered used to be counted as "answered",
+        # because the count was written before the send. That made the one failure the
+        # player actually experiences - asking and getting nothing back - invisible in
+        # the very status card meant to explain it.
+        log.exception("could not post the answer to %r", text)
+        if activity is not None:
+            activity.record("undelivered", text[:80])
+        return
+
+    # Counted only once the card is actually on the channel, and timed only then too:
+    # the criterion is about queries the player got an answer to.
+    if activity is not None:
+        activity.record("declined" if declined else "answered", text[:80])
+        activity.timed("post", (time.monotonic() - t_post) * 1000)
+        if started is not None:
+            activity.timed(channel_kind, (time.monotonic() - started) * 1000, text[:60])
 
 
 def run() -> None:
@@ -195,6 +223,9 @@ def run() -> None:
                 voice=_voice_status(cfg, listener["mic"]),
                 save=watcher.describe() if watcher else "not configured")))
             return
+        if text.lower() in ("/palintel recent", "palintel recent"):
+            await message.channel.send(embed=to_embed(recent_card(activity)))
+            return
 
         mode = cfg.discord.listen_mode
         if mode == "prefix":
@@ -210,8 +241,11 @@ def run() -> None:
             return
 
         log.info("query from %s: %r", message.author.display_name, text)
+        # The clock starts here rather than at Discord's own timestamp: gateway delivery
+        # is not something this process can affect, and charging it to the pipeline would
+        # make the number unactionable.
         await _answer(message.channel, pipe, text, message.author.display_name,
-                      activity, watcher)
+                      activity, watcher, started=time.monotonic(), channel_kind="text")
 
     async def watch_saves() -> None:
         """Re-read the save on a timer for as long as the bot runs.
@@ -268,9 +302,12 @@ def run() -> None:
                 w.setframerate(16_000)
                 w.writeframes(utt.pcm)
 
+            t_stt = time.monotonic()
             text = await loop.run_in_executor(None, transcriber.transcribe, path)
-            log.info("voice: heard %r (%.1fs, closed on %s)",
-                     text, utt.seconds, utt.reason)
+            stt_ms = (time.monotonic() - t_stt) * 1000
+            log.info("voice: heard %r (%.1fs audio, %.0fms STT, closed on %s)",
+                     text, utt.seconds, stt_ms, utt.reason)
+            activity.timed("stt", stt_ms, f"{utt.seconds:.1f}s audio")
             if not text.strip():
                 # Wake word fired on something that was not speech. Silence is right:
                 # posting "I didn't catch that" to a false trigger is channel noise for
@@ -279,13 +316,30 @@ def run() -> None:
                 activity.record("empty", f"{utt.seconds:.1f}s")
                 return
             activity.record("heard", text[:80])
-            await _answer(text_channel, pipe, text, "voice", activity, watcher)
+            await _answer(text_channel, pipe, text, "voice", activity, watcher,
+                          started=utt.ended_at, channel_kind="voice")
+
+        def _report(fut) -> None:
+            """Surface anything on_speech raised.
+
+            Without this the Future returned by run_coroutine_threadsafe is dropped on
+            the floor, and asyncio only mentions the exception if and when the Future is
+            garbage collected. Everything after transcription - posting the card
+            included - could therefore fail in total silence, which presents to the
+            player as a query that was heard and simply never answered.
+            """
+            try:
+                fut.result()
+            except Exception:
+                log.exception("voice: answering failed after the wake word fired")
+                activity.record("failed", "answer raised after transcription")
 
         def dispatch(utt) -> None:
             # Called on sounddevice's audio thread. Nothing here may block or touch the
-            # loop directly, so the whole answer is handed over and forgotten - a stall
-            # here drops audio rather than merely delaying it.
-            asyncio.run_coroutine_threadsafe(on_speech(utt), loop)
+            # loop directly, so the whole answer is handed over - but not forgotten; a
+            # stall here drops audio rather than merely delaying it.
+            asyncio.run_coroutine_threadsafe(on_speech(utt), loop).add_done_callback(
+                _report)
 
         mic = MicListener(dispatch, models=list(cfg.voice.models),
                           threshold=cfg.voice.threshold, device=cfg.voice.device,

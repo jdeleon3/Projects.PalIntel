@@ -27,6 +27,7 @@ against a live voice channel.
 from __future__ import annotations
 
 import collections
+import time
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -54,6 +55,12 @@ class Utterance:
     pcm: bytes
     reason: str            # "silence" | "max_length"
     frames: int
+    # `time.monotonic()` at the moment the speaker stopped talking - which is NOT when
+    # the buffer closed. A "silence" close happens `silence_ms` after the last speech
+    # frame, and the player has been waiting through all of it. The latency budget in
+    # 00-overview.md is written from end of speech, so the hangover has to be charged to
+    # the answer, and only this class knows how much of it there was.
+    ended_at: float = 0.0
 
     @property
     def seconds(self) -> float:
@@ -117,5 +124,10 @@ class UtteranceBuffer:
 
     def _close(self, reason: str) -> Utterance:
         pcm, n = b"".join(self._buf), len(self._buf)
+        # A max_length close has no hangover to unwind - the buffer filled up and the
+        # speaker may well still be talking, so "now" is as close to end of speech as
+        # anything available.
+        hangover = self.silence_ms / 1000 if reason == "silence" else 0.0
         self.reset()
-        return Utterance(pcm=pcm, reason=reason, frames=n)
+        return Utterance(pcm=pcm, reason=reason, frames=n,
+                         ended_at=time.monotonic() - hangover)
