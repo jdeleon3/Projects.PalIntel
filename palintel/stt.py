@@ -31,6 +31,36 @@ MODEL = "medium.en"
 MAX_HOTWORDS = 400
 
 
+def hotword_order(lexicon) -> list[str]:
+    """Decoding hints, resources first.
+
+    Position in the list is not cosmetic - the bias decays along it, and the previous
+    `sorted(canonical_names)` put the resources LAST by accident: they are the only
+    lowercase entries, and ASCII sorts every capitalised Pal name ahead of them. So the
+    four nouns Phase 1 can actually answer about sat at the bottom of 318 hints, behind
+    313 Pal names that no registered tool can use.
+
+    That was not theoretical. It is why a real session heard "goal" for coal and "a
+    store" for ore, which then fell below the fast path's confidence floor and each cost
+    a ~2s model round trip to recover. Measured over the 19 recorded resource clips, by
+    whether the entity clears MIN_CONFIDENT afterwards - the exact condition the fast
+    path tests:
+
+        no hotwords         15/19   pal 38/60
+        all, sorted         16/19   pal 44/60      <- what shipped
+        resources only      19/19   pal 35/60      <- buys Q1 by wrecking Phase 2
+        resources first     19/19   pal 42/60      <- this
+
+    Resources-first is the only option that takes Q1 to 100% without abandoning the Pal
+    names Phase 2 needs. It is not free: 2 of 60 Pal clips regressed, which on that
+    sample is as likely noise as signal, and is worth re-measuring when Phase 2 registers
+    a tool that depends on them.
+    """
+    resources = sorted(lexicon.resources())
+    others = sorted(n for n in lexicon.canonical_names if n not in set(resources))
+    return resources + others
+
+
 class Transcriber:
     """faster-whisper with keyterm boosting, GPU when available.
 
@@ -49,9 +79,7 @@ class Transcriber:
             raise RuntimeError(
                 "faster-whisper not installed:  pip install -r requirements.txt") from e
 
-        # The whole lexicon as decoding hints. Sorted so the string is stable across
-        # runs, which keeps behaviour reproducible.
-        self.hotwords = ", ".join(sorted(lexicon.canonical_names)[:MAX_HOTWORDS])
+        self.hotwords = ", ".join(hotword_order(lexicon)[:MAX_HOTWORDS])
 
         # float16 on GPU, int8 on CPU: int8 exists to make CPU inference bearable and
         # gives up accuracy the GPU has no reason to sacrifice.
