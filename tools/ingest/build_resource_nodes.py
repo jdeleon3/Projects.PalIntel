@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 from collections import defaultdict
 from pathlib import Path
 
@@ -28,6 +29,32 @@ RAW = REPO / "data" / "raw"
 # Spawner class -> resource is derived, not hand-written; the rule and the reason live
 # in _resources.py, shared with the lexicon build so the two cannot disagree about what
 # a resource is.
+
+# Only spatially-partitioned cells are overworld. Everything else is a dungeon interior,
+# and its coordinates are NOT overworld coordinates.
+#
+# World Partition names its streaming cells `MainGrid_L<level>_X<x>_Y<y>_DL<hash>`, and
+# the grid position in that name is real for L0 - it is where the cell sits in the world.
+# Cave and dungeon contents live at `L15_X0_Y0`, one cell at the grid origin holding all
+# 6,719 of them, because they are authored in their own local space rather than placed on
+# the map. Run through the overworld transform their positions are meaningless: about
+# half land in open water, and the other half land on unrelated terrain, which is worse
+# because nothing looks wrong about them.
+#
+# This cost 16.4% of the node dataset - 6,718 of 40,968 - and shipped through the whole
+# of Phase 1 and 2 as answerable overworld coordinates. The published `scope` field has
+# claimed "overworld only" since the dataset was created; this is what makes it true.
+# The hazard is named in Docs/03-data-ingestion.md section 3.1 ("Overworld and
+# instanced-dungeon nodes must be distinguished explicitly") and was simply never
+# enforced. It was invisible until a map crop drew a coal marker in the sea.
+CELL_GRID = re.compile(r"_L(\d+)_X(-?\d+)_Y(-?\d+)")
+
+
+def is_overworld(cell: str) -> bool:
+    match = CELL_GRID.search(cell)
+    # An unparseable cell name is excluded rather than assumed overworld: a naming change
+    # upstream should cost coverage loudly, not silently readmit dungeon coordinates.
+    return bool(match) and match.group(1) == "0"
 
 # Region hints. These two used to carry the whole distinction, because both classes were
 # mapped to `ore` and the hint was the only thing saying which one you had found. They
@@ -166,9 +193,21 @@ def main() -> None:
     class_to_res, display = derive()
 
     placements = json.loads((RAW / "placements.json").read_text(encoding="utf-8"))
-    nodes = [p for p in placements if p["cls"] in class_to_res]
+    matched = [p for p in placements if p["cls"] in class_to_res]
+    nodes = [p for p in matched if is_overworld(p["cell"])]
+    instanced = len(matched) - len(nodes)
     print(f"placements: {len(placements):,}  -> resource nodes: {len(nodes):,} "
           f"across {len(display)} resources")
+    if instanced:
+        # Reported, not silently dropped. A sixth of the dataset disappearing should be
+        # a number someone can check against the next extraction, not a quiet diff.
+        print(f"  excluded {instanced:,} deposits in non-overworld cells "
+              f"({instanced / len(matched):.1%}) - dungeon interiors, see is_overworld")
+    if not nodes:
+        raise SystemExit(
+            "ABORT: every deposit was excluded as non-overworld. The cell naming "
+            "changed upstream - check is_overworld against data/raw/placements.json "
+            "before publishing an empty dataset.")
 
     by_res: dict[str, list[dict]] = defaultdict(list)
     for n in nodes:

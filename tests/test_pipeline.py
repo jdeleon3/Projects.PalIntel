@@ -7,6 +7,8 @@ no fabricated coordinates, suspect clusters never served, declines stay honest.
 """
 from __future__ import annotations
 
+import math
+
 import pytest
 
 from palintel.cards import decline_card, resource_card
@@ -55,14 +57,34 @@ def test_no_cluster_is_implausibly_dense(kb: KnowledgeBase):
             f"{n.node_id} has {n.node_count} deposits at spread {n.spread}")
 
 
-def test_placement_volume_children_are_resolved_not_dropped(kb: KnowledgeBase):
-    """Nodes scattered inside a placement volume must be recovered, not excluded.
+def test_only_overworld_coal_is_published(kb: KnowledgeBase):
+    """326 of the 998 extracted coal spawners are overworld; the rest are cave coal.
 
-    The earlier stopgap dropped every deposit within 2000 world units of the origin,
-    which cost 152 real coal deposits.
+    This test used to assert 998 - every extracted spawner - on the reasoning that a
+    stopgap origin filter had once cost 152 real deposits, so none should be dropped.
+    The premise was wrong in a way nothing text-only could show: the 672 missing ones
+    are in `L15_X0_Y0`, the World Partition cell holding dungeon interiors, and their
+    coordinates are not overworld positions at all. Published, they put coal markers in
+    open water. See tests/test_node_scope.py.
+
+    The placement-volume finding that motivated the old assertion needs the same
+    correction: all 633 owner-chain resolutions were in dungeon cells, and **zero**
+    overworld placements needed one. Composing those parent transforms made the
+    coordinates internally consistent without making them positions on the map.
     """
     coal = sum(n.node_count for n in kb.nodes if n.resource == "coal")
-    assert coal == 998, f"expected all 998 coal deposits, got {coal}"
+    assert coal == 326, f"expected the 326 overworld coal deposits, got {coal}"
+
+
+def test_no_node_sits_at_the_world_origin(kb: KnowledgeBase):
+    """The origin artifact, guarded directly rather than via a deposit count.
+
+    Actors stored relative to a parent collapse onto world origin, which maps to a
+    plausible-looking spot with nothing there - the failure that produced a phantom
+    171-deposit coal hotspot. Nothing published should land there.
+    """
+    at_origin = [n for n in kb.nodes if math.hypot(n.map_x, n.map_y) < 5]
+    assert not at_origin, f"{len(at_origin)} nodes at map origin: {at_origin[:3]}"
 
 
 def test_every_node_has_real_coordinates(kb: KnowledgeBase):
@@ -137,17 +159,21 @@ def test_sorts_by_size_without_position(kb: KnowledgeBase):
 def test_ungated_nodes_survive_a_level_filter(kb: KnowledgeBase):
     """A node with no derived level must not be hidden by gating.
 
-    `min_player_level` is derived now, but not for every node: 326 clusters have no wild
+    `min_player_level` is derived now, but not for every node: 17 clusters have no wild
     spawn area within the local radius and carry None. Dropping those would quietly
     shrink the answer set for a reason the player cannot see, so they pass the filter and
     the result reports that gating was only partial.
+
+    Quartz rather than coal: once cave coal was excluded, every remaining coal cluster
+    has a derived level and the lowest is 15, so coal can no longer exercise this at all.
+    Quartz at level 5 returns exactly its two ungated clusters, which is the case itself.
     """
     ungated = [n for n in kb.nodes if n.min_player_level is None]
     assert ungated, "expected some nodes with no local spawn data"
 
-    r = find_resource_nodes(kb, "coal", max_player_level=5, limit=3)
+    r = find_resource_nodes(kb, "quartz", max_player_level=5, limit=3)
     assert r.nodes, "ungated nodes should still be returned"
-    assert r.level_filtered is True, "coal has derived levels, so gating applied"
+    assert r.level_filtered is True, "quartz has derived levels, so gating applied"
     assert any(n.min_player_level is None or n.min_player_level <= 5 for n in r.nodes)
 
 
