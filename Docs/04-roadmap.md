@@ -1518,6 +1518,45 @@ local microphone cannot tell two people apart, so the voice path keys memory on 
 literal `"voice"` while each Discord user's typed follow-ups are their own. Multi-speaker
 attribution is the phase item that would fix it.
 
+### Phase 2 progress — the hotword re-check, and a "noise" that was signal (2026-08-10)
+
+Phase 1 hoisted the resources to the front of the STT hint list, recorded that 2 of 60 Pal
+clips regressed, called it "as likely noise as signal", and left it to be re-measured when
+a Pal tool depended on those names. Re-measured over **185 clips** with `find_pal_spawns`
+live, scoring by whether the expected entity clears the floor the fast path tests — 0.78
+for a resource, 0.85 for a Pal:
+
+| variant | resource | pal |
+|---|---|---|
+| no hints | 15/19 | 83/166 |
+| all, sorted | 16/19 | 100/166 |
+| **all resources first** (Phase 1's choice) | **19/19** | **92/166** |
+| pals first | 16/19 | 100/166 |
+| **core resources first** | **19/19** | **101/166** |
+| core + stone/wood/paldium | 19/19 | 97/166 |
+
+**The 2-clip regression was signal. On 166 clips it is 8.** But the cause was not hoisting
+resources — it was hoisting *nineteen* of them. The set grew from 5 to 19 when Q1 widened,
+and pushing fourteen extra strings ahead of 313 Pal names is what displaced them. Hoisting
+only the five the recorded set exercises is **strictly better than every other ordering
+measured, on both classes at once**: 19/19 and 101/166.
+
+Hoisting is a budget. Each entry at the front costs accuracy behind it, at roughly one Pal
+clip per added resource.
+
+**Two null results worth keeping.** `sorted` and `pals_first` produce **byte-identical**
+transcripts across all 185 clips, which confirms Phase 1's diagnosis exactly: ASCII
+sorting was silently a pals-first list. And feeding display names instead of canonical ids
+(`Hexolite Quartz` rather than `hexolite_quartz` — ten of the nineteen carry underscores)
+changed 82 of 185 transcripts and moved **neither column**, so the ids stay.
+
+**Known gap, deliberately not closed.** Stone, wood and paldium have no recorded clips and
+are almost certainly common in real play. Hoisting them costs a measured 4 Pal clips for
+an unmeasured gain, so they stay unhoisted until there are clips to settle it with —
+trading a measured loss for an assumed benefit is the move this project keeps refusing.
+A miss here is not a wrong answer either way; the floors still hold, and the cost is a
+model round trip.
+
 ---
 
 ## Phase 3 — Graph search and scoring: Q3 + Q5 (target: 3 weeks)
