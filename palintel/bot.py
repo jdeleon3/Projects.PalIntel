@@ -30,7 +30,7 @@ import wave
 from tempfile import TemporaryDirectory
 
 from .activity import ActivityLog
-from .cards import Card, recent_card, status_card
+from .cards import TIER_DECLINE, Card, recent_card, status_card
 from .config import Config, ConfigError
 from .knowledge import KnowledgeBase
 from .pipeline import Pipeline, PlayerState, build_router
@@ -107,6 +107,12 @@ async def _answer(channel, pipe: Pipeline, text: str, who: str,
     for text - so the total covers everything they experience, including the Discord round
     trip. Passed in rather than taken here because the two paths start the clock in
     different places and only the caller knows where.
+
+    `who` is also the conversation-memory key (ADR-0013). The voice path passes the
+    literal "voice" rather than a speaker id, because the local microphone cannot tell
+    two people apart - so voice follow-ups are shared by whoever is at the mic, and a
+    Discord user's typed follow-ups are their own. That is a limitation of the input, not
+    a choice: see the multi-speaker item in Phase 2.
     """
     # Read at answer time, not cached at startup: the player moves, and "nearest" is
     # only worth answering against where they are now.
@@ -115,7 +121,7 @@ async def _answer(channel, pipe: Pipeline, text: str, who: str,
     loop = asyncio.get_running_loop()
     t_route = time.monotonic()
     try:
-        outcome = await loop.run_in_executor(None, pipe.handle, text, state)
+        outcome = await loop.run_in_executor(None, pipe.handle, text, state, who)
     except Exception:
         # Never leave a query unanswered: silence is indistinguishable from the bot
         # being down, and the player is mid-game and cannot investigate.
@@ -230,6 +236,18 @@ def run() -> None:
             return
         if text.lower() in ("/palintel recent", "palintel recent"):
             await message.channel.send(embed=to_embed(recent_card(activity)))
+            return
+        if text.lower() in ("/palintel reset", "palintel reset"):
+            # ADR-0013's manual clear. Scoped to the asker: one person's conversation
+            # going wrong is not a reason to drop everyone else's, and in a shared
+            # channel a global reset would be an easy way to disrupt other people.
+            who = message.author.display_name
+            pipe.memory.forget(who)
+            await message.channel.send(embed=to_embed(Card(
+                title="Forgotten",
+                lines=["I've cleared what I remembered of our conversation."],
+                colour=TIER_DECLINE)))
+            log.info("memory reset for %s", who)
             return
 
         mode = cfg.discord.listen_mode

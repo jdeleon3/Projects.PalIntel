@@ -117,10 +117,18 @@ def spawn_card(result: SpawnResult) -> Card:
         )
 
     if not result.areas:
-        detail = " at night" if result.kind is None else ""
+        # Say which filter emptied it. "No Depresso spawns found" after "what about the
+        # alpha?" reads as missing data; "Depresso has no field alpha" is the actual
+        # answer, and it is one the player can act on.
+        if result.kind and result.kind != "normal":
+            what = KIND_LABEL.get(result.kind, result.kind)
+            return Card(title=f"{result.pal} has no {what}",
+                        lines=[f"**{result.pal}** is only found as an ordinary wild "
+                               f"spawn - there's no {what} version of it."],
+                        colour=TIER_DECLINE)
         return Card(
             title=f"No {result.pal} spawns found",
-            lines=[f"Nothing matched in my data{detail}."],
+            lines=["Nothing matched in my data."],
             colour=TIER_DECLINE,
         )
 
@@ -352,6 +360,20 @@ MAX_NAMED_OPTIONS = 6
 
 
 def decline_card(decline: Decline) -> Card:
+    if decline.needs_restatement:
+        # Not "I didn't catch that" - we caught it perfectly and simply have nothing for
+        # it to refer to. Saying so asks for something specific and achievable, which a
+        # generic apology does not, and it is ADR-0013's requirement that expired context
+        # be named rather than silently ignored.
+        return Card(
+            title="What was that about?",
+            # ASCII only: the CLI renderer runs on a cp1252 console, where an em-dash
+            # arrives as a replacement character.
+            lines=["I've forgotten what we were talking about - say the name again.",
+                   f"_{decline.reason}_"],
+            colour=TIER_DECLINE,
+        )
+
     lines = ["I didn't catch that."]
     if decline.unrecognized:
         # Naming the unrecognised token lets the player retry precisely, and is the

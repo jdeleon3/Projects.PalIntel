@@ -42,6 +42,9 @@ def show(pipe: Pipeline, text: str, state: PlayerState, verbose: bool) -> None:
         print("  candidates:")
         for c in outcome.candidates:
             print(f"    {c.score:.2f}  {c.canonical:<20} <- {c.matched_text!r}")
+        # Follow-up resolution is the one thing here that depends on earlier turns, so a
+        # wrong referent is only diagnosable if the memory is visible beside the answer.
+        print(f"  memory: {pipe.memory.describe('local')}")
     print()
 
 
@@ -100,6 +103,10 @@ def main() -> None:
         except (EOFError, KeyboardInterrupt):
             print()
             return
+        if text.lower() in ("/reset", "reset"):
+            pipe.memory.forget()
+            print("  (forgotten)\n")
+            continue
         if text:
             show(pipe, text, state, args.verbose)
 

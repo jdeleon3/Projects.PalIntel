@@ -287,7 +287,7 @@ class _Fixed:
         self._result = result
         self.calls = 0
 
-    def route(self, utterance, candidates):
+    def route(self, utterance, candidates, context=None):
         self.calls += 1
         return self._result
 

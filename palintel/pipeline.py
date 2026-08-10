@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 from . import cards, execution
 from .cards import Card
 from .knowledge import Candidate, KnowledgeBase
+from .memory import Memory, Turn
 from .routing import RouterBackend
 from .tools import Decline, ToolCall
 
@@ -190,19 +191,27 @@ def build_router(kb: KnowledgeBase, prefer: str = "auto",
 
 
 class Pipeline:
-    def __init__(self, kb: KnowledgeBase, router: RouterBackend):
+    def __init__(self, kb: KnowledgeBase, router: RouterBackend,
+                 memory: "Memory | None" = None):
         self.kb = kb
         self.router = router
+        # ADR-0013. Constructed by default so every entry point gets follow-ups without
+        # having to opt in - the CLI harness included, since that is where they get
+        # debugged.
+        self.memory = memory if memory is not None else Memory()
 
-    def handle(self, utterance: str, state: PlayerState | None = None) -> Outcome:
+    def handle(self, utterance: str, state: PlayerState | None = None,
+               who: str = "local") -> Outcome:
         state = state or PlayerState()
 
         # 1. Rank entities. Ranking only - the decline decision belongs to the router,
         #    which has sentence context (ADR-0016).
         candidates = self.kb.lexicon.rank(utterance)
 
-        # 2. Route.
-        call = self.router.route(utterance, candidates)
+        # 2. Route, with whatever this speaker said recently. Per user, so two people
+        #    asking at once cannot resolve each other's pronouns.
+        context = self.memory.recent(who)
+        call = self.router.route(utterance, candidates, context)
         if isinstance(call, Decline):
             return self._decline(call, candidates)
 
@@ -229,6 +238,8 @@ class Pipeline:
             result = execution.find_resource_nodes(self.kb, **args)
             log.info("find_resource_nodes(%s) -> %d/%d",
                      args, len(result.nodes), result.total_available)
+            self._remember(who, call, {"resource": result.resource},
+                           f"{len(result.nodes)} of {result.total_available} clusters")
             return Outcome([cards.resource_card(result)], call, candidates)
 
         if call.name == "find_pal_spawns":
@@ -255,12 +266,31 @@ class Pipeline:
             # answers, and they spawn in different places - Menasting in the desert,
             # Menasting Terra in the dunes. Answering only the base would be wrong half
             # the time, so both render.
+            #
+            # Only the Pal the router actually named is remembered, not the family. The
+            # variants were shown because we could not narrow the question; treating that
+            # as though the speaker had named both would let "what about the alpha" pick
+            # the wrong one of the two.
+            self._remember(who, call, {"pal": pal},
+                           f"{kind or 'normal'} spawns")
             return Outcome(self._cards_for(self.kb.lexicon.family(pal), render),
                            call, candidates)
 
         # A tool the router knows about but the dispatcher does not is a wiring bug.
         # Fail loudly here rather than rendering something plausible.
         raise RuntimeError(f"router produced unregistered tool: {call.name!r}")
+
+    def _remember(self, who: str, call: ToolCall, entities: dict[str, str],
+                  summary: str) -> None:
+        """Record an ANSWERED turn. Declines are deliberately not stored.
+
+        A decline resolved nothing, so it has no referent to offer a follow-up - and
+        storing its best-guess candidate would manufacture one, which is precisely the
+        failure ADR-0013 warns about. After a decline, "what about the alpha" correctly
+        reaches back past it to the last real answer, or asks for restatement.
+        """
+        self.memory.remember(Turn(who=who, tool=call.name, entities=entities,
+                                  summary=summary))
 
     def _decline(self, call: Decline, candidates: list[Candidate]) -> Outcome:
         log.info("decline: %s", call.reason)

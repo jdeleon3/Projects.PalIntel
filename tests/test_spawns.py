@@ -201,7 +201,7 @@ def test_a_pal_call_with_no_pal_declines_rather_than_raising(kb: KnowledgeBase):
     class _Fixed:
         name = "fixed"
 
-        def route(self, utterance, candidates):
+        def route(self, utterance, candidates, context=None):
             return ToolCall(name="find_pal_spawns", args={})
 
     out = Pipeline(kb, _Fixed()).handle("where can I find something")
