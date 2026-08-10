@@ -39,6 +39,7 @@ from typing import Any
 CLASS_TO_TOOL: dict[str, str] = {
     "resource_location": "find_resource_nodes",
     "pal_location": "find_pal_spawns",
+    "pal_drops": "find_pal_drops",
     "breeding_combo": "get_breeding_combo",
     "breeding_pair": "check_breeding_pair",
     "pal_info": "get_pal_info",
@@ -52,6 +53,7 @@ CLASS_TO_TOOL: dict[str, str] = {
 CLASS_HELP: dict[str, str] = {
     "resource_location": "where to find, mine or farm a resource (coal, ore, quartz)",
     "pal_location": "where to find, catch or encounter a Pal species",
+    "pal_drops": "what items a Pal yields when defeated or captured",
     "breeding_combo": "which parent Pals breed to produce a target Pal",
     "breeding_pair": "what two named Pals produce when bred together",
     "pal_info": "a Pal's element, stats or work suitability",
@@ -59,7 +61,7 @@ CLASS_HELP: dict[str, str] = {
     "boss_counter": "which Pal to use against a boss or tower",
 }
 
-PRODUCTION_CLASSES = ("resource_location", "pal_location")
+PRODUCTION_CLASSES = ("resource_location", "pal_location", "pal_drops")
 
 
 def unified_schema(resources: list[str], pals: list[str],
@@ -128,6 +130,7 @@ def unified_schema(resources: list[str], pals: list[str],
 _ARGS: dict[str, tuple[str, ...]] = {
     "find_resource_nodes": ("resource",),
     "find_pal_spawns": ("pal",),
+    "find_pal_drops": ("pal",),
     "get_breeding_combo": ("target",),
     "check_breeding_pair": ("parent_a", "parent_b"),
     "get_pal_info": ("pal",),

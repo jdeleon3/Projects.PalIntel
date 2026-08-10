@@ -13,7 +13,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .execution import ResourceResult, SpawnResult
+from .execution import DropsResult, ResourceResult, SpawnResult
 from .tools import Decline
 
 # Tier colours, so a reader can tell fact from recommendation from reference at a glance
@@ -507,3 +507,52 @@ def decline_card(decline: Decline) -> Card:
         lines.append(f"I can currently find: **{opts}**{more}")
     lines.append(f"_{decline.reason}_")
     return Card(title="Didn't understand", lines=lines, colour=TIER_DECLINE)
+
+
+# A Pal drops 5 items at the median and 14 at the most. Six keeps the common case whole
+# while stopping Dandilord from filling the screen.
+MAX_DROPS = 6
+
+
+def drops_card(result: DropsResult) -> Card:
+    """What a Pal yields, with the alpha-only half kept separate.
+
+    The split is the whole point. Vanwyrm's list is mostly alpha drops, and a flat list
+    would read as "kill Vanwyrms for Ancient Civilization Parts" - true only of a level
+    50 field boss, and an expensive thing to learn by trying.
+    """
+    if not result.known:
+        return Card(title=f"No drop data for {result.pal}",
+                    lines=["That Pal isn't in the drop table."],
+                    colour=TIER_DECLINE)
+    if not result.total:
+        # A real answer: the game gives this one nothing.
+        return Card(title=f"{result.pal} drops nothing",
+                    lines=[f"**{result.pal}** yields no items when defeated or caught."],
+                    colour=TIER_DECLINE)
+
+    def block(drops: list) -> list[str]:
+        shown = drops[:MAX_DROPS]
+        rest = len(drops) - len(shown)
+        out = [SEP.join([f"**{d.item}**", d.amount()]
+                        + ([f"{d.rate:.0f}%"] if d.rate < 100 else []))
+               for d in shown]
+        if rest > 0:
+            out.append(f"_+{rest} more_")
+        return out
+
+    lines = block(result.ordinary) if result.ordinary else [
+        "_Nothing from an ordinary one._"]
+    if result.alpha_only:
+        # Named as a different fight, not as a footnote. This is the line that stops the
+        # card promising a drop the player cannot get from the Pal they will meet.
+        lines += ["", "__Alpha only__"] + block(result.alpha_only)
+    if result.high_level:
+        # Same reasoning, one band up. The endgame table is a different creature: a
+        # level 80 Chillet drops 30-50 Ancient Relics, an ordinary one drops leather.
+        band = min(d.min_level for d in result.high_level)
+        lines += ["", f"__Level {band}+ only__"] + block(result.high_level)
+
+    return Card(title=f"{result.pal} drops", lines=lines,
+                footer=f"{result.total} item{'s' if result.total != 1 else ''}",
+                colour=TIER_FACT)

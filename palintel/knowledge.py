@@ -229,6 +229,27 @@ class Ranch:
 
 
 @dataclass(frozen=True)
+class PalDrop:
+    """One item a Pal yields when defeated or captured.
+
+    The mirror of `Dropper`: same rows, read the other way. Both come from one collection
+    in build_pal_drops so the resource card's "also drops from" line and a "what does X
+    drop" answer cannot disagree about the same fact.
+    """
+    item: str
+    rate: float
+    low: int
+    high: int
+    alpha_only: bool = False
+    # The level band this row describes. 0 is the ordinary creature; 70 and 80 are the
+    # endgame tables, which drop entirely different things in far larger quantities.
+    min_level: int = 0
+
+    def amount(self) -> str:
+        return str(self.low) if self.low == self.high else f"{self.low}-{self.high}"
+
+
+@dataclass(frozen=True)
 class Dropper:
     """A Pal that yields a resource when defeated or captured.
 
@@ -243,6 +264,7 @@ class Dropper:
     low: int
     high: int
     alpha_only: bool = False
+    min_level: int = 0
 
     def amount(self) -> str:
         return str(self.low) if self.low == self.high else f"{self.low}-{self.high}"
@@ -297,6 +319,9 @@ class KnowledgeBase:
     # survive a level-40 mining spot may still be able to farm a Pal for it. Empty when
     # the dataset is absent, which is normal - it is built by its own ingest step.
     droppers: dict[str, list[Dropper]] = field(default_factory=dict)
+    # Pal -> what it drops. 302 Pals drop something; the rest drop nothing at all, which
+    # is a real answer rather than missing data.
+    pal_drops: dict[str, list[PalDrop]] = field(default_factory=dict)
     # Pal -> ranch output. Empty when the dataset is absent, which is normal: it has its
     # own ingest step and the answer is complete without it.
     ranch: dict[str, Ranch] = field(default_factory=dict)
@@ -332,13 +357,20 @@ class KnowledgeBase:
         # Optional: the bot answers every Q1 query without it, just without the extra
         # line, so a checkout that has not run build_pal_drops.py still works.
         droppers: dict[str, list[Dropper]] = {}
+        pal_drops: dict[str, list[PalDrop]] = {}
         drop_path = base / "pal_drops.json"
         if drop_path.exists():
             drop_raw = json.loads(drop_path.read_text(encoding="utf-8"))
             droppers = {res: [Dropper(pal=d["pal"], rate=d["rate"], low=d["min"],
-                                      high=d["max"], alpha_only=d["alpha_only"])
+                                      high=d["max"], alpha_only=d["alpha_only"],
+                                      min_level=d.get("min_level", 0))
                               for d in ds]
                         for res, ds in drop_raw["by_resource"].items()}
+            pal_drops = {pal: [PalDrop(item=d["item"], rate=d["rate"], low=d["min"],
+                                       high=d["max"], alpha_only=d["alpha_only"],
+                                       min_level=d.get("min_level", 0))
+                               for d in ds]
+                         for pal, ds in drop_raw.get("by_pal", {}).items()}
 
         ranch: dict[str, Ranch] = {}
         ranch_source = ""
@@ -356,7 +388,8 @@ class KnowledgeBase:
         return cls(game_version=raw["game_version"], lexicon=lexicon, nodes=nodes,
                    spawns=spawns,
                    pals_without_areas=frozenset(spawn_raw["pals_without_areas"]),
-                   droppers=droppers, ranch=ranch, ranch_source=ranch_source)
+                   droppers=droppers, pal_drops=pal_drops, ranch=ranch,
+                   ranch_source=ranch_source)
 
     def summary(self) -> dict[str, object]:
         by_res: dict[str, int] = {}

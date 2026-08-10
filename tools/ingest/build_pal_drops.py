@@ -107,8 +107,16 @@ def build(version: str) -> dict:
             if drop["rate"] <= 0:
                 zero_rate += 1
                 continue
+            # Keyed by (pal, level), not by pal. DT_PalDropItem is level-banded: a
+            # WeaselDragon000 row drops Leather and an Ice Organ, while WeaselDragon080
+            # drops 30-50 Ancient Relics. Collapsing them with max() published the
+            # level-80 haul as if an ordinary Chillet carried it - the same conflation of
+            # two encounter kinds that alpha_only exists to prevent, one level down.
+            # 128 of 890 characters are banded this way.
             entry = found[drop["item"]].setdefault(
-                pal, {"pal": pal, "rate": 0.0, "min": 0, "max": 0, "alpha_only": True})
+                (pal, row["level"]),
+                {"pal": pal, "min_level": row["level"], "rate": 0.0,
+                 "min": 0, "max": 0, "alpha_only": True})
             entry["rate"] = max(entry["rate"], drop["rate"])
             entry["min"] = max(entry["min"], drop["min"])
             entry["max"] = max(entry["max"], drop["max"])
@@ -119,7 +127,9 @@ def build(version: str) -> dict:
         # Best rate first, then the bigger haul, then by name so the order is stable
         # across rebuilds - a card that reshuffles between patches for no reason is
         # noise the reader has to re-scan.
-        return sorted(droppers.values(), key=lambda d: (-d["rate"], -d["max"], d["pal"]))
+        # Base-level rows first: they describe the Pal a player will actually meet.
+        return sorted(droppers.values(),
+                      key=lambda d: (d["min_level"], -d["rate"], -d["max"], d["pal"]))
 
     # Three views, one pass, one set of rules. Deriving the card's resource view from the
     # item view rather than collecting it separately is what stops the "also drops from"
@@ -133,9 +143,10 @@ def build(version: str) -> dict:
         for d in droppers.values():
             by_pal[d["pal"]].append({"item": display(item), "rate": d["rate"],
                                      "min": d["min"], "max": d["max"],
-                                     "alpha_only": d["alpha_only"]})
+                                     "alpha_only": d["alpha_only"],
+                                     "min_level": d["min_level"]})
     for pal, drops in by_pal.items():
-        drops.sort(key=lambda d: (-d["rate"], -d["max"], d["item"]))
+        drops.sort(key=lambda d: (d["min_level"], -d["rate"], -d["max"], d["item"]))
 
     return {
         "dataset_version": 2,
@@ -151,6 +162,10 @@ def build(version: str) -> dict:
             "scenario_actors": "rows suffixed _Quest/_Avatar/_BossRush are excluded - "
                                "they share a base name with a real Pal and are not "
                                "encounters a player farms in the world",
+            "level_bands": "DT_PalDropItem is banded by level (a 000 row and an 080 "
+                           "row for the same species drop different things). Bands are "
+                           "kept apart and min_level published, because a level-80 haul "
+                           "presented as an ordinary drop is a wrong answer",
             "placeholder_names": "items whose English name is a placeholder (\"en Text\") "
                                  "are excluded - an unaskable entity in the vocabulary",
         },

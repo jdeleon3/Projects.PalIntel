@@ -310,6 +310,28 @@ class Pipeline:
             return Outcome(built, call, candidates,
                            illustrate=draw_all if planned else None)
 
+        if call.name == "find_pal_drops":
+            pal = call.args.get("pal")
+            if not pal:
+                # Same shape as the other two: a model can name a registered tool and
+                # omit its only required argument. An honest decline, not a TypeError.
+                log.warning("router called %s with no pal: %s", call.name, call.args)
+                return self._decline(Decline(reason="no Pal identified"), candidates)
+
+            def render_drops(name: str) -> Card:
+                result = execution.find_pal_drops(self.kb, name)
+                log.info("find_pal_drops(%s) -> %d items", name, result.total)
+                card = cards.drops_card(result)
+                if self.artwork is not None and self.artwork.icons:
+                    # The icon only. There is nothing to map - a drop table is not a
+                    # place - so this card asks for no crop.
+                    card.thumbnail = self.artwork.assets.icon(name)
+                return card
+
+            self._remember(who, call, {"pal": pal}, "drops")
+            return Outcome(self._cards_for(self.kb.lexicon.family(pal), render_drops),
+                           call, candidates)
+
         # A tool the router knows about but the dispatcher does not is a wiring bug.
         # Fail loudly here rather than rendering something plausible.
         raise RuntimeError(f"router produced unregistered tool: {call.name!r}")

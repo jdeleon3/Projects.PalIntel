@@ -158,3 +158,46 @@ def test_a_missing_dataset_does_not_break_the_knowledge_base(tmp_path: Path):
     """The drops file is optional; Q1 answers without it, just without the line."""
     kb = KnowledgeBase(game_version="1.0.2", lexicon=None)
     assert kb.droppers == {}
+
+
+# ------------------------------------------------------------------ level bands
+
+def test_level_bands_are_kept_apart(kb: KnowledgeBase):
+    """DT_PalDropItem is banded, and collapsing the bands published a wrong answer.
+
+    `WeaselDragon000` drops Leather and an Ice Organ; `WeaselDragon080` drops 30-50
+    Ancient Relics. Taking the max across rows put the level-80 haul on the card as if an
+    ordinary Chillet carried it - the same conflation of two encounter kinds that
+    `alpha_only` exists to prevent, one level down. 128 of 890 characters are banded.
+    """
+    from palintel.execution import find_pal_drops
+
+    r = find_pal_drops(kb, "Chillet")
+    ordinary = {d.item for d in r.ordinary}
+    assert ordinary == {"Ice Organ", "Leather"}, (
+        f"an ordinary Chillet drops leather and an ice organ, not {sorted(ordinary)}")
+    assert all(d.min_level == 0 for d in r.ordinary)
+    assert any(d.min_level >= 70 for d in r.high_level)
+    assert "Decayed Ancient Relic" in {d.item for d in r.high_level}
+
+
+def test_the_card_labels_the_band(kb: KnowledgeBase):
+    """A player reads the heading, not the schema."""
+    from palintel.cards import drops_card
+    from palintel.execution import find_pal_drops
+
+    lines = drops_card(find_pal_drops(kb, "Chillet")).lines
+    assert any(l.startswith("__Level ") and "only__" in l for l in lines)
+    # The endgame haul must not appear above that heading.
+    cut = next(i for i, l in enumerate(lines) if l.startswith("__Level "))
+    assert not any("Ancient Relic" in l for l in lines[:cut])
+
+
+def test_a_pal_with_no_drops_is_not_a_missing_row(kb: KnowledgeBase):
+    """"Drops nothing" and "I have no data" are different answers."""
+    from palintel.cards import drops_card
+    from palintel.execution import find_pal_drops
+
+    unknown = find_pal_drops(kb, "NotAPalAtAll")
+    assert not unknown.known
+    assert "isn't in the drop table" in " ".join(drops_card(unknown).lines)

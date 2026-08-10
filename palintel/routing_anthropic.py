@@ -154,6 +154,35 @@ def pal_spawn_schema(pals: list[str]) -> dict[str, Any]:
     }
 
 
+def pal_drops_schema(pals: list[str]) -> dict[str, Any]:
+    """Q-drops: what a Pal yields when defeated or captured.
+
+    Its description works hardest at separating this from `find_pal_spawns`, because the
+    two share a subject and differ only in what is being asked about it - "where do I
+    find Vanwyrm" against "what does Vanwyrm drop". The A5 prompt set has 40 of the
+    latter and, until this tool existed, nowhere to put them.
+    """
+    return {
+        "name": "find_pal_drops",
+        "description": (
+            "List the items a Pal yields when defeated or captured. Call this when the "
+            "player asks what a Pal drops, gives, or is farmed for - for example "
+            "\"what does Vanwyrm drop\" or \"what do I get from Lamball\". Use "
+            "find_pal_spawns instead when they ask WHERE a Pal is."
+        ),
+        "strict": True,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pal": {"type": "string", "enum": pals,
+                        "description": "Which Pal's drops to list."},
+            },
+            "required": ["pal"],
+            "additionalProperties": False,
+        },
+    }
+
+
 def registry(resources: list[str], pals: list[str], *,
              unified: bool = False,
              classes: tuple[str, ...] = PRODUCTION_CLASSES) -> list[dict[str, Any]]:
@@ -170,7 +199,7 @@ def registry(resources: list[str], pals: list[str], *,
     """
     if unified:
         return [unified_schema(resources, pals, classes)]
-    return [_tool_schema(resources), pal_spawn_schema(pals)]
+    return [_tool_schema(resources), pal_spawn_schema(pals), pal_drops_schema(pals)]
 
 
 def _tool_schema(resources: list[str]) -> dict[str, Any]:

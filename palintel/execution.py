@@ -7,7 +7,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .knowledge import Dropper, KnowledgeBase, Ranch, ResourceNode, SpawnArea
+from .knowledge import (Dropper, KnowledgeBase, PalDrop, Ranch, ResourceNode,
+                        SpawnArea)
 
 
 @dataclass(frozen=True)
@@ -153,4 +154,45 @@ def find_pal_spawns(
         in_overworld=pal not in kb.pals_without_areas,
         ranch=kb.ranch.get(pal),
         ranch_source=kb.ranch_source,
+    )
+
+
+@dataclass(frozen=True)
+class DropsResult:
+    pal: str
+    # Ordinary drops first, alpha-only after - see `drops_card`. Both lists together are
+    # everything the Pal yields; neither is a truncation.
+    ordinary: list[PalDrop]
+    alpha_only: list[PalDrop]
+    # Endgame level bands, kept apart because they are a different creature in practice:
+    # a level 80 Chillet drops 30-50 Ancient Relics and an ordinary one drops leather.
+    high_level: list[PalDrop]
+    # The Pal is real and drops nothing at all, which is a fact rather than missing data.
+    known: bool
+
+    @property
+    def total(self) -> int:
+        return len(self.ordinary) + len(self.alpha_only) + len(self.high_level)
+
+
+def find_pal_drops(kb: KnowledgeBase, pal: str) -> DropsResult:
+    """What a Pal yields when defeated or captured.
+
+    Split by encounter kind rather than returned flat. Most of what a Vanwyrm drops is
+    alpha-only - Ancient Civilization Parts, Precious Plume, a Giant Pal Soul - and a
+    player who reads that list and goes hunting ordinary Vanwyrms comes back with a Bone.
+    The split is the answer to the question actually being asked.
+    """
+    drops = kb.pal_drops.get(pal)
+    if drops is None:
+        # No row at all. Distinct from an empty one: `known=False` means this Pal is not
+        # in the drop table, not that it drops nothing.
+        return DropsResult(pal=pal, ordinary=[], alpha_only=[], high_level=[],
+                           known=False)
+    return DropsResult(
+        pal=pal,
+        ordinary=[d for d in drops if not d.alpha_only and not d.min_level],
+        alpha_only=[d for d in drops if d.alpha_only and not d.min_level],
+        high_level=[d for d in drops if d.min_level],
+        known=True,
     )
