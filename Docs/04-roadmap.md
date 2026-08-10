@@ -824,7 +824,10 @@ which comes from the `BP_PalSpawner_Sheets_*` actors already extracted.
 
 ---
 
-## Phase 1 — Vertical slice: Q1 resource lookup (target: 2 weeks)
+## Phase 1 — Vertical slice: Q1 resource lookup (target: 2 weeks) — **closed 2026-08-10**
+
+*Correctness, failure modes and real play all met; latency accepted at measured behaviour
+on a 16-query sample and carried into Phase 2. See the exit section below.*
 
 *"Hey Pal, where's the nearest coal?"* → card with coordinates, in under 2.5 seconds.
 
@@ -1192,9 +1195,50 @@ Q1. `gather`, `harvest`, `stock up` and `pick up` were measured, added nothing, 
 deliberately absent. None of these would have been guessed from typed text — the queries
 that miss are exactly the ones nobody thinks to write down.
 
-**Still open in Phase 1:** the latency and real-play exit criteria. Note what four sessions
-have *not* produced: a single wrong answer. Every mangled noun either recovered correctly
-or declined honestly.
+### Phase 1 exit — closed, with latency accepted at measured behaviour (2026-08-10)
+
+**Phase 1 exit: correctness ✅ · failure modes ✅ · real play ✅ · latency ◐ accepted on a
+thin sample, carried into Phase 2 as a watch item.**
+
+| criterion | outcome |
+|---|---|
+| Zero fabricated coordinates | ✅ structural, and asserted at load |
+| Every §8 failure mode produces its card | ✅ for the modes Phase 1 owns |
+| Used during a real play session without disrupting it | ✅ four sessions |
+| Voice p95 ≤ 2.5s, text p95 ≤ 1.5s, ≥ 30 answered each | ◐ **not formally met** |
+
+Final measured shape, best session:
+
+| | p50 | p95 | n | budget |
+|---|---|---|---|---|
+| Voice, answered | **1.4s** | 4.4s | 16 | 2.5s |
+| Text, answered | **0.3s** | 0.5s | 16 | 1.5s |
+| Voice, declined | 4.6s | 8.3s | 6 | not graded |
+| stages | stt 0.39s · route **0.11s** · post 0.19s | | | |
+
+**Why this is accepted rather than passed.** The criterion asks for ≥ 30 answered queries
+and the best session reached 16, at which point `int(16 × 0.95)` is the last index — the
+reported p95 *is* the maximum, one query, not a percentile. Both medians sit comfortably
+inside budget and decompose exactly as a fast-path query should (0.70 hangover + 0.39 STT +
+0.11 route + 0.19 post = 1.39s). The number that fails is a statistic the sample cannot
+support, and collecting fourteen more queries to settle a bar that Phase 2 is about to
+change would be measuring the wrong thing. Same call, and the same wording, as
+[A5 at the Phase 0 exit](#a5-verdict--measured-in-phase-1): accepted at measured behaviour,
+with the caveat recorded rather than rounded away.
+
+**What is genuinely established.** Routing left the critical path: `route p50 0.11s`,
+against 1.70s two sessions earlier. In the last clean window every answered query took the
+fast path and every model call was a decline — the shape the design was aiming at. And
+across four sessions and ~90 real queries, **not one wrong answer**: every mangled noun
+either recovered correctly or declined honestly, which is the criterion this project was
+actually organised around.
+
+**Watch, in Phase 2.** The latency picture is expected to get *worse* before it gets
+better, and predicting that now is cheaper than being surprised by it: `find_pal_spawns`
+adds a query class the stub cannot answer at all, so a larger share of traffic returns to
+the model and the fast path's share of the median drops. Phase 2 is therefore the honest
+place to re-measure this, with a bigger sample and a realistic query mix, rather than
+grinding out fourteen more resource queries against a build that is about to change.
 
 ---
 
@@ -1210,6 +1254,16 @@ or declined honestly.
   nothing outside Q1" was scored when there was no other tool to claim *for*. Registering
   `find_pal_spawns` gives a keyword matcher its first real chance to be confidently wrong,
   and `router.cues = "wide"` is the width to re-justify or step back first.
+- **Settle the Phase 1 latency criterion**, carried forward from a 16-query sample where
+  the reported p95 was the maximum rather than a percentile. Expect it to look *worse*
+  first: `find_pal_spawns` adds a class the stub cannot answer, so more traffic returns to
+  the model and the fast path's share of the median falls. The question to answer is not
+  "does the old number hold" but **what fraction of a realistic two-class mix the fast path
+  can still carry** — and if the answer is "much less", that is an argument for a Q2 fast
+  path, not for relaxing the bar.
+- **Re-measure the STT hotword order**, whose reordering cost 2 of 60 Pal clips. At that
+  sample it is as likely noise as signal, and it stops being ignorable the moment a Pal
+  tool depends on those names.
 - **Conversation memory** ([ADR-0013](adr/0013-conversation-memory.md)) — follow-ups now
   have something to refer back to
 - Multi-speaker attribution in a shared channel
