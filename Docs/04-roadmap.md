@@ -875,9 +875,11 @@ wake word that never fires. Not fixable from this side. Output is still a Discor
 Amended into [ADR-0004](adr/0004-wake-word-activation.md) and
 [ADR-0012](adr/0012-dual-input-channels.md), where the real loss lands: **party members
 can no longer ask by voice.** `listening.py`, `wakeword.py` and `stt.py` were untouched by
-the switch — the utterance buffer was already transport-agnostic — and the mic turns out to
-suit the detector better, since 16 kHz mono int16 in 1280-sample blocks is exactly the
-detector's frame.
+the switch — the utterance buffer was already transport-agnostic — and the mic still suits
+the detector better, since it delivers mono int16 in fixed blocks with no packet-boundary
+remainder to carry. (The stronger claim first written here — that capture *is* the
+detector's 16 kHz frame, so no resampling is needed — held only for the device this was
+first run against. See the play-session findings below.)
 
 **`hey_pal` trained and measured.** 30k synthetic samples via Piper, 50k steps, nine
 compatibility shims documented in `tools/wakeword/train.py`. Scored against the 236 A5
@@ -932,8 +934,205 @@ does not consume the file's mtime so the next poll retries immediately.
 **A1's retirement propagated** into `00-overview.md`, `01-architecture.md`, ADR-0006 and
 ADR-0009, which still described tuning cards for an overlay that will not exist.
 
-**Still open in Phase 1:** the latency and real-play exit criteria, both of which need a
-session rather than a test run.
+### Phase 1 progress — first play session, and what it broke (2026-08-09)
+
+The real-play exit criterion was attempted, and the value of attempting it is that three
+of the four things it found are invisible to a test run.
+
+**The wake word never loaded.** `hey_pal` is not one of openWakeWord's pretrained names,
+and `WakeWord` only resolved bare names against a `models_dir` that neither `mic.py` nor
+`voice.py` passed — so the trained model sat in `data/wakeword/` while startup died on
+`Could not find pretrained model for model name 'hey_pal'`. Resolution now defaults to that
+directory, and checks the file exists before substituting a path, so `hey_jarvis` still
+resolves the way it always did.
+
+**Not every microphone does 16 kHz.** The configured device was the WASAPI entry for the
+headset mic; WASAPI shared mode only opens at the rate Windows mixes the device at, so the
+hardcoded 16 kHz request was a `PaErrorCode -9997` at startup. Nothing in the device name
+says so — the *same physical microphone* appears once per host API, and its MME entry
+converts happily while its WASAPI entry refuses. `mic.py` now probes for 16 kHz and falls
+back to the device's own rate, resampling each capture block to exactly one detector frame
+(3840 samples at 48 kHz, 3528 at 44.1 kHz). The resampler carries the previous block's tail
+through the filter and discards that span of output; without it every 80 ms block gets edge
+transients twelve times a second, worth ~5 dB of SNR. Measured ~60 dB against an ideal
+16 kHz reference at 48/44.1/32 kHz.
+
+**Declines were slower than answers**, ~2.6x, and it is thinking tokens rather than prose:
+26 → 40 output tokens but 150 → 549 thought tokens. That is `ROUTING_POLICY` doing what it
+was written to do — declining is the judgement it deliberately makes expensive, because
+the policy names a false decline as the more common failure. The obvious lever is Gemini 3's
+`thinkingLevel` (`thinkingBudget` is now a 400, and the surviving budget values are soft
+hints — 128 requested, 277 spent). Swept over all 232 A5 utterances:
+
+| level | exact | **wrong** | declined | median | p95 | $/req |
+|---|---|---|---|---|---|---|
+| default | 88.8% | **3.4%** | 20.7% | 2136ms | 8340ms | 0.0060 |
+| low | 87.1% | **4.3%** | 21.6% | 1613ms | 4513ms | 0.0043 |
+| minimal | 88.8% | **8.2%** | 15.1% | 1116ms | 1411ms | 0.0031 |
+
+**Rejected both.** `minimal` reads as free — same exact accuracy, p95 down 6x, half the
+cost — and it doubles the wrong-entity rate. The mechanism is visible in the decline column:
+thinking less makes the model less willing to decline, so eleven queries the default
+declined now get answered confidently and wrongly ("where can I find Leithbunk" → Lifmunk
+rather than Leezpunk; two hallucinate entities into prompts that name none). That is the
+failure [ADR-0007](adr/0007-entity-lexicon-boundary.md) refuses to ship, traded for a second
+of latency. `low` is simply worse than default on accuracy, and its `high` twin measured
+nearly identical thought tokens, so there is no finer setting hiding between them.
+
+**The sweep's real finding was the timeout.** Every run had requests hitting the 120s
+ceiling and returning "unreachable" — two minutes of a bot that looks hung, on a query
+budgeted at 2.5s — plus stragglers at 56-64s. Both hosted backends now bound requests at
+8s (Claude had no timeout at all). 8s rather than the 4s first proposed, because the data
+overruled the guess: 4s cuts 20 correct answers, 8s cuts 5, and all five had already blown
+the budget threefold. **This is not a latency saving** — nothing recovers a 60s query — it
+is a bound on the worst case. A transient failure now falls through to `StubRouter` via
+`FallbackRouter`, which answers a clear Q1 resource query outright. Only *transient*
+declines fall through: a considered decline is passed on untouched, because the stub knows
+strictly less than the model did and re-deciding on less is how a "no" becomes a
+confidently wrong "yes".
+
+**`routing_gemini.py` was importing the local backend's system prompt** — the one that says
+"your only output is one JSON object… otherwise pick `decline`" — while using real function
+calling. Gemini followed it faithfully, three ways: it called a function named `decline`
+(unregistered, so a hard error at the dispatcher), it emitted `find_resource_nodes` with no
+`resource` (a `TypeError` out of `execution`), and it put bare `{}` and fenced JSON in the
+text half of a decline, which rendered **verbatim on the player's card**. `routing.py` had
+always documented that the output-format sentence is the one thing that differs per backend;
+this import was the exception that proved it. Re-measured on the full A5 set to confirm the
+correction did not move the baseline:
+
+| | exact | wrong | declined | p95 |
+|---|---|---|---|---|
+| local-grammar prompt (all earlier runs) | 88.8% | 3.4% | 20.7% | 8340ms |
+| function-calling prompt | 89.2% | 3.4% | 20.7% | 6673ms |
+
+Unchanged, which is the result the fix wanted — the +0.4pp is a single query and the
+2-regressed/3-improved churn is ordinary run-to-run variance. **The 88.8% headline in the
+A5 tables above was therefore measured under the wrong prompt, and survives it.** The
+pre-fix detail is kept as `router_gemini-3.6-flash_localprompt.json` rather than
+overwritten. Each malformed shape is also handled defensively regardless of prompt: a model
+can always emit a bad call, and neither a crash nor raw JSON on a card is an acceptable
+answer to that.
+
+**Still unmeasured:** the latency exit criterion. These are router numbers against recorded
+transcripts, not end-to-end voice p95 with STT and rendering in the path, and the 2.5s bar
+is written against the latter. `thinking_level` is plumbed through and defaults to off — a
+measured knob, deliberately unused.
+
+### Phase 1 progress — the Q1 fast path (2026-08-09)
+
+The model round trip is a ~2s median and Q1's whole budget is 2.5s, so on a plainly-phrased
+resource query the round trip *is* the latency problem. Nothing in the model tuning could
+fix that — the `thinkingLevel` sweep above established there is nothing to buy there — so
+the answer is not to make the call, which
+[ADR-0009](adr/0009-v1-vertical-slice.md)'s single-tool slice makes unusually safe:
+`StubRouter` answers from the same knowledge base and the same lexicon, with no model in
+the loop to fabricate anything.
+
+**Measured before building it, on the A5 transcripts, at zero API cost.** Coverage is scored
+on the 15 prompts a Q1 build can answer; precision is scored across all 232, because the
+way a keyword router fails is by claiming queries from *other* classes and those live
+outside Q1:
+
+| cue set | Q1 answered | wrong resource | claimed outside Q1 |
+|---|---|---|---|
+| standard (the original list) | 8/15 = 53% | 0 | 0 |
+| proximity (`near`, `nearby`, `around here`) | 10/15 = 67% | 0 | 0 |
+| wide (adds `i need`, `get me`, `any`) | 11/15 = 73% | 0 | 0 |
+
+On every query the stub claimed, the model had independently made the same call. It defers
+"do I have enough sulfur for this" — which names a resource and is not a location question,
+and which the model also declined — so the cue gate is discriminating, not just filtering
+noise. Live, the two `wide`-only phrasings go from ~1.8s to ~0.1s.
+
+**`wide` is live behind a flag, and the flag is the point.** 15 prompts is a thin basis for
+"zero precision cost", and `wide` is the only width that guesses at intent rather than
+naming a place — it is also the most exposed when Phase 2 registers `find_pal_spawns` and
+there is finally another class to steal from. `router.cues = "proximity"` is the same trade
+without the intent guesses, at two queries of coverage; `router.fast_path = false` restores
+model-only routing exactly. The cue width appears in the router's name, so it reaches
+`/palintel status` and every routing log line: a fast path that quietly widened would be
+indistinguishable from the model getting worse.
+
+One stub instance serves both the fast path and the transport backstop, so the width cannot
+diverge between them — the same query being claimed or deferred depending on whether the
+network happened to be up is not a behaviour worth being able to express.
+
+**The session will now produce the numbers.** Per-stage timing is recorded into the
+activity log and reported by `/palintel status`: end-to-end p50/p95 for voice and text
+against their budgets, plus an STT / route / post breakdown so a miss says *where* it went
+rather than only that it went. Two details are load-bearing. The voice clock starts at end
+of speech, which is **700 ms before the buffer closes** — the endpointing hangover is time
+the player spends waiting and the budget owns it, so `Utterance.ended_at` unwinds it rather
+than letting the pipeline start its stopwatch late and quietly bank a quarter of the budget.
+And the card refuses to grade a thin sample: under 30 queries it shows `⏳ n/30` instead of
+a tick, because the criterion says "over ≥ 30 real queries" and a p95 over six is not a p95.
+
+### Phase 1 progress — the second session, and what typed text was hiding (2026-08-09)
+
+Twenty-one voice queries, then six more. **Voice p50 3.2s, p95 4.8s against a 2.5s bar** —
+and the breakdown immediately contradicted the prediction made a few hours earlier:
+
+| stage | p50 | predicted |
+|---|---|---|
+| STT | **0.38s** | "the likeliest place for the budget to go" |
+| route | **1.70s** | near zero, because the fast path would cover the median |
+| post | 0.22s | — |
+
+STT was the smallest term in the budget, not the largest. Routing was 4.5x bigger, which
+means **the median query was still going to the model** — the fast path was not firing.
+
+**Reading the actual transcripts is what found it**, and required building `/palintel
+recent`: the activity log had been storing every query's text and routing time since the
+instrumentation went in, and nothing displayed them, so the data needed to diagnose a
+missing answer existed and was unreachable from Discord, which is where the person asking
+is standing. Six verbatim transcripts, every one **answered correctly**:
+
+| heard | why it went to the model |
+|---|---|
+| "where's the nearest **goal**?" | coal ranked **0.75**, floor is 0.78 |
+| "find me a **North Spot**" | ore 0.57, top candidate `Finsider` |
+| "**gimme** some quartz" | quartz **1.00** — the cue list knew "get me", not the contraction |
+| "we're sitting near **a store**" | ore 0.75, tied with a Pal at 0.75 |
+
+Two distinct causes, and conflating them would have produced the wrong fix. The mangled
+nouns are the *architecture working*: the corrector ranks, the stub defers because it
+cannot reason, and the model recovers the entity from sentence context — exactly
+[ADR-0016](adr/0016-entity-resolution-in-router.md). Dropping `MIN_CONFIDENT` to 0.75 to
+catch "goal" would also let the stub answer "a store" on a coin-flip between ore and a Pal.
+`gimme` was a pure vocabulary miss on a perfect 1.00 entity, and is now in the cue list.
+
+**The real fix was one line in `stt.py`, and the bug was hiding inside `sorted()`.** The
+hotword list was `sorted(canonical_names)`, and the resources are the only lowercase
+entries — so ASCII put all 313 capitalised Pal names ahead of the four nouns Phase 1 can
+answer about. The entities the whole phase is built on carried the *least* decoding bias.
+Re-measured over the 19 recorded resource clips, scored by whether the entity clears
+`MIN_CONFIDENT` afterwards — the exact condition the fast path tests:
+
+| hotwords | resource clips | pal clips |
+|---|---|---|
+| none | 15/19 | 38/60 |
+| all, sorted (what shipped) | 16/19 | 44/60 |
+| resources only | **19/19** | 35/60 — buys Q1 by wrecking Phase 2 |
+| **resources first** | **19/19** | 42/60 |
+
+"goal", "a store" and "an over spot" all transcribe correctly with the resources hoisted,
+which takes them to 1.00 and onto the fast path. Resources-first is the only option that
+reaches 100% on Q1 without abandoning the Pal names Phase 2 needs, and it is not free:
+2 of 60 Pal clips regressed, which on that sample is as likely noise as signal and wants
+re-measuring when a Pal tool actually depends on them.
+
+**Two diagnostic holes closed on the way.** `dispatch` discarded the Future from
+`run_coroutine_threadsafe`, so any exception after transcription — posting the card
+included — vanished until garbage collection; and "answered" was recorded *before* the
+send, so a card built and never delivered still counted as an answer. Between them, the
+one failure the player actually experiences (asking and getting nothing back) was
+invisible in the status card that exists to explain it.
+
+**Still open in Phase 1:** the latency and real-play exit criteria. The next session is
+the first one where the fast path should carry the median rather than the tail, so it is
+also the first whose p95 means anything. Note what the two sessions so far have *not*
+produced: a single wrong answer. 27 queries, mangled nouns and all, every one correct.
 
 ---
 
@@ -944,6 +1143,11 @@ session rather than a test run.
 - `find_pal_spawns` + card
 - **Multi-tool routing** — the first point requiring disambiguation between classes. Grow
   the eval set to ≥ 50 utterances spanning both.
+- **Re-measure the Q1 fast path against the grown eval set** — this is the phase that can
+  invalidate it. Its precision was measured with only one tool registered, so "claimed
+  nothing outside Q1" was scored when there was no other tool to claim *for*. Registering
+  `find_pal_spawns` gives a keyword matcher its first real chance to be confidently wrong,
+  and `router.cues = "wide"` is the width to re-justify or step back first.
 - **Conversation memory** ([ADR-0013](adr/0013-conversation-memory.md)) — follow-ups now
   have something to refer back to
 - Multi-speaker attribution in a shared channel
@@ -1005,8 +1209,11 @@ improvise; no Tier 2 card contains a candidate absent from its computed set.
 
 ## Phase 5 — Hardening (ongoing)
 
-- **Fast-path intent matcher** — deterministic matching for common phrasings, bypassing the
-  LLM. Targets the largest remaining latency component (300–600ms).
+- ~~**Fast-path intent matcher**~~ — **pulled forward into Phase 1**, because the latency
+  component it targets turned out to be ~2s rather than the 300–600ms estimated here, which
+  made it the difference between passing and failing a Phase 1 exit criterion rather than a
+  hardening nicety. Shipped for Q1 only; it needs re-measuring per query class as tools are
+  registered, since a keyword matcher's failure mode is claiming another class's queries.
 - Lexicon growth from observed STT failures — standing task, not a one-off
 - Corpus coverage expansion against the checklist
 - Patch refresh exercised against a real Palworld update
