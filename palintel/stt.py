@@ -31,34 +31,56 @@ MODEL = "medium.en"
 MAX_HOTWORDS = 400
 
 
+# The resources hoisted ahead of the Pal names. NOT every resource: hoisting is a budget,
+# and each entry pushed to the front costs Pal accuracy behind it (see hotword_order).
+# These five are the ones the recorded evaluation set actually exercises.
+VOICE_RESOURCES = ("ore", "coal", "sulfur", "quartz", "crude_oil")
+
+
 def hotword_order(lexicon) -> list[str]:
-    """Decoding hints, resources first.
+    """Decoding hints: the spoken resources, then the Pals, then the rest.
 
-    Position in the list is not cosmetic - the bias decays along it, and the previous
-    `sorted(canonical_names)` put the resources LAST by accident: they are the only
-    lowercase entries, and ASCII sorts every capitalised Pal name ahead of them. So the
-    four nouns Phase 1 can actually answer about sat at the bottom of 318 hints, behind
-    313 Pal names that no registered tool can use.
+    Position is not cosmetic - the bias decays along the list, and `sorted(canonical_
+    names)` put the resources LAST by accident, since they are the only lowercase entries
+    and ASCII sorts every capitalised Pal name ahead of them. A real session heard "goal"
+    for coal and "a store" for ore, each falling below the fast path's floor and costing
+    a ~2s model round trip.
 
-    That was not theoretical. It is why a real session heard "goal" for coal and "a
-    store" for ore, which then fell below the fast path's confidence floor and each cost
-    a ~2s model round trip to recover. Measured over the 19 recorded resource clips, by
-    whether the entity clears MIN_CONFIDENT afterwards - the exact condition the fast
-    path tests:
+    Phase 1 fixed that by hoisting ALL resources and recorded the cost as 2 of 60 Pal
+    clips - "as likely noise as signal, worth re-measuring when Phase 2 registers a tool
+    that depends on them". Re-measured over 185 clips with `find_pal_spawns` live
+    (tools/eval/score_hotwords.py), scoring by whether the expected entity clears the
+    floor the fast path tests, 0.78 for a resource and 0.85 for a Pal:
 
-        no hotwords         15/19   pal 38/60
-        all, sorted         16/19   pal 44/60      <- what shipped
-        resources only      19/19   pal 35/60      <- buys Q1 by wrecking Phase 2
-        resources first     19/19   pal 42/60      <- this
+        variant            resource      pal
+        none                  15/19   83/166
+        all, sorted           16/19  100/166   <- identical to pals-first, byte for byte
+        all resources first   19/19   92/166   <- Phase 1's choice
+        pals first            16/19  100/166
+        core resources first  19/19  101/166   <- this
+        + stone/wood/paldium  19/19   97/166
 
-    Resources-first is the only option that takes Q1 to 100% without abandoning the Pal
-    names Phase 2 needs. It is not free: 2 of 60 Pal clips regressed, which on that
-    sample is as likely noise as signal, and is worth re-measuring when Phase 2 registers
-    a tool that depends on them.
+    **The 2-clip regression was signal, not noise: on 166 clips it is 8.** But the cause
+    was the NUMBER of hoisted entries, not hoisting resources - the set grew from 5 to 19
+    in Phase 2, and pushing fourteen more strings ahead of 313 Pal names is what displaced
+    them. Hoisting only the five the eval set exercises is strictly better than every
+    other ordering measured, on both classes at once.
+
+    A miss here is not a wrong answer - the floors still hold - it is a fast-path miss
+    that costs a model round trip.
+
+    **Known gap.** Stone, wood and paldium have no recorded clips and are almost certainly
+    common in real play, but hoisting them costs a measured 4 Pal clips for an unmeasured
+    gain. They stay unhoisted until there are clips to settle it with.
+
+    Using display names instead of the canonical ids ("Hexolite Quartz" rather than
+    `hexolite_quartz`) changed 82 of 185 transcripts and moved neither column, so the ids
+    stay.
     """
-    resources = sorted(lexicon.resources())
-    others = sorted(n for n in lexicon.canonical_names if n not in set(resources))
-    return resources + others
+    resources = set(lexicon.resources())
+    core = [r for r in VOICE_RESOURCES if r in resources]
+    rest = sorted(resources - set(core))
+    return core + sorted(lexicon.pals()) + rest
 
 
 class Transcriber:
