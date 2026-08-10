@@ -83,3 +83,38 @@ unavoidable — and where it can be managed by source selection rather than by h
   no extraction capability.
 - Nothing here is distributed. Extracted data supports a personal tool; it is not
   republished as a dataset.
+
+## Amendment (2026-08-10) — one scoped exception: ranch production
+
+**Ranch output items are sourced from the community wiki, not the game files.** This is a
+departure from the decision above and is recorded rather than absorbed.
+
+The ranch spike ([04-roadmap.md](../04-roadmap.md)) enumerated **all 284 data tables** and
+found no mapping from a Pal to what it produces on a ranch. `DT_PalMonsterParameter`
+carries `WorkSuitability_MonsterFarm` as a rank; `DT_MapObjectItemProductDataTable` covers
+base facilities (Well, StonePit, OilPump) and not Pals; `DT_MapObjectAssignData` describes
+who may work there and not what comes out. The mapping lives in `ExecuteUbergraph`
+blueprint bytecode, which property extraction does not reach. The Paldeck description text
+does not carry it either — all 310 English descriptions are flavour prose.
+
+So the choice was between no dataset and a sourced one. What makes the second acceptable:
+
+- **The roster is still authoritative.** `BP_Action_SpawnItem_<CharacterID>` assets give
+  the game's own list, so every wiki row is checked against it. 28 of 29 are corroborated;
+  the one that is not (Mau Cryst) ships with `roster_verified: false` rather than being
+  dropped or quietly trusted.
+- **The check is asymmetric, and that was measured.** The roster also contains Snock,
+  Teafant, Direhowl and Tarantriss, so the asset means "has an item-spawning action", not
+  "is ranchable". A roster entry with no wiki row is therefore weak evidence, and the
+  dataset says so.
+- **Provenance is on the data**, not just in this file: `provenance: community-wiki` and
+  the source URL are fields on `ranch_drops.json`, so nothing downstream can mistake it
+  for extracted fact.
+- The raw page is cached under `data/raw/`, per
+  [03-data-ingestion.md](../03-data-ingestion.md) §2, and neither it nor the derived table
+  is redistributed (§7).
+
+**Finding an authoritative in-game source stays on the backlog.** The likely route is
+reading blueprint bytecode, which is a different order of work from property extraction.
+Until then this is the project's only dataset whose facts are not from the game files, and
+it should stay that way.

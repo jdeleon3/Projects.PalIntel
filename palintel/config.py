@@ -103,10 +103,28 @@ class RouterConfig:
 
 
 @dataclass(frozen=True)
+class CardsConfig:
+    """Artwork on answer cards. Off by default while it is a spike.
+
+    A map crop is ~24ms to render and ~60 KB to upload, and it arrives as a second
+    Discord round trip after the text card is already on the channel - so it cannot move
+    the graded answer latency, only add a reflow the player sees. The flag exists
+    because that trade is a judgement about reading cards mid-play, which only real
+    sessions settle.
+
+    `maps` needs data/<version>/assets/ (tools/ingest/build_assets.py). Without it both
+    silently stay off rather than failing: the text card is the answer either way.
+    """
+    maps: bool = False
+    icons: bool = False
+
+
+@dataclass(frozen=True)
 class Config:
     discord: DiscordConfig
     voice: VoiceConfig = field(default_factory=VoiceConfig)
     router: RouterConfig = field(default_factory=RouterConfig)
+    cards: CardsConfig = field(default_factory=CardsConfig)
     data_version: str = "1.0.2"
     save_dir: Path | None = None
 
@@ -156,6 +174,7 @@ class Config:
             raise ConfigError(
                 f"router.cues must be standard|proximity|wide, got {cues!r}")
 
+        c = raw.get("cards", {}) or {}
         save = (raw.get("game", {}) or {}).get("save_dir", "").strip()
         return cls(
             discord=DiscordConfig(token=token, channel_id=channel,
@@ -165,6 +184,8 @@ class Config:
                               device=device,
                               speaker=(v.get("speaker") or None)),
             router=RouterConfig(fast_path=bool(r.get("fast_path", True)), cues=cues),
+            cards=CardsConfig(maps=bool(c.get("maps", False)),
+                              icons=bool(c.get("icons", False))),
             data_version=os.environ.get(
                 "PALINTEL_DATA_VERSION", (raw.get("data", {}) or {}).get("version", "1.0.2")),
             save_dir=Path(save) if save else None,
@@ -181,6 +202,9 @@ class Config:
                       if self.voice.enabled else "(text only)"),
             "router": (f"fast path on, cues={self.router.cues}"
                        if self.router.fast_path else "model only"),
+            "cards": ", ".join(
+                [k for k, on in (("maps", self.cards.maps),
+                                 ("icons", self.cards.icons)) if on]) or "text only",
             "data_version": self.data_version,
             "save_dir": str(self.save_dir) if self.save_dir else "(none)",
         }

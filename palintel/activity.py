@@ -49,7 +49,13 @@ DEFAULT_WINDOW = 3600.0
 # the clock earlier would charge the pipeline for the length of the question.
 GRADED_KINDS = ("voice", "text")
 DECLINE_KINDS = ("voice_decline", "text_decline")
-TIMED_KINDS = (*GRADED_KINDS, *DECLINE_KINDS, "stt", "route", "post")
+# Card artwork, deliberately outside the graded total: both happen after the answer is
+# already on the channel, so they cost the player nothing they are waiting on. Timed
+# anyway, because a reflow arriving long after the card is visible and would otherwise
+# go unmeasured - and timed as TWO kinds, because local render and a Discord round trip
+# are different costs with different fixes.
+ART_KINDS = ("art_render", "art_post")
+TIMED_KINDS = (*GRADED_KINDS, *DECLINE_KINDS, "stt", "route", "post", *ART_KINDS)
 
 
 @dataclass(frozen=True)

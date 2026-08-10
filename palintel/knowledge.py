@@ -197,6 +197,58 @@ class ResourceNode:
 
 
 @dataclass(frozen=True)
+class RanchDrop:
+    item: str
+    stack: int = 1
+    chance_percent: int | None = None
+
+    def label(self) -> str:
+        out = self.item
+        if self.stack > 1:
+            out += f" x{self.stack}"
+        if self.chance_percent is not None:
+            out += f" ({self.chance_percent}%)"
+        return out
+
+
+@dataclass(frozen=True)
+class Ranch:
+    """What a Pal produces when assigned to a Ranch.
+
+    The only entity in the knowledge base whose facts are not extracted from the game
+    files - the mapping is not in any of the 284 data tables, so it comes from the
+    community wiki with the pak's roster as a cross-check (ADR-0014's amendment). That
+    provenance is weaker than everything else on a Tier 1 card, so `verified` travels
+    with it and the card attributes the source rather than presenting it as extracted
+    fact.
+    """
+    drops: list[RanchDrop]
+    per_cycle: int
+    food: int
+    verified: bool = True
+
+
+@dataclass(frozen=True)
+class Dropper:
+    """A Pal that yields a resource when defeated or captured.
+
+    `alpha_only` is carried rather than hidden because it changes the claim: the drop
+    table names boss variants separately, and where only that row exists the drop is the
+    alpha's, not an ordinary encounter's. Currently zero published droppers are
+    alpha-only - the field exists so a future patch introducing one cannot quietly
+    overstate what a card promises.
+    """
+    pal: str
+    rate: float
+    low: int
+    high: int
+    alpha_only: bool = False
+
+    def amount(self) -> str:
+        return str(self.low) if self.low == self.high else f"{self.low}-{self.high}"
+
+
+@dataclass(frozen=True)
 class SpawnArea:
     """Somewhere a Pal can be encountered in the overworld.
 
@@ -240,6 +292,17 @@ class KnowledgeBase:
     # in the overworld" and "I have no data for that" stay different answers - only one
     # of them is true, and a player acts differently on each.
     pals_without_areas: frozenset[str] = frozenset()
+    # resource -> the Pals that drop it, best rate first. A second way to get the thing,
+    # which matters most exactly when the first one is out of reach: a player who cannot
+    # survive a level-40 mining spot may still be able to farm a Pal for it. Empty when
+    # the dataset is absent, which is normal - it is built by its own ingest step.
+    droppers: dict[str, list[Dropper]] = field(default_factory=dict)
+    # Pal -> ranch output. Empty when the dataset is absent, which is normal: it has its
+    # own ingest step and the answer is complete without it.
+    ranch: dict[str, Ranch] = field(default_factory=dict)
+    # Where the ranch facts came from, carried so the card can attribute them. Empty
+    # string when there is no ranch data to attribute.
+    ranch_source: str = ""
 
     @classmethod
     def load(cls, version: str = "1.0.2", root: Path | None = None) -> "KnowledgeBase":
@@ -266,9 +329,34 @@ class KnowledgeBase:
             night_only=a["night_only"], encounter_share=a["encounter_share"],
         ) for a in spawn_raw["areas"]]
 
+        # Optional: the bot answers every Q1 query without it, just without the extra
+        # line, so a checkout that has not run build_pal_drops.py still works.
+        droppers: dict[str, list[Dropper]] = {}
+        drop_path = base / "pal_drops.json"
+        if drop_path.exists():
+            drop_raw = json.loads(drop_path.read_text(encoding="utf-8"))
+            droppers = {res: [Dropper(pal=d["pal"], rate=d["rate"], low=d["min"],
+                                      high=d["max"], alpha_only=d["alpha_only"])
+                              for d in ds]
+                        for res, ds in drop_raw["drops"].items()}
+
+        ranch: dict[str, Ranch] = {}
+        ranch_source = ""
+        ranch_path = base / "ranch_drops.json"
+        if ranch_path.exists():
+            ranch_raw = json.loads(ranch_path.read_text(encoding="utf-8"))
+            ranch_source = ranch_raw.get("source", "")
+            ranch = {e["pal"]: Ranch(
+                drops=[RanchDrop(item=d["item"], stack=d.get("stack", 1),
+                                 chance_percent=d.get("chance_percent"))
+                       for d in e["drops"]],
+                per_cycle=e["per_cycle"], food=e["food"],
+                verified=e.get("roster_verified", True)) for e in ranch_raw["entries"]}
+
         return cls(game_version=raw["game_version"], lexicon=lexicon, nodes=nodes,
                    spawns=spawns,
-                   pals_without_areas=frozenset(spawn_raw["pals_without_areas"]))
+                   pals_without_areas=frozenset(spawn_raw["pals_without_areas"]),
+                   droppers=droppers, ranch=ranch, ranch_source=ranch_source)
 
     def summary(self) -> dict[str, object]:
         by_res: dict[str, int] = {}

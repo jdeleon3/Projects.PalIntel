@@ -43,6 +43,11 @@ anthropic>=0.60
 # without this a key sitting in .env is silently ignored.
 python-dotenv>=1.0
 
+# --- card artwork (map crops + Pal icons) ---
+# Both the ingest step that tiles the basemaps and the runtime crop renderer.
+# Optional at runtime: palintel/mapcard.py degrades to text-only cards without it.
+Pillow>=11.0
+
 # --- tests ---
 pytest>=8.0
 

@@ -23,13 +23,16 @@ channel - only the input moved.
 from __future__ import annotations
 
 import asyncio
+import io
 import logging
 import sys
 import time
 import wave
+from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from .activity import ActivityLog
+from .artwork import Artwork
 from .cards import TIER_DECLINE, Card, recent_card, status_card
 from .config import Config, ConfigError
 from .knowledge import KnowledgeBase
@@ -44,13 +47,31 @@ except ImportError:  # pragma: no cover
     discord = None
 
 
-def to_embed(card: Card) -> "discord.Embed":
+def to_embed(card: Card, index: int = 0, *, with_art: bool = True) -> "discord.Embed":
     embed = discord.Embed(title=card.title,
                           description="\n".join(card.lines),
                           color=card.colour)
     if card.footer:
         embed.set_footer(text=card.footer)
+    if with_art:
+        names = card.attachments(index)
+        if "image" in names:
+            embed.set_image(url=f"attachment://{names['image']}")
+        if "thumbnail" in names:
+            embed.set_thumbnail(url=f"attachment://{names['thumbnail']}")
     return embed
+
+
+def art_files(cards_: list[Card]) -> list["discord.File"]:
+    """The attachments the embeds reference, in the order their cards appear."""
+    files = []
+    for i, card in enumerate(cards_):
+        names = card.attachments(i)
+        if card.image is not None:
+            files.append(discord.File(io.BytesIO(card.image), filename=names["image"]))
+        if card.thumbnail is not None:
+            files.append(discord.File(str(card.thumbnail), filename=names["thumbnail"]))
+    return files
 
 
 def _build_watcher(cfg: Config):
@@ -93,9 +114,27 @@ def _voice_status(cfg: Config, mic) -> str:
             f"@ {cfg.voice.threshold:g}, heard as {heard_as}")
 
 
+def _artwork_status(cfg: Config, pipe: Pipeline) -> str:
+    """What the cards are actually carrying, which is not always what was asked for.
+
+    Artwork turned on with no published assets fails soft - the bot answers text-only
+    (Artwork.load). From Discord that is indistinguishable from having it switched off,
+    so the two states are named separately here rather than both reading "text only".
+    """
+    asked = [k for k, on in (("maps", cfg.cards.maps), ("icons", cfg.cards.icons)) if on]
+    if not asked:
+        return "text only"
+    if pipe.artwork is None:
+        return f"{'+'.join(asked)} requested, **no assets** (run build_assets.py)"
+    return f"{'+'.join(asked)}, {len(pipe.artwork.assets.regions)} map regions"
+
+
 def build_pipeline(cfg: Config) -> Pipeline:
     kb = KnowledgeBase.load(cfg.data_version)
-    return Pipeline(kb, build_router(kb, router_config=cfg.router))
+    artwork = Artwork.load(
+        Path(__file__).resolve().parents[1] / "data" / cfg.data_version / "assets",
+        maps=cfg.cards.maps, icons=cfg.cards.icons)
+    return Pipeline(kb, build_router(kb, router_config=cfg.router), artwork=artwork)
 
 
 async def _answer(channel, pipe: Pipeline, text: str, who: str,
@@ -150,7 +189,14 @@ async def _answer(channel, pipe: Pipeline, text: str, who: str,
     # and break the pairing that makes them readable.
     t_post = time.monotonic()
     try:
-        await channel.send(embeds=[to_embed(c) for c in outcome.cards])
+        # Text first, artwork second. The graded promise is "here are the coordinates",
+        # and a picture is not part of it - so the answer goes out on its own round trip
+        # and the upload happens after the clock has stopped. Sending them together would
+        # charge every illustrated query the attachment's latency and move a bar that is
+        # already unmet (Docs/00-overview.md §7).
+        message = await channel.send(
+            embeds=[to_embed(c, i, with_art=False)
+                    for i, c in enumerate(outcome.cards)])
     except Exception:
         # A card that was built and never delivered used to be counted as "answered",
         # because the count was written before the send. That made the one failure the
@@ -172,6 +218,52 @@ async def _answer(channel, pipe: Pipeline, text: str, who: str,
             # reason the routing policy asks for. See activity.TIMED_KINDS.
             kind_timed = f"{channel_kind}_decline" if declined else channel_kind
             activity.timed(kind_timed, (time.monotonic() - started) * 1000, text[:60])
+
+    if outcome.illustrate is None:
+        return
+
+    # Render and upload are timed apart, not as one "artwork" figure. They are different
+    # kinds of cost with different fixes - render is local CPU measured at 8-25ms, upload
+    # is a Discord round trip nobody has measured - and a combined number cannot say
+    # which one moved. Same reasoning as the stage breakdown on the status card.
+    t_render = time.monotonic()
+    try:
+        # Rendering is CPU work on a 600 px crop - small, but the event loop also drives
+        # the microphone, so it goes to the executor like routing and transcription do.
+        await loop.run_in_executor(None, outcome.draw)
+        files = art_files(outcome.cards)
+    except Exception:
+        log.exception("could not render card artwork for %r", text)
+        return
+
+    render_ms = (time.monotonic() - t_render) * 1000
+    if not files:
+        # Planned but nothing drawn: every point fell outside a published map region, or
+        # straddled two. Logged rather than silent - from the channel it is invisible,
+        # and "the map never appears" needs to be answerable without a debugger.
+        log.info("no artwork for %r (no region covers the result)", text)
+        return
+
+    kb_total = sum(len(c.image or b"") for c in outcome.cards) / 1024
+    if activity is not None:
+        activity.timed("art_render", render_ms, f"{kb_total:.0f}KB {text[:40]}")
+
+    t_post = time.monotonic()
+    try:
+        await message.edit(
+            embeds=[to_embed(c, i) for i, c in enumerate(outcome.cards)],
+            files=files)
+    except Exception:
+        # Not recorded as undelivered: the answer is on the channel and the player can
+        # act on it. Only the picture is missing, and the card never claimed one.
+        log.exception("could not attach card artwork to %r", text)
+        return
+
+    upload_ms = (time.monotonic() - t_post) * 1000
+    if activity is not None:
+        activity.timed("art_post", upload_ms, f"{kb_total:.0f}KB {text[:40]}")
+    log.info("artwork: rendered %.0fms, uploaded %.0fKB in %.0fms",
+             render_ms, kb_total, upload_ms)
 
 
 def run() -> None:
@@ -236,7 +328,8 @@ def run() -> None:
                 activity,
                 voice=_voice_status(cfg, listener["mic"]),
                 save=watcher.describe() if watcher else "not configured",
-                router=pipe.router.name)))
+                router=pipe.router.name,
+                artwork=_artwork_status(cfg, pipe))))
             return
         if text.lower() in ("/palintel recent", "palintel recent"):
             await message.channel.send(embed=to_embed(recent_card(activity)))

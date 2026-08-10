@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from .execution import ResourceResult, SpawnResult
 from .tools import Decline
@@ -29,6 +30,12 @@ class Card:
     lines: list[str] = field(default_factory=list)
     footer: str = ""
     colour: int = TIER_FACT
+    # Artwork, attached after the card is built and never load-bearing. Both are None on
+    # every path that cannot illustrate itself - assets missing, a coordinate on no
+    # published map, a Pal with no icon - and the card is complete without them. Nothing
+    # here is a value the player acts on; the numbers stay in `lines`.
+    image: bytes | None = None          # a rendered map crop, JPEG
+    thumbnail: Path | None = None       # a Pal icon on disk, PNG
 
     def to_text(self) -> str:
         out = [self.title, "-" * len(self.title), *self.lines]
@@ -36,12 +43,31 @@ class Card:
             out += ["", self.footer]
         return "\n".join(out)
 
-    def to_embed(self) -> dict:
+    def attachments(self, index: int = 0) -> dict[str, str]:
+        """Filenames for whatever artwork this card carries.
+
+        Named per card index because one message can hold several - a Paldeck slot with
+        a variant renders two - and Discord matches `attachment://` by filename, so two
+        cards sharing one would both show the first card's picture.
+        """
+        names = {}
+        if self.image is not None:
+            names["image"] = f"map{index}.jpg"
+        if self.thumbnail is not None:
+            names["thumbnail"] = f"icon{index}.png"
+        return names
+
+    def to_embed(self, index: int = 0) -> dict:
+        names = self.attachments(index)
         return {
             "title": self.title,
             "description": "\n".join(self.lines),
             "color": self.colour,
             "footer": {"text": self.footer} if self.footer else None,
+            "image": ({"url": f"attachment://{names['image']}"}
+                      if "image" in names else None),
+            "thumbnail": ({"url": f"attachment://{names['thumbnail']}"}
+                          if "thumbnail" in names else None),
         }
 
 
@@ -61,13 +87,18 @@ def resource_card(result: ResourceResult) -> Card:
     name = result.resource.replace("_", " ").title()
 
     if not result.nodes:
+        # The drops line belongs here most of all. "No coal you can survive" plus "a
+        # Blazamut drops 10" is a usable answer; the same card without it is a dead end,
+        # and the alternative route matters precisely when the locations are unreachable.
         if result.resource in NOT_PLACED:
             return Card(title=f"{name} has no node locations",
-                        lines=[NOT_PLACED[result.resource]], colour=TIER_DECLINE)
+                        lines=[NOT_PLACED[result.resource]] + _dropper_lines(result),
+                        colour=TIER_DECLINE)
         return Card(
             title=f"No {name} found",
             lines=["Nothing matched in my data."
-                   + (" Try without a level limit." if result.level_filtered else "")],
+                   + (" Try without a level limit." if result.level_filtered else "")]
+            + _dropper_lines(result),
             footer=f"{result.total_available} {name.lower()} clusters known",
             colour=TIER_DECLINE,
         )
@@ -86,6 +117,8 @@ def resource_card(result: ResourceResult) -> Card:
             bits.append(n.area_hint.replace("_", " "))
         lines.append(SEP.join(bits))
 
+    lines += _dropper_lines(result)
+
     footer = f"{result.total_available} {name.lower()} clusters known"
     if result.near is None:
         # Say what the ordering means rather than letting "1." imply nearest.
@@ -93,7 +126,69 @@ def resource_card(result: ResourceResult) -> Card:
     return Card(title=f"{name} locations", lines=lines, footer=footer, colour=TIER_FACT)
 
 
+# How many droppers to name. Ore has 8 and red berries 8; past three the line stops being
+# a line and the card is read at a glance mid-play. Same reasoning as MAX_NAMED_OPTIONS.
+MAX_DROPPERS = 3
+
+
+def _dropper_lines(result: ResourceResult) -> list[str]:
+    """"Also drops from" - the other way to get the thing.
+
+    It earns a place on a locations card because it is most useful exactly when the
+    locations are not: the nearest coal may sit in a level 40 zone, and farming a
+    Blazamut is a route a player can take at a level where walking there is not.
+
+    Ordered by drop rate, and the amount is shown rather than the rate - "4-5" is what a
+    player plans a trip around, whereas "100%" only says the drop is guaranteed and every
+    published dropper is at 100% anyway, so printing it would add a column of the same
+    number. An alpha-only dropper says so, because that is a different fight.
+    """
+    if not result.droppers:
+        return []
+    shown = result.droppers[:MAX_DROPPERS]
+    rest = len(result.droppers) - len(shown)
+    named = ", ".join(f"**{d.pal}** ({d.amount()}{', alpha' if d.alpha_only else ''})"
+                      for d in shown)
+    more = f" _+{rest} more_" if rest > 0 else ""
+    return ["", f"Also drops from: {named}{more}"]
+
+
 KIND_LABEL = {"alpha": "field alpha", "predator": "predator"}
+
+# Vixy produces seven different things. Past three the line stops being a line, same
+# reasoning as MAX_DROPPERS and MAX_NAMED_OPTIONS.
+MAX_RANCH_ITEMS = 3
+
+
+def _ranch_lines(result: SpawnResult) -> list[str]:
+    """"Ranch:" - what this Pal makes if you assign it, plus where that fact came from.
+
+    The attribution is not decoration. Every other value on this card is extracted from
+    the game's own files; these come from a community wiki, because the mapping is in
+    blueprint bytecode and none of the 284 data tables carries it (ADR-0014's amendment).
+    That is a weaker claim than the coordinates above it, and a card that presented both
+    in the same voice would be overstating one of them.
+
+    An entry the pak's roster could not corroborate says so outright rather than being
+    hidden or quietly shown - there is exactly one (Mau Cryst), and it is a real answer
+    with a real caveat.
+    """
+    ranch = result.ranch
+    if ranch is None:
+        return []
+
+    shown = ranch.drops[:MAX_RANCH_ITEMS]
+    rest = len(ranch.drops) - len(shown)
+    items = ", ".join(f"**{d.label()}**" for d in shown)
+    more = f" _+{rest} more_" if rest > 0 else ""
+    line = f"Ranch: {items}{more}"
+    if not ranch.verified:
+        line += " _(wiki only - the game files don't list this one as ranchable)_"
+
+    out = ["", line]
+    if result.ranch_source:
+        out.append(f"_ranch data: {result.ranch_source}_")
+    return out
 
 
 def spawn_card(result: SpawnResult) -> Card:
@@ -112,7 +207,7 @@ def spawn_card(result: SpawnResult) -> Card:
             title=f"{result.pal} isn't found in the overworld",
             lines=[f"**{result.pal}** has no wild spawn on the map. It comes from a "
                    f"tower, a raid, a dungeon or breeding, not from a location I can "
-                   f"point you at."],
+                   f"point you at."] + _ranch_lines(result),
             colour=TIER_DECLINE,
         )
 
@@ -124,11 +219,12 @@ def spawn_card(result: SpawnResult) -> Card:
             what = KIND_LABEL.get(result.kind, result.kind)
             return Card(title=f"{result.pal} has no {what}",
                         lines=[f"**{result.pal}** is only found as an ordinary wild "
-                               f"spawn - there's no {what} version of it."],
+                               f"spawn - there's no {what} version of it."]
+                              + _ranch_lines(result),
                         colour=TIER_DECLINE)
         return Card(
             title=f"No {result.pal} spawns found",
-            lines=["Nothing matched in my data."],
+            lines=["Nothing matched in my data."] + _ranch_lines(result),
             colour=TIER_DECLINE,
         )
 
@@ -163,6 +259,8 @@ def spawn_card(result: SpawnResult) -> Card:
         if a.night_only:
             bits.append("night only")
         lines.append(SEP.join(bits))
+
+    lines += _ranch_lines(result)
 
     footer = f"{result.total_available} area{'s' if result.total_available != 1 else ''} known"
     if result.near is None:
@@ -211,7 +309,7 @@ def plain(text: str) -> str:
 
 
 def status_card(log, *, voice: str, save: str = "not configured",
-                router: str = "", window_label: str = "last hour") -> Card:
+                router: str = "", artwork: str = "", window_label: str = "last hour") -> Card:
     """Report what the pipeline has actually seen, stage by stage.
 
     The breakdown is the whole point. ADR-0004 flags wake-word false negatives as silent
@@ -235,6 +333,10 @@ def status_card(log, *, voice: str, save: str = "not configured",
              # long-lived process and a fast edit loop otherwise make unanswerable from
              # the one screen the player is looking at.
              *([f"**Router:** {plain(router)}"] if router else []),
+             # Enabled-in-config and actually-loaded are different states, and they look
+             # identical from the channel: a card simply arrives without a picture. This
+             # is the only place that distinction is visible.
+             *([f"**Cards:** {plain(artwork)}"] if artwork else []),
              f"**Up:** {duration(log.uptime())}",
              "",
              f"__In the {window_label}__",
@@ -283,7 +385,7 @@ def _latency_lines(log) -> list[str]:
     Absent until something has actually been timed: a status card that reports 0ms
     before the first query reads like a passing grade nobody earned.
     """
-    from .activity import DECLINE_KINDS, GRADED_KINDS
+    from .activity import ART_KINDS, DECLINE_KINDS, GRADED_KINDS
 
     totals = {k: log.percentiles(k) for k in GRADED_KINDS}
     declines = {k: log.percentiles(k) for k in DECLINE_KINDS}
@@ -319,6 +421,17 @@ def _latency_lines(log) -> list[str]:
         # where time goes, and excluding declines would hide the stage they are slow in.
         out.append("- where it goes (p50, all queries): "
                    + ", ".join(f"{k} **{s[1] / 1000:.2f}s**" for k, s in stages))
+
+    art = [(k, log.percentiles(k)) for k in ART_KINDS]
+    art = [(k, s) for k, s in art if s]
+    if art:
+        # Its own line, below the graded ones and labelled as after the answer, because
+        # the whole claim of ADR-0017 is that this time is not the player's. Reported
+        # separately from each other too: a slow render is a data problem and a slow
+        # upload is a network one, and one figure could not tell them apart.
+        out.append("- _artwork (after the answer):_ " + ", ".join(
+            f"{k.split('_')[1]} p50 **{s[1]:.0f}ms**, p95 **{s[2]:.0f}ms** (n={s[0]})"
+            for k, s in art))
     return out
 
 

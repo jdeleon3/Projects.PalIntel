@@ -5,9 +5,9 @@ unit-testable. This is where every factual value in a Tier 1 card originates.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
-from .knowledge import KnowledgeBase, ResourceNode, SpawnArea
+from .knowledge import Dropper, KnowledgeBase, Ranch, ResourceNode, SpawnArea
 
 
 @dataclass(frozen=True)
@@ -17,6 +17,9 @@ class ResourceResult:
     near: tuple[float, float] | None
     level_filtered: bool
     total_available: int
+    # The other way to get it. Populated for 11 of 18 resources; empty is the normal
+    # case for stone, wood and the World Tree materials, which nothing drops.
+    droppers: list[Dropper] = field(default_factory=list)
 
 
 def find_resource_nodes(
@@ -59,6 +62,7 @@ def find_resource_nodes(
         near=near,
         level_filtered=level_filtered,
         total_available=total,
+        droppers=kb.droppers.get(resource, []),
     )
 
 
@@ -86,6 +90,12 @@ class SpawnResult:
     # a raid boss, a dungeon-only species. Distinct from having no matching area, because
     # "keep looking" is wrong advice and "it isn't out there" is right.
     in_overworld: bool
+    # What it produces on a ranch, when it is one of the 29 that produce anything. None
+    # is the common case - most Pals cannot be ranched at all.
+    ranch: Ranch | None = None
+    # Attribution for the line above, because unlike everything else on this card those
+    # facts are not extracted from the game files. See ADR-0014's amendment.
+    ranch_source: str = ""
 
 
 def find_pal_spawns(
@@ -141,4 +151,6 @@ def find_pal_spawns(
         kind_substituted=substituted,
         total_available=total,
         in_overworld=pal not in kb.pals_without_areas,
+        ranch=kb.ranch.get(pal),
+        ranch_source=kb.ranch_source,
     )

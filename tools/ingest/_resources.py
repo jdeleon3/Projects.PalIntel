@@ -50,6 +50,32 @@ def slug(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
 
 
+def item_ids(root: Path | None = None) -> dict[str, str]:
+    """canonical resource id -> the game item id it drops (`Coal`, `Pal_crystal_S`).
+
+    Same chain as `derive`, re-walked rather than cached alongside it, so the two cannot
+    be updated apart. The item id is what joins a resource to its inventory icon, and it
+    is emphatically NOT the canonical id: `quartz` is `Quartz` but `ore` is `CopperOre`
+    and `paldium_fragment` is `Pal_crystal_S`.
+    """
+    raw = root or RAW
+    items = json.loads((raw / "items.json").read_text(encoding="utf-8"))
+    drops = json.loads((raw / "node_drops.json").read_text(encoding="utf-8"))
+
+    out: dict[str, str] = {}
+    for entry in drops:
+        if not entry.get("drops"):
+            continue
+        primary = max(entry["drops"], key=lambda d: d["Num"])["StaticItemId"]["Key"]
+        item = items.get(primary)
+        if not item or not item.get("name"):
+            continue
+        if item.get("type_b") not in LOCATABLE_CATEGORIES:
+            continue
+        out[CANONICAL_OVERRIDE.get(primary) or slug(item["name"])] = primary
+    return out
+
+
 def derive(root: Path | None = None) -> tuple[dict[str, str], dict[str, str]]:
     """(spawner class -> canonical id, canonical id -> English display name).
 

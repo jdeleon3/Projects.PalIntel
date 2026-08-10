@@ -33,6 +33,8 @@ Corpus ingestion (§4) adds a `chunk → embed` stage before publish.
 | Breeding ranks | Q3 | 3 | Conditional on A3 |
 | Tech tree | Q6 | 4 | Medium — prerequisite graph |
 | Base sites | Q4 | 4 | Low volume, hand-curated |
+| Card artwork | Q1, Q2 presentation | spike | Low — see §3.7 |
+| Pal drop items | Q1 answer line | spike | Low — see §3.8 |
 
 ### 3.1 Resource nodes (Q1 — v1 critical path)
 
@@ -66,6 +68,17 @@ Hazards:
   another reports 1,021 across 119 maps, the latter likely including dungeon instances.
   Overworld and instanced-dungeon nodes must be distinguished explicitly, and a node count
   that matches neither source is a validation failure, not a rounding difference.
+
+  **This hazard was real and went unenforced until 2026-08-10.** The distinction is in the
+  cell name: World Partition streams the overworld as `MainGrid_L0_X<x>_Y<y>_DL<hash>`,
+  where the grid position is where the cell sits in the world, while cave and dungeon
+  contents live in `L15_X0_Y0` — a single cell at the grid origin, because they are
+  authored in their own local space rather than placed on the map. Run through the
+  overworld transform those coordinates are meaningless. **6,718 of 40,968 deposits
+  (16.4%)** were published as overworld positions, including **672 of 998 coal**, and the
+  dataset's own `scope` field claimed "overworld only" the whole time. Now filtered by
+  `is_overworld` in `build_resource_nodes.py`, with a regression guard in
+  `tests/test_node_scope.py`. Pal spawn areas were unaffected — exactly 1 of 13,895.
 - **`min_player_level` does not exist upstream.** It is derived (§5).
 
 #### 3.1.1 Deriving the coordinate transform
@@ -143,6 +156,119 @@ consensus, and reasonable players disagree. Consequences:
 - Keep the corpus small and hand-curated — twenty well-described sites beat two hundred
   scraped ones
 - Cards must be marked as advice
+
+### 3.7 Card artwork (presentation — spike)
+
+**Needs:** a world-map basemap per region with its world-space bounds, and one icon per
+Pal. See [ADR-0017](adr/0017-card-artwork-from-game-assets.md).
+
+Sources are all in the pak, via `PakExtract.exe textures`:
+
+| Asset | Path | Shape |
+|---|---|---|
+| Map bounds | `DT_WorldMapUIData` | 2 regions with `landScapeRealPosition{Min,Max}` and a priority |
+| Basemaps | `Texture/UI/Map/T_WorldMap`, `T_TreeMap` | 8192², PF_DXT1 |
+| Pal icons | `Texture/PalIcon/Normal/T_<InternalId>_icon_normal` | 424 files, 128², PF_DXT5 |
+| Item icons | `Others/InventoryItemIcon/Texture/T_itemicon_<Category>_<ItemId>` | 796 files, 256² |
+
+Pal icons join the lexicon on `internal_ids` — no new key. Coverage is **285 of 286
+Paldeck entries**; the gap is Rayhound Cryst, which has no icon in the pak.
+
+Item icons join a resource to its drop via `_resources.item_ids()`, which re-walks the
+same spawner → drop chain as `derive()` so the two cannot be updated apart. The item id
+is *not* the canonical id — `ore` is `CopperOre`, `paldium_fragment` is `Pal_crystal_S` —
+and the filename keeps the game's category prefix because item ids contain underscores of
+their own. **17 of 18 resources**; `cavern_mushroom` (`CaveMushroom`) has no icon, and
+the several other mushroom icons are near enough to be a tempting guess and are not it.
+
+**What an item icon is not.** It shows the material in your inventory, not the node in the
+world — and the world appearance is what a player actually needs to recognise a deposit.
+The game carries no 2D art for it: map objects have no icon field, only meshes. Rendering
+those is a materially larger job (mesh, material, lighting) and is not in scope.
+
+Hazards, both of which produce an authoritative-looking wrong picture rather than a
+visibly broken one:
+
+- **There is more than one map.** 1,269 extracted placements fall inside the Tree
+  rectangle and outside MainMap's. A coordinate is matched to a region by bounds and
+  priority, and one matching none gets no picture.
+- **Bounds do not imply orientation.** Which world axis drives the image column, and
+  whether either runs backwards, is a separate fact — and it is again an axis swap, as in
+  §3.1.1. It is *measured*, not assumed: three independent classifiers score all eight
+  layouts using every extracted placement as known terrain, and the build fails closed
+  unless they agree unanimously.
+
+Published to `data/<version>/assets/` as 512 px tiles plus a 1024² whole-region overview
+(two zoom levels, so a widely-spread answer stays cheap), and gitignored per §7 — this is
+game *art*, the clearest case of all for not redistributing.
+
+### 3.8 Pal drop items (Q1 — "also drops from")
+
+**Needs:** which Pals yield a locatable resource when defeated or captured.
+
+Source is `DT_PalDropItem_Common` — 1,044 rows keyed by `CharacterID`, ten fixed item
+slots each with a rate and a count range. Extracted verbatim by `PakExtract.exe paldrops`
+and inverted in `build_pal_drops.py`, where the lexicon lives. **11 of 18 resources have
+a dropper**; stone, wood and the World Tree materials have none.
+
+It earns a place on a *locations* card because it is most useful when the locations are
+not: the nearest coal may sit in a level 40 zone, and farming a Blazamut is a route
+available at a level where walking there is not. For that reason it renders on the
+no-results card too, where it turns a dead end into an answer.
+
+Three ingest judgements, all published on the dataset under `rules` because each changes
+what the card's line claims:
+
+- **Rate-0 rows are excluded.** The table carries real rows with `Rate: 0` — Smokie Cryst
+  for coal, Neptilius for quartz, Tetroise for sulfur. Naming a Pal that never yields the
+  item is a fabricated value in a slot the player would act on. 48 rows dropped.
+- **Boss variants are credited to the base species, and that is an inference.**
+  `BOSS_RockBeast` is read as the alpha of `RockBeast` — derived from the naming, not
+  stated by the data. `alpha_only` marks any dropper seen *only* on a variant row, so a
+  card can say "alpha" rather than implying an ordinary encounter. Currently **zero**
+  published droppers are alpha-only, so no claim depends on the inference; a test asserts
+  that, and fails loudly if a patch changes it.
+- **Quest and NPC actors are excluded.** `_Quest`, `_Avatar` and human enemies share a
+  base name with real Pals, so stripping the suffix would credit a Pal with a drop only
+  its scenario version has.
+
+One upstream quirk worth recording: **the drop table's casing disagrees with the name
+table's.** It carries `Gorilla_ground`, `KingBahamut_dragon`, `SkyDragon_grass` and
+`Drillgame` against the lexicon's `Gorilla_Ground`, `KingBahamut_Dragon`,
+`SkyDragon_Grass` and `DrillGame`. Matching exactly silently lost five real droppers, so
+the join is case-insensitive.
+
+### 3.9 Ranch production (community-sourced — the one exception)
+
+**Needs:** which Pals can be assigned to a Ranch, and what each produces.
+
+**Source: [palworld.wiki.gg/wiki/Ranch](https://palworld.wiki.gg/wiki/Ranch), not the game
+files.** This is the project's only dataset whose facts come from a community site, and it
+is a scoped exception to [ADR-0014](adr/0014-game-files-as-source.md) — see the amendment
+there. The ranch spike enumerated all 284 data tables and found nothing mapping a Pal to
+its output; the mapping is in blueprint bytecode.
+
+The **roster** is still extracted (`PakExtract.exe ranch` → one
+`BP_Action_SpawnItem_<CharacterID>` asset per Pal) and is what validates the wiki:
+
+| | |
+|---|---|
+| Wiki rows parsed | 29 |
+| Published | 29, of which **28 corroborated** by the pak roster |
+| Flagged `roster_verified: false` | 1 — Mau Cryst, no `Bastet_Ice` action asset exists |
+
+The check is **asymmetric, and that was measured rather than assumed**. The roster also
+contains Snock, Teafant, Direhowl and Tarantriss, so the asset means "has an
+item-spawning action", which is broader than "is ranchable". A wiki row *off* the roster
+is a real flag; a roster entry with no wiki row is weak evidence and is reported as such.
+
+One naming inconsistency is the game's own and is aliased explicitly rather than matched
+fuzzily: Woolipop is `SweetsSheep` in the parameter and name tables but `SweetSheep` in
+its action asset.
+
+Per §7, the page is cached to `data/raw/ranch_wiki.md` so normalisation can be re-run
+without re-fetching, `provenance` and the source URL are fields on the published dataset,
+and nothing is redistributed. **Finding an authoritative in-game source is on the backlog.**
 
 ## 4. Knowledge corpus (Q7 / Tier 3)
 
@@ -303,6 +429,20 @@ accept.
 ## 8. Refresh workflow
 
 ```bash
+# Card artwork, optional and separate: it is game art rather than extracted facts, and
+# nothing in the answer path depends on it.
+dotnet run --project tools/extract/PakExtract -- textures
+python tools/ingest/build_assets.py --version 1.0.2
+
+# "Also drops from" on resource cards. Also optional - Q1 answers without it.
+dotnet run --project tools/extract/PakExtract -- paldrops
+python tools/ingest/build_pal_drops.py --version 1.0.2
+
+# Ranch production. The roster comes from the pak; the items come from the wiki page
+# cached at data/raw/ranch_wiki.md (section 3.9), so refresh that file on a patch.
+dotnet run --project tools/extract/PakExtract -- ranch
+python tools/ingest/build_ranch.py --version 1.0.2
+
 palintel-ingest   --version 1.0.2 --source-config sources.yaml
 palintel-corpus   --version 1.0.2 --embed          # chunk + embed prose
 palintel-validate --version 1.0.2 --compare-to 1.0.1

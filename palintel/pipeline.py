@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from . import cards, execution
 from .cards import Card
@@ -18,6 +18,7 @@ from .routing import RouterBackend
 from .tools import Decline, ToolCall
 
 if TYPE_CHECKING:  # config imports nothing from here; the runtime import is inside
+    from .artwork import Artwork
     from .config import RouterConfig
 
 log = logging.getLogger("palintel.pipeline")
@@ -82,11 +83,23 @@ class Outcome:
     cards: list[Card]
     call: ToolCall | Decline
     candidates: list[Candidate]
+    # Deferred artwork. The cards are complete without it; calling this fills in their
+    # `image` and `thumbnail`. Deliberately NOT done during `handle`: a map crop is 8-45
+    # ms and the widest one measured 472 ms before the zoom levels were added, and all of
+    # that would have sat in front of the text card the player is actually waiting for.
+    # The caller posts the answer, then draws.
+    illustrate: "Callable[[], None] | None" = None
 
     @property
     def card(self) -> Card:
         """The first card. Convenience for callers that only ever show one."""
         return self.cards[0]
+
+    def draw(self) -> None:
+        """Attach artwork, if any was planned. Safe to call always, and to call once."""
+        if self.illustrate is not None:
+            self.illustrate()
+            self.illustrate = None
 
 
 def build_router(kb: KnowledgeBase, prefer: str = "auto",
@@ -192,9 +205,13 @@ def build_router(kb: KnowledgeBase, prefer: str = "auto",
 
 class Pipeline:
     def __init__(self, kb: KnowledgeBase, router: RouterBackend,
-                 memory: "Memory | None" = None):
+                 memory: "Memory | None" = None, artwork: "Artwork | None" = None):
         self.kb = kb
         self.router = router
+        # Illustration is a decoration applied after the cards are built, never a step
+        # they depend on. None means text-only, which is what every existing test and
+        # the CLI harness get.
+        self.artwork = artwork
         # ADR-0013. Constructed by default so every entry point gets follow-ups without
         # having to opt in - the CLI harness included, since that is where they get
         # debugged.
@@ -240,7 +257,10 @@ class Pipeline:
                      args, len(result.nodes), result.total_available)
             self._remember(who, call, {"resource": result.resource},
                            f"{len(result.nodes)} of {result.total_available} clusters")
-            return Outcome([cards.resource_card(result)], call, candidates)
+            card = cards.resource_card(result)
+            draw = (self.artwork.illustrate_resource(card, result)
+                    if self.artwork is not None else None)
+            return Outcome([card], call, candidates, illustrate=draw)
 
         if call.name == "find_pal_spawns":
             pal = call.args.get("pal")
@@ -255,12 +275,20 @@ class Pipeline:
             night = True if _NIGHT.search(utterance) else None
             near = state.player_coords
 
+            # One per card actually built. A family that renders two cards has two
+            # pictures to draw, and a clarifying question has none - it never calls
+            # `render`, so nothing is planned for a card that shows no answer.
+            planned: list[Callable[[], None]] = []
+
             def render(name: str) -> Card:
                 result = execution.find_pal_spawns(
                     self.kb, name, kind=kind, near=near, night=night)
                 log.info("find_pal_spawns(%s, kind=%s, night=%s) -> %d/%d",
                          name, kind, night, len(result.areas), result.total_available)
-                return cards.spawn_card(result)
+                card = cards.spawn_card(result)
+                if self.artwork is not None:
+                    planned.append(self.artwork.illustrate_spawn(card, result))
+                return card
 
             # A Paldeck slot holding a base Pal and its element variant has two correct
             # answers, and they spawn in different places - Menasting in the desert,
@@ -273,8 +301,14 @@ class Pipeline:
             # the wrong one of the two.
             self._remember(who, call, {"pal": pal},
                            f"{kind or 'normal'} spawns")
-            return Outcome(self._cards_for(self.kb.lexicon.family(pal), render),
-                           call, candidates)
+            built = self._cards_for(self.kb.lexicon.family(pal), render)
+
+            def draw_all() -> None:
+                for one in planned:
+                    one()
+
+            return Outcome(built, call, candidates,
+                           illustrate=draw_all if planned else None)
 
         # A tool the router knows about but the dispatcher does not is a wiring bug.
         # Fail loudly here rather than rendering something plausible.

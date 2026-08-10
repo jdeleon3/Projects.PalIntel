@@ -819,6 +819,19 @@ Node actors are `BP_PalMapObjectSpawner_*_C`; Pal spawn zones are `BP_PalSpawner
    stays — it fails the build if any cluster exceeds 50 deposits within its ~110 m span,
    and it is what caught this in the first place.
 
+   **Amended 2026-08-10: this diagnosis was half right, and the half it missed was the
+   important one.** The actors really do store `RelativeLocation`, and composing the owner
+   chain really does make their coordinates internally consistent. But **all 633 owner-
+   chain resolutions were in `L15_X0_Y0`** — the World Partition cell holding dungeon
+   interiors — and **zero overworld placements needed one**. Those actors are not on the
+   map at any transform; composing their parents produced coordinates that were consistent
+   and still not positions. So the "152 recovered coal deposits" were cave coal, and the
+   fix's real effect was to scatter the phantom hotspot into 672 individually plausible
+   wrong answers instead of one obviously wrong one — which is why the density guard
+   stopped firing and nothing else noticed. Overworld coal is **326 deposits, not 998**.
+   See the card-artwork spike below for how it surfaced, and §3.1 of
+   [03-data-ingestion.md](03-data-ingestion.md) for the rule.
+
 **Still unpopulated:** `min_player_level` and `danger`. Both need wild Pal level data,
 which comes from the `BP_PalSpawner_Sheets_*` actors already extracted.
 
@@ -1654,6 +1667,216 @@ declines with something vaguer instead. The fast path claims it first in the shi
 stack, so the player sees the right card today, but that is the stub getting there first
 rather than a design that holds. Recorded rather than fixed because changing the tool
 schema immediately after measuring against it would invalidate the baseline above.
+
+---
+
+## Spike — card artwork: map crops and Pal icons (2026-08-10)
+
+Two enhancement requests, spiked together on `spike/visual-cards`: mark location answers
+on a world map, and show each Pal's picture on Pal queries. Both are **built and behind
+`[cards] maps` / `[cards] icons`, default off**. Decision recorded as
+[ADR-0017](adr/0017-card-artwork-from-game-assets.md).
+
+**Both are feasible from the pak, and the game supplies more than expected.**
+`DT_WorldMapUIData` publishes the world-space rectangle each basemap covers, so the world
+→ pixel mapping is the game's own rather than another regression — and it independently
+corroborates the fitted `coord_transform.json`. Icons join the lexicon on `internal_ids`,
+which already exists: **285 of 286 Paldeck entries** have one, the sole gap being Rayhound
+Cryst, which has no icon asset at all.
+
+**Two traps, both of which produce an authoritative-looking wrong picture.**
+
+*There is more than one map.* MainMap and Tree are separate textures with disjoint
+rectangles, and 1,269 extracted placements sit inside Tree and outside MainMap. Plotting
+everything on the main island puts those markers in open sea. Region is chosen by bounds
+and priority; a coordinate matching none, or a set straddling two, gets **no picture** —
+not a clamp, and not the region holding the most, because a crop showing two of three
+answers silently disagrees with the text above it.
+
+*Bounds do not imply orientation.* Which world axis drives the image column, and whether
+either runs backwards, is a separate fact — and it is **again an axis swap**, exactly as
+in spike 0.5, plus an inverted row. It is measured rather than assumed: three independent
+classifiers score all eight layouts using every extracted placement as known terrain, and
+the ingest fails closed unless they agree.
+
+| classifier | MainMap | Tree |
+|---|---|---|
+| land colour | 77.8% vs 46.9% | 58.0% vs 43.5% |
+| not background | 95.9% vs 93.6% | 93.6% vs 79.9% |
+| local detail | 69.8% vs 51.2% | 67.6% vs 57.9% |
+
+**Unanimity is the gate, not a margin, and that was a correction.** The first version used
+the colour classifier alone at a 15% margin — and it *rejected the Tree map*, whose
+orientation an overlay showed to be correct. The classifier was reading that map's dark
+forest floor as ocean. Loosening the threshold would have weakened the check everywhere to
+accommodate one map; adding two classifiers that fail in different places was the fix. No
+single one is strong on both maps, and choosing whichever looked decisive on the map in
+front of me would have been fitting the measurement to its example.
+
+**Illustrating inside the answer path cost the answer, and that was the second
+correction.** Rendering during `handle()` moved p95 from 76 ms to 508 ms — a Pal with
+spawn areas 1,000 map units apart needs a 3,570 px crop, 64 tile decodes and a 12.7
+megapixel resize. Posting the text card first only deferred the *upload*, not the render.
+Fixed properly: `Outcome` carries a deferred `illustrate`, the bot posts the answer and
+then draws, and a second zoom level (a 1024² whole-region overview) bounds the wide case
+instead of refusing it.
+
+| | text only | artwork on |
+|---|---|---|
+| `handle()` p50 / p95 | 51.2 / 76.4 ms | 52.8 / 77.9 ms |
+| deferred draw p50 / p95 / max | — | 7.8 / 25.5 / 25.9 ms |
+| payload per card | — | p50 65 KB, max 87 KB |
+
+Assets cost ~20 MB local and a two-step build per patch, gitignored like every other
+game-derived artifact — this is game *art*, the clearest case for not redistributing.
+
+### The spike's most valuable output was a data defect, not a picture
+
+First real query on the flag — *"can I get coal at this level?"* — drew all three markers
+in open ocean. The renderer was correct: both projections agree to the pixel, and the
+player marker landed on land in the same crop.
+
+**16.4% of the resource-node dataset was dungeon interiors published as overworld
+coordinates**, including 672 of 998 coal deposits, and it had shipped since Phase 1. The
+text card said *"(224, -600) | 1 deposit | 114 units away"* — indistinguishable from a
+real answer. Nothing in the pipeline could have caught it: the coordinates are
+well-formed, inside map bounds, and correctly transformed from what the extractor found.
+They are simply not places.
+
+Fixed at the ingest (`is_overworld`), which lifted coal's on-terrain rate from **73.0% to
+92.9%**, and guarded by `tests/test_node_scope.py` — two tests by deliberately different
+mechanisms, one on the cell-name rule and one sampling published coordinates against the
+basemap, so a new way of producing the same symptom still fails.
+
+Two consequences worth stating plainly. **The Phase 1 placement-volume finding is amended
+above** — its owner-chain fix operated entirely on dungeon actors. And **the answer set
+got smaller**: 552 coal clusters became 308, because cave coal is most of Palworld's coal.
+That is a real loss of coverage and the right trade — Q1 answers "where do I walk to", and
+a cave interior coordinate cannot answer it. Locating dungeons *as dungeons* is a separate
+feature with its own data model, not a filter to relax.
+
+**This is the argument for the pictures that no latency number makes.** A map crop is the
+only output this project has that can be checked at a glance against ground truth, and it
+found in one query what two phases of text cards, a validation suite and a density guard
+did not.
+
+### Also shipped: "drops from" on resource cards
+
+A resource has a second acquisition route the coordinates never mention, and it matters
+most when the coordinates are unreachable — so `resource_card` now carries a capped line,
+on the no-results card as well as the normal one:
+
+```
+No Coal found
+Nothing matched in my data. Try without a level limit.
+
+Also drops from: Blazamut (10), Blazamut Ryu (10), Pierdon (4-5)
+```
+
+`DT_PalDropItem_Common` inverted against the 18 locatable resources; **11 have a
+dropper**. Three ingest judgements are published with the dataset (§3.8 of
+[03-data-ingestion.md](03-data-ingestion.md)): rate-0 rows excluded (48 of them, and
+naming a Pal that never yields the item is a fabricated value), boss variants credited to
+their base species as a **stated inference** with an `alpha_only` marker, and quest/NPC
+actors excluded.
+
+Two things measurement settled that guesswork would not have. The boss-collapse inference
+worried me most and turns out to be **load-bearing for nothing** — every published dropper
+also appears on an ordinary row, and a test fails if a patch changes that. And the drop
+table's casing disagrees with the name table's (`Gorilla_ground` vs `Gorilla_Ground`),
+which silently cost five real droppers until the join was made case-insensitive.
+
+### Spike — ranch production data: roster yes, item no
+
+Asked whether "ranched from" could join "drops from" on resource cards. **The roster is
+extractable; the item each Pal produces is not.** Recorded in full so the next attempt
+does not re-walk it.
+
+**All 284 data tables under `Pal/Content/Pal/DataTable/` were enumerated**, not sampled —
+the search was reasonably suspected of being "I just haven't found the table yet", so it
+was made exhaustive. Ruled out:
+
+| Candidate | What it actually is |
+|---|---|
+| `DT_PalDropItem`, `DT_PalDropItem_Common` | Both defeat drops, identical shape, 1,044 rows each |
+| `DT_MapObjectFarmSkillFruitsLottery` | The skill-fruit tree, 5 rows |
+| `DT_MapObjectItemProductDataTable` | **Base facilities**, 16 rows — Well→WaterBucket, StonePit→Stone, OilPump→CrudeOil. Not Pals. |
+| `DT_MapObjectAssignData` | All 22 fields are "who can work here" — `MonsterFarm_0` gives suitability, rank and `WorkerMaxNum: 4`, no item |
+| `DT_PalMonsterParameter` | All **90** fields listed: `WorkSuitability_MonsterFarm` is a **rank** (Lamball = 1), nothing names an output |
+| `DT_PartnerSkill` | 50 rows of cooldowns and costs |
+| `DT_PartnerSkillAppendText` | 36 effect types, none of them ranch production |
+| `PalMapObjectMonsterFarmParameterComponent` | Only `ActionIntervalSeconds` (50–80s) |
+| `BP_<Pal>` actor blueprints | Reference `"SpawnItem"`, no item id, no data-table ref |
+
+**The in-game description does not carry it either**, which was the most promising
+remaining idea. All 310 English Paldeck long descriptions were parsed: **zero** mention a
+ranch, a farm, or being assigned to one. They are flavour text — *"Wild Flambelle
+surprisingly never get sick"* — with no mechanical content at all. The Paldeck's **Drops**
+row, which is the thing that looks like it should say so, is `DT_PalDropItem`: defeat
+drops, which we already have.
+
+**The roster is `BP_Action_SpawnItem_<Pal>` — 32 assets**, which is the set of ranchable
+Pals. But every one of those CDOs carries presentation only (`ChargeMontage`,
+`FunFacialEye`, occasionally `SpawnSocketName`). Checked across Lamball, Chikipi,
+Mozzarina, Flambelle and Beegarde: no item id anywhere. The mapping lives in
+`ExecuteUbergraph` blueprint bytecode, which property extraction does not reach.
+
+**It cannot be derived from the defeat drops either — now measured against the wiki's 29
+rows as ground truth, rather than argued from examples.**
+
+| candidate rule | holds |
+|---|---|
+| ranch items ⊆ the Pal's defeat drops | **25/29** |
+| ranch items == the Pal's `MaterialMonster` defeat drops | **8/29** |
+
+The category rule fails in every direction at once. It returns the **wrong** item for Mau
+(ranches Gold Coin, whose only `MaterialMonster` drop is Leather), Woolipop (Cotton Candy
+vs High Quality Pal Oil), Sibelyx (High Quality Cloth vs Ice Organ) and Caprity (Red
+Berries — a `FoodVegetable` — vs Horn). It returns **nothing** for Beegarde, Chikipi and
+Mozzarina, whose Honey, Egg and Milk are not `MaterialMonster` at all and who have no
+such drop. It returns **too much** for Cawgnito, which drops three and ranches one. And
+the subset assumption itself breaks on Vixy, whose ranch output includes Pal Spheres that
+are not defeat drops in any category.
+
+That is the [ADR-0007](adr/0007-entity-lexicon-boundary.md) failure precisely: a rule that
+reproduces the handful of cases used to write it and guesses on the rest. Measuring it
+against all 29 is what turned "tempting" into "28%".
+
+**Vixy is the case that settles the approach.** `CuteFox` is on the roster and digs a
+*set* of items rather than producing one, so any mapping has to be one-to-many. A text
+parse could never have produced that, and a "single product" schema would have been wrong
+for it — which is an argument for curation over inference independent of where the data
+turned out to live.
+
+**Resolved 2026-08-10: sourced from the community wiki instead of curated by hand.** 29
+rows from [palworld.wiki.gg/wiki/Ranch](https://palworld.wiki.gg/wiki/Ranch), 28 of them
+corroborated against the pak roster, published with `provenance: community-wiki` and a
+per-entry `roster_verified` flag. A scoped exception to
+[ADR-0014](adr/0014-game-files-as-source.md), amended there.
+
+**Backlog: find an authoritative in-game source.** The remaining route is reading
+`ExecuteUbergraph` blueprint bytecode, which is a different order of work from property
+extraction. Until that lands, this is the only dataset in the project whose facts are not
+from the game files.
+
+The curation option below is retained because it was the pre-wiki recommendation, and
+because it is still the fallback if the wiki proves unreliable across a patch:
+
+**Hand-curate 32 rows**, with direct precedent in
+[03-data-ingestion.md](03-data-ingestion.md) §5 — `BaseSite.flatness_score` is
+hand-curated on the same reasoning, that *"a fabricated score is worse than an honest
+human judgment"*. 32 rows is bounded, each verifiable in-game in one ranch cycle, and the
+**roster comes from the pak**, so a validation step can assert the curated table covers
+exactly the extracted 32 and fail closed when a patch adds a ranchable Pal.
+
+Worth noting for the item-drop work: Flambelle ranches **Flame Organ**, which is the
+query that raised all this.
+
+**Open, and what the flag is for.** The Discord edit round trip is **not measured** —
+every number above is local — so whether the reflow reads as helpful or as clutter is
+still a real-play question. A second gap the pictures make visible rather than introduce:
+`coord_transform.json` was fitted on MainMap landmarks only, so Tree-region coordinates go
+through it unvalidated against the in-game Tree map.
 
 ---
 

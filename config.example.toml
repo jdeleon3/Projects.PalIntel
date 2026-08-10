@@ -93,6 +93,33 @@ fast_path = true
 # ever shows up. Drop to "proximity" - the coverage cost is two queries.
 cues = "wide"
 
+[cards]
+# Artwork on answer cards. Off by default - this is a spike, not a decision.
+#
+# Both need assets extracted from your own game install, which is a two-step build and
+# about 20 MB on disk:
+#
+#   dotnet run --project tools/extract/PakExtract -- textures
+#   python tools/ingest/build_assets.py --version 1.0.2
+#
+# Without them these silently stay off: the text card is the whole answer either way,
+# and a missing picture is not worth refusing to start over.
+#
+#   maps    a cropped world map with the results numbered on it, matching the card's
+#           own numbering. Drawn only when every point sits inside one published map
+#           region - the World Tree is a separate map, and a coordinate belonging to
+#           neither gets no picture rather than a marker in open sea.
+#   icons   a thumbnail on the card: the Pal's own game icon on Pal queries, and the
+#           material's inventory icon on resource queries. Note the resource one shows
+#           what the item looks like in your pack, NOT what the rock looks like in the
+#           world - the game ships no 2D art for that, only meshes.
+#
+# Neither is on the graded latency path: the text card is posted first and the picture
+# is edited in on a second round trip, so the cost the player sees is a reflow rather
+# than a slower answer. Rendering is ~24ms and ~60 KB.
+maps = false
+icons = false
+
 [data]
 # Which extracted dataset to load, matching a directory under data/.
 version = "1.0.2"
