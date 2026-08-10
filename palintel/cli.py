@@ -19,9 +19,13 @@ from .pipeline import Pipeline, PlayerState, build_router
 from .tools import Decline
 
 
-def build(version: str, router: str = "auto") -> Pipeline:
+def build(version: str, router: str = "auto", fast_path: bool = True,
+          cues: str = "wide") -> Pipeline:
+    from .config import RouterConfig
+
     kb = KnowledgeBase.load(version)
-    return Pipeline(kb, build_router(kb, router))
+    return Pipeline(kb, build_router(kb, router,
+                                     RouterConfig(fast_path=fast_path, cues=cues)))
 
 
 def show(pipe: Pipeline, text: str, state: PlayerState, verbose: bool) -> None:
@@ -47,6 +51,13 @@ def main() -> None:
     ap.add_argument("--version", default="1.0.2")
     ap.add_argument("--router", default="auto", choices=["auto", "claude", "stub"],
                     help="auto falls back to the stub when no credential resolves")
+    # The two fast-path flags, so a suspect answer can be re-asked straight against the
+    # model without editing config and restarting the bot.
+    ap.add_argument("--no-fast-path", action="store_true",
+                    help="always ask the model, even when the stub could answer")
+    ap.add_argument("--cues", default="wide",
+                    choices=["standard", "proximity", "wide"],
+                    help="how eagerly the fast path claims a query (default wide)")
     ap.add_argument("--status", action="store_true", help="print loaded data and exit")
     ap.add_argument("--level", type=int, help="simulate player level")
     ap.add_argument("--at", help="simulate position as 'x,y'")
@@ -58,7 +69,8 @@ def main() -> None:
                         format="%(levelname)s %(name)s: %(message)s")
 
     try:
-        pipe = build(args.version, args.router)
+        pipe = build(args.version, args.router,
+                     fast_path=not args.no_fast_path, cues=args.cues)
     except FileNotFoundError as e:
         sys.exit(f"missing data: {e}\nRun tools/ingest/ to build it.")
     except RuntimeError as e:

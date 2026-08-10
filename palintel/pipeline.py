@@ -7,12 +7,16 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from . import cards, execution
 from .cards import Card
 from .knowledge import Candidate, KnowledgeBase
 from .routing import RouterBackend
 from .tools import Decline, ToolCall
+
+if TYPE_CHECKING:  # config imports nothing from here; the runtime import is inside
+    from .config import RouterConfig
 
 log = logging.getLogger("palintel.pipeline")
 
@@ -60,7 +64,8 @@ class Outcome:
         return self.cards[0]
 
 
-def build_router(kb: KnowledgeBase, prefer: str = "auto") -> RouterBackend:
+def build_router(kb: KnowledgeBase, prefer: str = "auto",
+                 router_config: "RouterConfig | None" = None) -> RouterBackend:
     """Select a router backend.
 
     `auto` tries Gemini, then Claude, then the stub, so the pipeline stays runnable with
@@ -70,18 +75,38 @@ def build_router(kb: KnowledgeBase, prefer: str = "auto") -> RouterBackend:
     A5 tables in Docs/04-roadmap.md. Opus 5 is not in the chain - it was dropped on cost
     after Gemini beat it 35-0 on the same test.
 
+    Whichever is chosen gets two deterministic wrappers, both configurable off:
+    a fast path in front of it (`router.fast_path`) and a transport backstop behind it.
+
     Every fallback is logged rather than silent. A router quietly downgrading to keyword
     matching would look like a capability regression with no visible cause.
     """
-    from .routing import StubRouter
+    from .config import RouterConfig
+    from .routing import FallbackRouter, FastPathRouter, StubRouter
 
+    cfg = router_config or RouterConfig()
     locatable = {n.resource for n in kb.nodes}
+    # One stub in both roles. In front it answers what it is certain of; behind it keeps
+    # a transport failure from costing the player a card. Sharing the instance means the
+    # cue width cannot differ between the two, which would be indefensible - the same
+    # query would be claimed or deferred depending on whether the network was up.
+    stub = StubRouter(kb.lexicon, locatable, cues=cfg.cues)
+
+    def wrapped(primary):
+        """Wrap a hosted router with the backstop, and the fast path if enabled.
+
+        Only the hosted backends get this. The stub cannot back itself up, and the local
+        backend already fails against a server on this machine rather than the network.
+        """
+        routed = FallbackRouter(primary, stub)
+        return FastPathRouter(stub, routed) if cfg.fast_path else routed
 
     if prefer in ("auto", "gemini"):
         try:
             from . import routing_gemini
             if routing_gemini.available():
-                return routing_gemini.GeminiRouter(kb.lexicon, locatable)
+                return wrapped(
+                    routing_gemini.GeminiRouter(kb.lexicon, locatable))
             if prefer == "gemini":
                 raise RuntimeError(
                     "No Gemini credential found. Set GEMINI_API_KEY in .env.")
@@ -95,7 +120,8 @@ def build_router(kb: KnowledgeBase, prefer: str = "auto") -> RouterBackend:
         try:
             from . import routing_anthropic
             if routing_anthropic.available():
-                return routing_anthropic.ClaudeRouter(kb.lexicon, locatable)
+                return wrapped(
+                    routing_anthropic.ClaudeRouter(kb.lexicon, locatable))
             if prefer == "claude":
                 raise RuntimeError(
                     "No Anthropic credential found. Set ANTHROPIC_API_KEY or run "
@@ -112,7 +138,7 @@ def build_router(kb: KnowledgeBase, prefer: str = "auto") -> RouterBackend:
             raise RuntimeError("No local model server - start `ollama serve`.")
         return routing_local.LocalRouter(kb.lexicon, locatable)
 
-    return StubRouter(kb.lexicon, locatable)
+    return stub
 
 
 class Pipeline:
@@ -130,13 +156,23 @@ class Pipeline:
         # 2. Route.
         call = self.router.route(utterance, candidates)
         if isinstance(call, Decline):
-            log.info("decline: %s", call.reason)
-            return Outcome([cards.decline_card(call)], call, candidates)
+            return self._decline(call, candidates)
 
         # 3. Dispatch. Player state is injected here, never parsed from the utterance -
         #    "nearest" must resolve against where the player actually is.
         if call.name == "find_resource_nodes":
             args = dict(call.args)
+            # The model can name a registered tool and still omit a required argument -
+            # observed on Gemini, which answers "how do I breed Vanwyrm" with an empty
+            # find_resource_nodes call rather than declining. That is the model failing
+            # to decline, not a wiring fault, so it becomes an honest decline instead of
+            # a TypeError out of the dispatcher.
+            if not args.get("resource"):
+                log.warning("router called %s with no resource: %s", call.name, call.args)
+                return self._decline(
+                    Decline(reason="no resource identified",
+                            known_options=sorted({n.resource for n in self.kb.nodes})),
+                    candidates)
             if state.player_coords is not None:
                 args.setdefault("near", state.player_coords)
             if state.player_level is not None:
@@ -150,6 +186,10 @@ class Pipeline:
         # A tool the router knows about but the dispatcher does not is a wiring bug.
         # Fail loudly here rather than rendering something plausible.
         raise RuntimeError(f"router produced unregistered tool: {call.name!r}")
+
+    def _decline(self, call: Decline, candidates: list[Candidate]) -> Outcome:
+        log.info("decline: %s", call.reason)
+        return Outcome([cards.decline_card(call)], call, candidates)
 
     def _cards_for(self, entities: list[str], render) -> list[Card]:
         """One card per entity, or a clarifying question past the cap.

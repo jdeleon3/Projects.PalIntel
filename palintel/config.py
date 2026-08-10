@@ -73,9 +73,29 @@ class VoiceConfig:
 
 
 @dataclass(frozen=True)
+class RouterConfig:
+    """Routing behaviour. Both fields exist to be turned back off.
+
+    The fast path skips the model when the stub can answer outright, which is the only
+    lever measured to bring a Q1 voice query inside the 2.5s budget - the model round
+    trip alone is a ~2s median. `cues` selects how eagerly the stub claims a query.
+
+    `wide` is live on measured evidence that is real but thin: 11 of 15 A5 Q1 prompts
+    answered, all correct, nothing claimed from another query class. Fifteen prompts
+    cannot carry much confidence, and the failure it risks - a fast, confident, wrong
+    card - is the one the whole design is organised against. So it is a flag rather than
+    a constant. `cues = "proximity"` is the same trade with the intent guesses ("i need",
+    "any") removed; `fast_path = false` restores model-only routing exactly.
+    """
+    fast_path: bool = True
+    cues: str = "wide"                   # standard | proximity | wide
+
+
+@dataclass(frozen=True)
 class Config:
     discord: DiscordConfig
     voice: VoiceConfig = field(default_factory=VoiceConfig)
+    router: RouterConfig = field(default_factory=RouterConfig)
     data_version: str = "1.0.2"
     save_dir: Path | None = None
 
@@ -116,6 +136,15 @@ class Config:
         models = tuple(v.get("models") or ("hey_pal",))
         device = v.get("device")
 
+        r = raw.get("router", {}) or {}
+        cues = r.get("cues", "wide")
+        # Fail at load rather than at the first query. A typo here does not raise on its
+        # own - it silently selects a cue set that does not exist, and the fast path
+        # would simply never fire.
+        if cues not in ("standard", "proximity", "wide"):
+            raise ConfigError(
+                f"router.cues must be standard|proximity|wide, got {cues!r}")
+
         save = (raw.get("game", {}) or {}).get("save_dir", "").strip()
         return cls(
             discord=DiscordConfig(token=token, channel_id=channel,
@@ -123,6 +152,7 @@ class Config:
             voice=VoiceConfig(enabled=bool(v.get("enabled", False)), models=models,
                               threshold=float(v.get("threshold", 0.1)),
                               device=device),
+            router=RouterConfig(fast_path=bool(r.get("fast_path", True)), cues=cues),
             data_version=os.environ.get(
                 "PALINTEL_DATA_VERSION", (raw.get("data", {}) or {}).get("version", "1.0.2")),
             save_dir=Path(save) if save else None,
@@ -137,6 +167,8 @@ class Config:
             "listen_mode": self.discord.listen_mode,
             "voice": (f"mic, {', '.join(self.voice.models)}"
                       if self.voice.enabled else "(text only)"),
+            "router": (f"fast path on, cues={self.router.cues}"
+                       if self.router.fast_path else "model only"),
             "data_version": self.data_version,
             "save_dir": str(self.save_dir) if self.save_dir else "(none)",
         }

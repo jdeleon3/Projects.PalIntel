@@ -16,11 +16,14 @@ built and tested before a model is chosen; the model slots in behind the same pr
 """
 from __future__ import annotations
 
+import logging
 import re
 from typing import Protocol
 
 from .knowledge import Candidate, Lexicon
 from .tools import Decline, ToolCall
+
+log = logging.getLogger("palintel.routing")
 
 # How many candidates the corrector hands the router. Measured on 67 entity-bearing
 # utterances (batches 0-1): recall@10 = 94.0%, @15 = 95.5%, and flat from there until
@@ -71,14 +74,116 @@ class RouterBackend(Protocol):
         ...
 
 
+class FastPathRouter:
+    """Answer deterministically when the phrasing is unambiguous; otherwise ask the model.
+
+    The model is a ~2s network round trip and Q1's whole budget is 2.5s end to end, so on
+    a plain "where's the nearest coal" the round trip is the entire latency problem. The
+    stub answers that in microseconds from the same knowledge base and the same lexicon,
+    with no model in the loop to fabricate anything.
+
+    This is safe only because the stub declines rather than guesses. Measured on the A5
+    transcripts it answered 11 of the 15 Q1 prompts, every one with the right resource,
+    and claimed nothing belonging to another query class - and where it did answer, the
+    model had independently made the same call. It defers everything else, including
+    "do I have enough sulfur for this", which names a resource but is not a location
+    question at all.
+
+    The order matters and is not reversible: the stub goes first because a `ToolCall`
+    from it is a certainty, not a preference. If it ever became a preference, this would
+    be the class that quietly outvotes a better router.
+    """
+
+    def __init__(self, fast: RouterBackend, full: RouterBackend):
+        self.fast = fast
+        self.full = full
+        self.name = f"{fast.name}->{full.name}"
+
+    def __getattr__(self, item):
+        # `last_usage` and friends belong to the model, which is where the cost is.
+        return getattr(self.full, item)
+
+    def route(self, utterance: str, candidates: list[Candidate]) -> ToolCall | Decline:
+        call = self.fast.route(utterance, candidates)
+        if isinstance(call, ToolCall):
+            log.info("fast path: %s(%s) - no model call", call.name, call.args)
+            return call
+        return self.full.route(utterance, candidates)
+
+
+class FallbackRouter:
+    """A router with a deterministic backstop for when the hosted one does not answer.
+
+    Only `transient` declines fall through - a timeout, a rate limit, a 5xx. A considered
+    decline is the model's answer and is passed on untouched, because the stub has strictly
+    less information than the model did and re-deciding on less is how a "no" becomes a
+    confidently wrong "yes".
+
+    The point is not to salvage latency. A request that timed out has already blown the
+    2.5s budget several times over, and nothing recovers that. It is that the player gets
+    a card either way: on Q1 the stub answers a clear resource query outright, and where
+    it cannot, it names what it can answer instead of leaving the bot looking hung.
+    """
+
+    def __init__(self, primary: RouterBackend, backstop: RouterBackend):
+        self.primary = primary
+        self.backstop = backstop
+        self.name = f"{primary.name}+{backstop.name}"
+
+    def __getattr__(self, item):
+        # Callers reach past the protocol for `last_usage`, `delete_cache` and friends.
+        # Forwarding keeps the wrapper invisible to them rather than making every call
+        # site aware of it.
+        return getattr(self.primary, item)
+
+    def route(self, utterance: str, candidates: list[Candidate]) -> ToolCall | Decline:
+        call = self.primary.route(utterance, candidates)
+        if isinstance(call, Decline) and call.transient:
+            log.warning("%s did not answer (%s) - falling back to %s",
+                        self.primary.name, call.reason, self.backstop.name)
+            fallback = self.backstop.route(utterance, candidates)
+            if isinstance(fallback, ToolCall):
+                return ToolCall(name=fallback.name, args=fallback.args,
+                                rationale=f"{call.reason}; {fallback.rationale}")
+            # Both failed. The player is owed the reason they can act on - the router
+            # being unreachable - not the stub's narrower complaint about vocabulary.
+            return Decline(reason=call.reason, known_options=fallback.known_options,
+                           transient=True)
+        return call
+
+
 # --------------------------------------------------------------------------- stub
 
-# Phrasings that clearly ask for a location. Deliberately narrow: the stub exists to
-# unblock downstream work and to serve as the fast path later (Phase 5), NOT to be a
-# substitute for the model. Anything outside these patterns declines rather than
-# guessing, which keeps the stub honest about its own coverage.
-_LOCATION_CUES = re.compile(
-    r"\b(where|nearest|closest|find|locate|show me|spot|deposit|node)\b", re.I)
+# Phrasings that clearly ask for a location. Anything outside them declines rather than
+# guessing, which is what keeps the stub honest about its own coverage.
+#
+# Two sets, because widening them is a measured trade rather than an obvious improvement.
+# Scored on the 15 A5 prompts a Q1 build can actually answer, with precision checked
+# across all 232 - the way a wider list fails is by claiming queries from OTHER classes,
+# and those live outside Q1:
+#
+#   standard    8/15 = 53%   0 claimed outside Q1
+#   proximity  10/15 = 67%   0 claimed outside Q1
+#   wide       11/15 = 73%   0 claimed outside Q1
+#
+# Nothing was stolen at any width and no resource was ever wrong. Treat that with care:
+# 15 prompts is a thin basis, and the zero outside Q1 is the number most likely to move
+# in Phase 2, when `find_pal_spawns` finally gives a wider list something to steal.
+# `wide` guesses at intent ("i need", "any") where the others only name places, so it is
+# the one to revisit first. See router.cues in config.
+_CUE_SETS = {
+    "standard": r"where|nearest|closest|find|locate|show me|spot|deposit|node",
+    "proximity": r"where|nearest|closest|find|locate|show me|spot|deposit|node"
+                 r"|near|nearby|around here|round here",
+    # `gimme` comes from a real transcript. "Hey pal, gimme some quartz" ranked quartz at
+    # a perfect 1.00 and still cost a 1.9s model round trip, because the cue list knew
+    # "get me" and not the contraction. Spoken phrasing is not written phrasing, and the
+    # only way to find these is to read what STT actually produced.
+    "wide": r"where|nearest|closest|find|locate|show me|spot|deposit|node"
+            r"|near|nearby|around here|round here|i need|get me|gimme|give me|any",
+}
+DEFAULT_CUES = "wide"
+_LOCATION_CUES = re.compile(rf"\b({_CUE_SETS[DEFAULT_CUES]})\b", re.I)
 _LEVEL = re.compile(r"\b(?:level|lvl)\s*(\d{1,2})\b", re.I)
 _LEVEL_WORDS = {
     "ten": 10, "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60,
@@ -94,24 +199,35 @@ MIN_CONFIDENT = 0.78
 class StubRouter:
     """Deterministic keyword router. No model, no network.
 
-    Used to build and test the pipeline before a model is chosen, and to give the
-    Phase 5 fast path a starting point.
+    Used to build and test the pipeline before a model is chosen, as the transport
+    backstop, and as the Q1 fast path.
     """
 
-    name = "stub"
-
-    def __init__(self, lexicon: Lexicon, locatable: set[str] | None = None):
+    def __init__(self, lexicon: Lexicon, locatable: set[str] | None = None,
+                 cues: str = DEFAULT_CUES):
         # Recognised and locatable are different sets. Crude oil is recognised - the
         # player can name it and deserves a real answer - but has no map locations, so
         # offering it as something we can "find" would be misleading.
         self._resources = set(lexicon.resources())
         self._locatable = locatable if locatable is not None else self._resources
+        if cues not in _CUE_SETS:
+            raise ValueError(f"unknown cue set {cues!r}, expected one of "
+                             f"{sorted(_CUE_SETS)}")
+        self._cues = re.compile(rf"\b({_CUE_SETS[cues]})\b", re.I)
+        # The width is in the name so it reaches `/palintel status` and every routing
+        # log line. A fast path that quietly widened would be indistinguishable from the
+        # model getting worse.
+        self.name = f"stub:{cues}"
 
     def route(self, utterance: str, candidates: list[Candidate]) -> ToolCall | Decline:
-        if not _LOCATION_CUES.search(utterance):
+        if not self._cues.search(utterance):
+            # Name what we *can* answer here too. The other two branches always did, and
+            # the difference only became visible once this decline could reach a player
+            # via the transport fallback rather than only a test.
             return Decline(
                 reason="no location intent recognised",
-                unrecognized=None)
+                unrecognized=None,
+                known_options=sorted(self._locatable))
 
         # The corrector deliberately ranks without a threshold, leaving the confidence
         # judgement to the router (ADR-0016). That assumes a router that can reason.

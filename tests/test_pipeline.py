@@ -13,7 +13,7 @@ from palintel.cards import decline_card, resource_card
 from palintel.execution import find_resource_nodes
 from palintel.knowledge import KnowledgeBase, phonetic, squash
 from palintel.pipeline import Pipeline, PlayerState
-from palintel.routing import StubRouter
+from palintel.routing import FallbackRouter, FastPathRouter, StubRouter
 from palintel.tools import Decline, ToolCall
 
 
@@ -239,3 +239,103 @@ def test_player_state_is_injected_not_parsed(pipe: Pipeline):
     far = pipe.handle("where's the nearest coal", PlayerState(player_coords=(800.0, 400.0)))
     near = pipe.handle("where's the nearest coal", PlayerState(player_coords=(20.0, -153.0)))
     assert far.card.lines[0] != near.card.lines[0]
+
+
+# ------------------------------------------------------------- transport fallback
+
+class _Fixed:
+    """A router that always returns the same thing. Stands in for a hosted backend."""
+
+    def __init__(self, result):
+        self.name = "fixed"
+        self._result = result
+        self.calls = 0
+
+    def route(self, utterance, candidates):
+        self.calls += 1
+        return self._result
+
+
+def test_timeout_falls_through_to_the_stub(kb: KnowledgeBase):
+    """A router that never answered must still produce a card it can stand behind."""
+    stub = StubRouter(kb.lexicon, {n.resource for n in kb.nodes})
+    r = FallbackRouter(_Fixed(Decline(reason="gemini unreachable", transient=True)), stub)
+    out = Pipeline(kb, r).handle("where's the nearest coal")
+    assert isinstance(out.call, ToolCall)
+    assert out.call.args["resource"] == "coal"
+    # The reason the primary failed has to survive into the rationale, or a run of
+    # timeouts looks like the stub simply being the configured router.
+    assert "unreachable" in out.call.rationale
+
+
+def test_considered_decline_is_never_second_guessed(kb: KnowledgeBase):
+    """The stub knows strictly less than the model. Re-deciding on less is how a
+    considered 'no' turns into a confidently wrong 'yes'."""
+    stub = StubRouter(kb.lexicon, {n.resource for n in kb.nodes})
+    primary = _Fixed(Decline(reason="two candidates equally plausible"))
+    r = FallbackRouter(primary, stub)
+    out = Pipeline(kb, r).handle("where's the nearest coal")
+    assert isinstance(out.call, Decline)
+    assert out.call.reason == "two candidates equally plausible"
+
+
+def test_fast_path_answers_without_calling_the_model(kb: KnowledgeBase):
+    stub = StubRouter(kb.lexicon, {n.resource for n in kb.nodes})
+    model = _Fixed(Decline(reason="should never be reached"))
+    out = Pipeline(kb, FastPathRouter(stub, model)).handle("where's the nearest coal")
+    assert out.call.args["resource"] == "coal"
+    assert model.calls == 0
+
+
+def test_fast_path_defers_anything_it_is_not_sure_of(kb: KnowledgeBase):
+    """The stub claiming a query it cannot answer is the whole risk of the fast path."""
+    stub = StubRouter(kb.lexicon, {n.resource for n in kb.nodes})
+    model = _Fixed(ToolCall(name="find_resource_nodes", args={"resource": "ore"}))
+    pipe = Pipeline(kb, FastPathRouter(stub, model))
+    # Names a resource, but asks about inventory rather than location - the model
+    # declined this one in the A5 run, and the stub must not answer it either.
+    pipe.handle("do I have enough sulfur for this")
+    pipe.handle("how do I breed a Vanwyrm")
+    assert model.calls == 2
+
+
+@pytest.mark.parametrize("cues,claims", [("standard", False), ("wide", True)])
+def test_cue_width_is_configurable(kb: KnowledgeBase, cues: str, claims: bool):
+    """'any sulfur around here' is the phrasing 'wide' exists to catch."""
+    stub = StubRouter(kb.lexicon, {n.resource for n in kb.nodes}, cues=cues)
+    call = stub.route("hey pal, is there any sulfur around here",
+                      kb.lexicon.rank("hey pal, is there any sulfur around here"))
+    assert isinstance(call, ToolCall) == claims
+
+
+def test_unknown_cue_set_fails_loudly(kb: KnowledgeBase):
+    with pytest.raises(ValueError, match="unknown cue set"):
+        StubRouter(kb.lexicon, cues="agressive")
+
+
+def test_both_failing_reports_the_transport_not_the_vocabulary(kb: KnowledgeBase):
+    stub = StubRouter(kb.lexicon, {n.resource for n in kb.nodes})
+    r = FallbackRouter(_Fixed(Decline(reason="gemini unreachable", transient=True)), stub)
+    out = Pipeline(kb, r).handle("how do I breed a Vanwyrm")
+    assert isinstance(out.call, Decline)
+    assert out.call.reason == "gemini unreachable"
+    assert out.call.known_options  # still names what it can answer
+
+
+# ------------------------------------------------------------------ stt hotwords
+
+def test_hotwords_put_resources_first(kb: KnowledgeBase):
+    """Bias decays along the list, and `sorted()` buried the resources at the bottom.
+
+    They are the only lowercase entries, so ASCII put all 313 capitalised Pal names
+    ahead of the four nouns Phase 1 can actually answer about. Measured cost: resource
+    recognition 16/19 rather than 19/19, and each miss was a ~2s model round trip.
+    """
+    from palintel.stt import hotword_order
+
+    order = hotword_order(kb.lexicon)
+    resources = set(kb.lexicon.resources())
+    assert set(order[:len(resources)]) == resources
+    # Reordered, not filtered: Phase 2 needs every Pal name still in the list.
+    assert set(order) == set(kb.lexicon.canonical_names)
+    assert len(order) == len(set(order))

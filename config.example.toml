@@ -60,6 +60,31 @@ models = ["hey_pal"]
 # play, raise this.
 threshold = 0.1
 
+[router]
+# The fast path answers a clearly-phrased resource query from the knowledge base without
+# calling the model at all. The model round trip is a ~2s median and the whole voice
+# budget is 2.5s, so on "where's the nearest coal" that round trip IS the latency problem.
+# Nothing is skipped that the model would have done better: the stub only claims a query
+# when the phrasing is unambiguous, and defers everything else.
+#
+#   fast_path = false   every query goes to the model. Restores the earlier behaviour
+#                       exactly, at the cost of ~2s on queries the stub could answer.
+fast_path = true
+
+# How eagerly the fast path claims a query. Measured on the 15 A5 prompts a Q1 build can
+# answer, with precision checked across all 232 - a wider list fails by stealing queries
+# from OTHER classes, so Q1 alone cannot show the damage:
+#
+#   standard    8/15 = 53%   only explicit place words (where, nearest, find, ...)
+#   proximity  10/15 = 67%   adds near, nearby, around here
+#   wide       11/15 = 73%   adds i need, get me, any
+#
+# No width answered a wrong resource or claimed anything outside Q1. Hold that lightly:
+# 15 prompts is thin, and "wide" is the only one that guesses at intent rather than
+# naming a place, so it is the first thing to step back if a fast, confident, wrong card
+# ever shows up. Drop to "proximity" - the coverage cost is two queries.
+cues = "wide"
+
 [data]
 # Which extracted dataset to load, matching a directory under data/.
 version = "1.0.2"
