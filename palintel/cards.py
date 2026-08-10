@@ -13,7 +13,8 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .execution import DropsResult, ResourceResult, SpawnResult
+from .execution import (DropsResult, ItemSourceResult, ResourceResult,
+                        SpawnResult)
 from .tools import Decline
 
 # Tier colours, so a reader can tell fact from recommendation from reference at a glance
@@ -555,4 +556,43 @@ def drops_card(result: DropsResult) -> Card:
 
     return Card(title=f"{result.pal} drops", lines=lines,
                 footer=f"{result.total} item{'s' if result.total != 1 else ''}",
+                colour=TIER_FACT)
+
+
+def item_source_card(result: ItemSourceResult) -> Card:
+    """Which Pals drop a named item, ordinary encounters first.
+
+    78 Pals drop Leather and one drops a Cloth Outfit Schematic. The cap matters more
+    here than on any other card, and so does the ordering: the reader wants the easiest
+    source, not an exhaustive index.
+    """
+    if not result.known:
+        return Card(title=f"No drop data for {result.item}",
+                    lines=["Nothing in my data drops that."], colour=TIER_DECLINE)
+    if not result.total:
+        return Card(title=f"Nothing drops {result.item}",
+                    lines=[f"No Pal yields **{result.item}**."], colour=TIER_DECLINE)
+
+    def block(rows: list) -> list[str]:
+        shown = rows[:MAX_DROPPERS]
+        rest = len(rows) - len(shown)
+        out = [SEP.join([f"**{d.pal}**", d.amount()]
+                        + ([f"{d.rate:.0f}%"] if d.rate < 100 else []))
+               for d in shown]
+        if rest > 0:
+            out.append(f"_+{rest} more_")
+        return out
+
+    lines = block(result.ordinary) if result.ordinary else [
+        "_No ordinary encounter drops this._"]
+    if result.alpha_only and not result.ordinary:
+        # Only worth the space when there is no easier source. A player who can already
+        # farm this from a wild Pal does not need the boss list.
+        lines += ["", "__Alpha only__"] + block(result.alpha_only)
+    if result.high_level and not result.ordinary and not result.alpha_only:
+        band = min(d.min_level for d in result.high_level)
+        lines += ["", f"__Level {band}+ only__"] + block(result.high_level)
+
+    return Card(title=f"{result.item} comes from", lines=lines,
+                footer=f"{result.total} source{'s' if result.total != 1 else ''}",
                 colour=TIER_FACT)

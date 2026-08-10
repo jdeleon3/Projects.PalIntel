@@ -196,3 +196,37 @@ def find_pal_drops(kb: KnowledgeBase, pal: str) -> DropsResult:
         high_level=[d for d in drops if d.min_level],
         known=True,
     )
+
+
+@dataclass(frozen=True)
+class ItemSourceResult:
+    item: str
+    ordinary: list[Dropper]
+    alpha_only: list[Dropper]
+    high_level: list[Dropper]
+    known: bool
+
+    @property
+    def total(self) -> int:
+        return len(self.ordinary) + len(self.alpha_only) + len(self.high_level)
+
+
+def find_item_source(kb: KnowledgeBase, item: str) -> ItemSourceResult:
+    """Which Pals drop a named item.
+
+    The mirror of `find_pal_drops`, split the same three ways and for the same reason: 78
+    Pals drop Leather from an ordinary encounter, while Ancient Civilization Parts comes
+    only from alphas. A single ranked list would send a player after a field boss without
+    saying so.
+    """
+    sources = kb.item_sources.get(item)
+    if sources is None:
+        return ItemSourceResult(item=item, ordinary=[], alpha_only=[], high_level=[],
+                                known=False)
+    return ItemSourceResult(
+        item=item,
+        ordinary=[d for d in sources if not d.alpha_only and not d.min_level],
+        alpha_only=[d for d in sources if d.alpha_only and not d.min_level],
+        high_level=[d for d in sources if d.min_level],
+        known=True,
+    )

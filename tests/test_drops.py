@@ -201,3 +201,49 @@ def test_a_pal_with_no_drops_is_not_a_missing_row(kb: KnowledgeBase):
     unknown = find_pal_drops(kb, "NotAPalAtAll")
     assert not unknown.known
     assert "isn't in the drop table" in " ".join(drops_card(unknown).lines)
+
+
+# ------------------------------------------------------- the consolidated tool
+
+def test_a_two_pal_question_keeps_both():
+    """"What do I get from Astralym and Mycora" is two answers, not one.
+
+    `find_pal_drops(pal)` has a single slot, so the per-class schema could not express
+    this and no amount of prompt work would have fixed it - the measurement found a
+    prompt that chose the right tool and still missed. The consolidated tool's `pals`
+    array can hold both, and `unpack` carries the extras rather than discarding them.
+    """
+    from palintel.routing_unified import unpack
+
+    name, args = unpack("answer_query", {"query_class": "pal_drops",
+                                         "pals": ["Astralym", "Mycora"],
+                                         "resources": [], "items_named": [],
+                                         "target": None, "max_player_level": None})
+    assert name == "find_pal_drops"
+    assert args["pals"] == ["Astralym", "Mycora"]
+    # The first still lands in the old slot, so a dispatcher that only knows `pal` works.
+    assert args["pal"] == "Astralym"
+
+
+def test_one_pal_needs_no_extra_slot():
+    from palintel.routing_unified import unpack
+
+    _, args = unpack("answer_query", {"query_class": "pal_drops", "pals": ["Chillet"],
+                                      "resources": [], "items_named": [],
+                                      "target": None, "max_player_level": None})
+    assert args == {"pal": "Chillet"}
+
+
+def test_an_item_question_reaches_the_item_slot():
+    """Items live in the tool enum and NOT in the lexicon.
+
+    Arrow, Bone, Leather and Horn are ordinary English; ranking them in the corrector
+    would pull spurious candidates into queries that name no item at all. The router
+    reaches for this slot on sentence context instead.
+    """
+    from palintel.routing_unified import unpack
+
+    name, args = unpack("answer_query", {"query_class": "item_source", "pals": [],
+                                         "resources": [], "items_named": ["Flame Organ"],
+                                         "target": None, "max_player_level": None})
+    assert (name, args) == ("find_item_source", {"item": "Flame Organ"})

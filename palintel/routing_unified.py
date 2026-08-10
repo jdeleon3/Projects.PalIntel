@@ -40,6 +40,7 @@ CLASS_TO_TOOL: dict[str, str] = {
     "resource_location": "find_resource_nodes",
     "pal_location": "find_pal_spawns",
     "pal_drops": "find_pal_drops",
+    "item_source": "find_item_source",
     "breeding_combo": "get_breeding_combo",
     "breeding_pair": "check_breeding_pair",
     "pal_info": "get_pal_info",
@@ -54,6 +55,7 @@ CLASS_HELP: dict[str, str] = {
     "resource_location": "where to find, mine or farm a resource (coal, ore, quartz)",
     "pal_location": "where to find, catch or encounter a Pal species",
     "pal_drops": "what items a Pal yields when defeated or captured",
+    "item_source": "which Pals drop a named item (Flame Organ, Leather, Bone)",
     "breeding_combo": "which parent Pals breed to produce a target Pal",
     "breeding_pair": "what two named Pals produce when bred together",
     "pal_info": "a Pal's element, stats or work suitability",
@@ -61,10 +63,12 @@ CLASS_HELP: dict[str, str] = {
     "boss_counter": "which Pal to use against a boss or tower",
 }
 
-PRODUCTION_CLASSES = ("resource_location", "pal_location", "pal_drops")
+PRODUCTION_CLASSES = ("resource_location", "pal_location", "pal_drops",
+                      "item_source")
 
 
 def unified_schema(resources: list[str], pals: list[str],
+                   items: list[str] | None = None,
                    classes: tuple[str, ...] = PRODUCTION_CLASSES) -> dict[str, Any]:
     """One tool covering `classes`, with one copy of each enum.
 
@@ -104,6 +108,16 @@ def unified_schema(resources: list[str], pals: list[str],
                         "The resource the question names. Empty when it names none."
                     ),
                 },
+                "items_named": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": items or []},
+                    "description": (
+                        "The item the question asks the SOURCE of - \"who drops Flame "
+                        "Organ\". Empty otherwise. Many of these are ordinary English "
+                        "words (Arrow, Bone, Leather); only fill this when the player is "
+                        "asking where an item comes from."
+                    ),
+                },
                 "target": {
                     "type": ["string", "null"],
                     "description": (
@@ -119,7 +133,7 @@ def unified_schema(resources: list[str], pals: list[str],
                     ),
                 },
             },
-            "required": ["query_class", "pals", "resources", "target",
+            "required": ["query_class", "pals", "resources", "items_named", "target",
                          "max_player_level"],
             "additionalProperties": False,
         },
@@ -131,6 +145,7 @@ _ARGS: dict[str, tuple[str, ...]] = {
     "find_resource_nodes": ("resource",),
     "find_pal_spawns": ("pal",),
     "find_pal_drops": ("pal",),
+    "find_item_source": ("item",),
     "get_breeding_combo": ("target",),
     "check_breeding_pair": ("parent_a", "parent_b"),
     "get_pal_info": ("pal",),
@@ -155,8 +170,17 @@ def unpack(name: str, args: dict[str, Any]) -> tuple[str, dict[str, Any]]:
         # than this function guessing.
         return name, args
 
-    values = list(args.get("resources") or []) + list(args.get("pals") or [])
+    named_pals = list(args.get("pals") or [])
+    values = (list(args.get("resources") or []) + list(args.get("items_named") or [])
+              + named_pals)
     out: dict[str, Any] = dict(zip(_ARGS[tool], values))
+
+    # A question may name more Pals than the old single-slot tools could hold - "what do
+    # I get from Astralym and Mycora" is two. The consolidated schema can express that
+    # and the per-class one never could, so the extras are carried rather than dropped;
+    # a dispatcher that only understands `pal` still finds it in the first slot.
+    if len(named_pals) > 1 and _ARGS[tool] == ("pal",):
+        out["pals"] = named_pals
     if tool == "find_resource_nodes" and args.get("max_player_level") is not None:
         out["max_player_level"] = args["max_player_level"]
     if tool == "evaluate_counter" and args.get("target") is not None:

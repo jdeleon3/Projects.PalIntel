@@ -182,7 +182,8 @@ class GeminiRouter:
                  thinking_level: str | None = None,
                  timeout_s: float = RUNTIME_TIMEOUT_S,
                  unified: bool = False,
-                 classes: tuple[str, ...] | None = None):
+                 classes: tuple[str, ...] | None = None,
+                 items: list[str] | None = None):
         from .routing_anthropic import registry  # one registry, one definition
         from .routing_unified import PRODUCTION_CLASSES
 
@@ -202,8 +203,8 @@ class GeminiRouter:
             # One tool absorbs the extra classes too, rather than sitting beside them -
             # otherwise the run would carry a consolidated tool AND five per-class ones,
             # which is neither registry and measures nothing.
-            tools = registry(self._resources, lexicon.pals(), unified=True,
-                             classes=classes or PRODUCTION_CLASSES)
+            tools = registry(self._resources, lexicon.pals(), items=items,
+                             unified=True, classes=classes or PRODUCTION_CLASSES)
         else:
             tools = [*registry(self._resources, lexicon.pals()), *(extra_tools or [])]
         self._decls = _to_function_declarations(tools)

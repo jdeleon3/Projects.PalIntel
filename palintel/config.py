@@ -100,6 +100,11 @@ class RouterConfig:
     """
     fast_path: bool = True
     cues: str = "wide"                   # standard | proximity | wide
+    # One `answer_query` tool instead of one per class. Measured accuracy-neutral
+    # (McNemar p = 0.45) and 21% faster at the median, and it is what lets a question
+    # name two Pals - `find_pal_drops(pal)` has one slot and "what do I get from Astralym
+    # and Mycora" needs two. `item_source` is only reachable this way.
+    unified: bool = True
 
 
 @dataclass(frozen=True)
@@ -183,7 +188,8 @@ class Config:
                               threshold=float(v.get("threshold", 0.1)),
                               device=device,
                               speaker=(v.get("speaker") or None)),
-            router=RouterConfig(fast_path=bool(r.get("fast_path", True)), cues=cues),
+            router=RouterConfig(fast_path=bool(r.get("fast_path", True)), cues=cues,
+                                unified=bool(r.get("unified", True))),
             cards=CardsConfig(maps=bool(c.get("maps", False)),
                               icons=bool(c.get("icons", False))),
             data_version=os.environ.get(
@@ -200,8 +206,9 @@ class Config:
             "listen_mode": self.discord.listen_mode,
             "voice": (f"mic, {', '.join(self.voice.models)}"
                       if self.voice.enabled else "(text only)"),
-            "router": (f"fast path on, cues={self.router.cues}"
-                       if self.router.fast_path else "model only"),
+            "router": ((f"fast path on, cues={self.router.cues}"
+                        if self.router.fast_path else "model only")
+                       + (", one tool" if self.router.unified else ", tool per class")),
             "cards": ", ".join(
                 [k for k, on in (("maps", self.cards.maps),
                                  ("icons", self.cards.icons)) if on]) or "text only",

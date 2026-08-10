@@ -167,8 +167,9 @@ def build_router(kb: KnowledgeBase, prefer: str = "auto",
         try:
             from . import routing_gemini
             if routing_gemini.available():
-                return wrapped(
-                    routing_gemini.GeminiRouter(kb.lexicon, locatable))
+                return wrapped(routing_gemini.GeminiRouter(
+                    kb.lexicon, locatable, unified=cfg.unified,
+                    items=sorted(kb.item_sources)))
             if prefer == "gemini":
                 raise RuntimeError(
                     "No Gemini credential found. Set GEMINI_API_KEY in .env.")
@@ -328,9 +329,24 @@ class Pipeline:
                     card.thumbnail = self.artwork.assets.icon(name)
                 return card
 
+            # One card per Pal the question named, falling back to the variant family
+            # when it named one. "What do I get from Astralym and Mycora" is two answers,
+            # and the single-slot schema used to make it one.
+            named = call.args.get("pals") or []
+            subjects = named if len(named) > 1 else self.kb.lexicon.family(pal)
+
             self._remember(who, call, {"pal": pal}, "drops")
-            return Outcome(self._cards_for(self.kb.lexicon.family(pal), render_drops),
-                           call, candidates)
+            return Outcome(self._cards_for(subjects, render_drops), call, candidates)
+
+        if call.name == "find_item_source":
+            item = call.args.get("item")
+            if not item:
+                log.warning("router called %s with no item: %s", call.name, call.args)
+                return self._decline(Decline(reason="no item identified"), candidates)
+            result = execution.find_item_source(self.kb, item)
+            log.info("find_item_source(%s) -> %d sources", item, result.total)
+            self._remember(who, call, {"item": item}, f"{result.total} sources")
+            return Outcome([cards.item_source_card(result)], call, candidates)
 
         # A tool the router knows about but the dispatcher does not is a wiring bug.
         # Fail loudly here rather than rendering something plausible.

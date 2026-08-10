@@ -322,6 +322,12 @@ class KnowledgeBase:
     # Pal -> what it drops. 302 Pals drop something; the rest drop nothing at all, which
     # is a real answer rather than missing data.
     pal_drops: dict[str, list[PalDrop]] = field(default_factory=dict)
+    # Item -> the Pals that drop it. 151 items. Deliberately NOT in the lexicon: these
+    # are ordinary English words (Arrow, Bone, Leather, Horn) and adding them to the
+    # corrector would pull spurious candidates into every query, including the ones that
+    # name no item at all. They live in the tool enum, where the router reaches for them
+    # only when the sentence is asking where something comes from.
+    item_sources: dict[str, list[Dropper]] = field(default_factory=dict)
     # Pal -> ranch output. Empty when the dataset is absent, which is normal: it has its
     # own ingest step and the answer is complete without it.
     ranch: dict[str, Ranch] = field(default_factory=dict)
@@ -358,6 +364,7 @@ class KnowledgeBase:
         # line, so a checkout that has not run build_pal_drops.py still works.
         droppers: dict[str, list[Dropper]] = {}
         pal_drops: dict[str, list[PalDrop]] = {}
+        item_sources: dict[str, list[Dropper]] = {}
         drop_path = base / "pal_drops.json"
         if drop_path.exists():
             drop_raw = json.loads(drop_path.read_text(encoding="utf-8"))
@@ -366,6 +373,12 @@ class KnowledgeBase:
                                       min_level=d.get("min_level", 0))
                               for d in ds]
                         for res, ds in drop_raw["by_resource"].items()}
+            item_sources = {item: [Dropper(pal=d["pal"], rate=d["rate"], low=d["min"],
+                                          high=d["max"],
+                                          alpha_only=d["alpha_only"],
+                                          min_level=d.get("min_level", 0))
+                                   for d in ds]
+                            for item, ds in drop_raw.get("by_item", {}).items()}
             pal_drops = {pal: [PalDrop(item=d["item"], rate=d["rate"], low=d["min"],
                                        high=d["max"], alpha_only=d["alpha_only"],
                                        min_level=d.get("min_level", 0))
@@ -388,7 +401,8 @@ class KnowledgeBase:
         return cls(game_version=raw["game_version"], lexicon=lexicon, nodes=nodes,
                    spawns=spawns,
                    pals_without_areas=frozenset(spawn_raw["pals_without_areas"]),
-                   droppers=droppers, pal_drops=pal_drops, ranch=ranch,
+                   droppers=droppers, pal_drops=pal_drops,
+                   item_sources=item_sources, ranch=ranch,
                    ranch_source=ranch_source)
 
     def summary(self) -> dict[str, object]:

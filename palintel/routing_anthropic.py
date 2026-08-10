@@ -184,6 +184,7 @@ def pal_drops_schema(pals: list[str]) -> dict[str, Any]:
 
 
 def registry(resources: list[str], pals: list[str], *,
+             items: list[str] | None = None,
              unified: bool = False,
              classes: tuple[str, ...] = PRODUCTION_CLASSES) -> list[dict[str, Any]]:
     """The tools PalIntel actually dispatches. One definition, three backends.
@@ -198,7 +199,7 @@ def registry(resources: list[str], pals: list[str], *,
     for and what a document number cannot supply.
     """
     if unified:
-        return [unified_schema(resources, pals, classes)]
+        return [unified_schema(resources, pals, items, classes)]
     return [_tool_schema(resources), pal_spawn_schema(pals), pal_drops_schema(pals)]
 
 
