@@ -22,7 +22,7 @@ the relevant ADR before proposing a change that reintroduces a discarded approac
 | [0014](0014-game-files-as-source.md) | Game files as primary data source; community sites as validation | Accepted |
 | [0015](0015-local-gpu-stt.md) | Local GPU speech-to-text (faster-whisper `medium.en`) | Accepted |
 | [0016](0016-entity-resolution-in-router.md) | Entity resolution belongs in the router, not the corrector | Accepted |
-| [0017](0017-card-artwork-from-game-assets.md) | Card artwork from game assets, drawn off the graded path | **Provisional** — spike, default off |
+| [0017](0017-card-artwork-from-game-assets.md) | Card artwork from game assets, drawn off the graded path | Accepted |
 
 ## Amendment chain
 

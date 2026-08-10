@@ -1673,9 +1673,14 @@ schema immediately after measuring against it would invalidate the baseline abov
 ## Spike — card artwork: map crops and Pal icons (2026-08-10)
 
 Two enhancement requests, spiked together on `spike/visual-cards`: mark location answers
-on a world map, and show each Pal's picture on Pal queries. Both are **built and behind
-`[cards] maps` / `[cards] icons`, default off**. Decision recorded as
-[ADR-0017](adr/0017-card-artwork-from-game-assets.md).
+on a world map, and show each Pal's picture on Pal queries. **Adopted 2026-08-10** —
+[ADR-0017](adr/0017-card-artwork-from-game-assets.md) is Accepted and both are on by
+default, the flags surviving as off switches because the assets are a separate build.
+
+Accepted *at measured behaviour* rather than at a clean bill of health, the same posture
+A5 was taken under. What the design is organised against is measured; `art_post` p95, and
+whether a marker lands on the actual rock, are open and knowingly carried. See the ADR's
+"Accepted at" section.
 
 **Both are feasible from the pak, and the game supplies more than expected.**
 `DT_WorldMapUIData` publishes the world-space rectangle each basemap covers, so the world
@@ -1872,7 +1877,7 @@ exactly the extracted 32 and fail closed when a patch adds a ranchable Pal.
 Worth noting for the item-drop work: Flambelle ranches **Flame Organ**, which is the
 query that raised all this.
 
-**Open, and what the flag is for.** The Discord edit round trip is **not measured** —
+**Carried into use rather than resolved.** The Discord edit round trip is **not measured** —
 every number above is local — so whether the reflow reads as helpful or as clutter is
 still a real-play question. A second gap the pictures make visible rather than introduce:
 `coord_transform.json` was fitted on MainMap landmarks only, so Tree-region coordinates go
@@ -1938,12 +1943,45 @@ improvise; no Tier 2 card contains a candidate absent from its computed set.
   hardening nicety. Shipped for Q1 only; it needs re-measuring per query class as tools are
   registered, since a keyword matcher's failure mode is claiming another class's queries.
 - **Discord voice receive (DAVE)** — see below. Upstream-blocked, not abandoned.
+- **"Find dungeons near me"** — see below. Reclaims what the overworld filter removed.
 - Lexicon growth from observed STT failures — standing task, not a one-off
 - Corpus coverage expansion against the checklist
 - Patch refresh exercised against a real Palworld update
 - Local STT evaluation — removes the last unavoidable network hop and the per-query STT cost
 - Optional: local intent model and local embeddings, making the system fully offline apart
   from Discord
+
+### Backlog — "find dungeons near me"
+
+**Not a new idea so much as an unpaid debt.** Excluding `L15_X0_Y0` from the node dataset
+was correct — those coordinates are not places you can walk to — but it cost **672 of 998
+coal deposits**, and coal clusters fell from 552 to 308. Cave coal is most of Palworld's
+coal. A player who asks "where's the nearest coal" now gets a true answer to a narrower
+question than they asked, and nothing tells them the rest exists.
+
+The honest fix is not to relax the filter. It is to answer the other question directly:
+*where is the nearest dungeon*, and optionally *which ones contain coal*. That is a
+different data model — a dungeon has an entrance in the overworld and contents in its own
+local space, so it is one overworld coordinate plus an inventory, not a scattering of
+coordinates.
+
+What already exists towards it:
+
+- **The contents.** 6,718 excluded deposits are already extracted and correctly grouped by
+  dungeon-local position. Nothing was thrown away, only withheld from Q1.
+- **A signal that the entrances are extractable.** `DataTable/Dungeon/` holds
+  `DT_DungeonItemLotteryDataTable` and `DT_DungeonRewardSpawnerLotteryDataTable`, and the
+  World Partition scan already walks every overworld cell. Entrance actors were not looked
+  for because nothing needed them.
+
+What is unknown: whether an entrance actor links to the interior cell it opens onto. That
+link is the feature. Without it we can say where dungeons are and separately what dungeons
+contain, but not what *this* dungeon contains — which is most of the value.
+
+**Spike first, exactly as the ranch question was**: find the entrance actors, check whether
+they carry a reference to their interior, and report before building. If the link is absent
+the feature shrinks to "nearest dungeon entrance", which is still worth having and is much
+less work.
 
 ### Backlog — Discord voice receive, blocked on DAVE
 

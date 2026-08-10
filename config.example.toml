@@ -94,7 +94,9 @@ fast_path = true
 cues = "wide"
 
 [cards]
-# Artwork on answer cards. Off by default - this is a spike, not a decision.
+# Artwork on answer cards (ADR-0017, accepted). On by default; the flag is the off
+# switch, kept because the assets are a separate build and a checkout without them must
+# still answer.
 #
 # Both need assets extracted from your own game install, which is a two-step build and
 # about 20 MB on disk:
@@ -117,8 +119,8 @@ cues = "wide"
 # Neither is on the graded latency path: the text card is posted first and the picture
 # is edited in on a second round trip, so the cost the player sees is a reflow rather
 # than a slower answer. Rendering is ~24ms and ~60 KB.
-maps = false
-icons = false
+maps = true
+icons = true
 
 [data]
 # Which extracted dataset to load, matching a directory under data/.

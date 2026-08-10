@@ -1,6 +1,6 @@
 # ADR-0017 — Card artwork from game assets, drawn off the graded path
 
-**Status:** Provisional — spike, behind `[cards] maps/icons`, default off
+**Status:** Accepted — adopted 2026-08-10 at measured behaviour; see §Accepted at
 **Amends:** [0006](0006-templated-cards.md)
 
 ## Context
@@ -68,8 +68,10 @@ needs a crop spanning 3,570 source pixels.
    are found in two corners of the map. Above a 4× crop the tiles carry detail the output
    cannot show, so it reads a whole-region overview instead.
 
-6. **Off by default.** Whether a picture helps or clutters is a judgement about reading
-   cards mid-combat, which only real sessions settle.
+6. **On by default, with the flag kept as an off switch.** It shipped off while this was
+   a spike, on the reasoning that whether a picture helps or clutters is a judgement only
+   real sessions settle. That judgement has been made; the flag survives because the
+   assets are a separate two-step build and a checkout without them must still answer.
 
 ## Measurements
 
@@ -94,6 +96,32 @@ PIDF Rider — none of them Paldeck members. **Resource cards carry no thumbnail
 item's inventory icon was shipped there, read in play, and withdrawn: it joined cleanly at
 17 of 18 resources and still showed the wrong thing, since recognising a deposit is a
 question about the rock in the world rather than the item in your pack.
+
+## Accepted at
+
+**Adopted at measured behaviour, not at a clean bill of health** — the same posture A5 was
+accepted under, and for the same reason: what the design was organised against is
+measured, and what remains open costs a turn rather than misleads.
+
+Settled:
+
+- The graded latency path is unchanged (52.8 ms p50 against 51.2 ms text-only).
+- Every way the picture can be *wrong* fails to no picture: no region, two regions, a
+  render error, missing assets.
+- Orientation is measured unanimously across three independent classifiers, and the
+  ingest fails closed if they ever disagree.
+
+Open, and knowingly accepted:
+
+- **`art_post` p95 is unmeasured.** Every number here is local. If the upload turns out to
+  take seconds, the reflow arrives long after the card has been read, and the delivery
+  choice (edit-in versus a single message) is worth revisiting. Instrumented as its own
+  timing kind so the answer arrives from use rather than from another spike.
+- **No marker has been checked against the actual rock.** `coord_transform.json` was
+  validated to ±3 map units against 7 landmarks, none of them a resource node. A miss here
+  is transform work, not card work.
+- **Markers at near-identical coordinates overlap**, reading as fewer answers than the
+  text lists.
 
 ## Alternatives considered
 
