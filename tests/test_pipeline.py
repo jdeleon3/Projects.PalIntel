@@ -339,3 +339,29 @@ def test_hotwords_put_resources_first(kb: KnowledgeBase):
     # Reordered, not filtered: Phase 2 needs every Pal name still in the list.
     assert set(order) == set(kb.lexicon.canonical_names)
     assert len(order) == len(set(order))
+
+
+@pytest.mark.parametrize("utterance, resource", [
+    # Both were the slowest ANSWERED queries of a real session: clean entities that
+    # paid a full model round trip because the cue list had never seen the phrasing.
+    ("hey pal, can I get coal at this level?", "coal"),
+    ("hey pal, what's the best place to farm quartz?", "quartz"),
+])
+def test_cues_cover_the_phrasings_a_session_actually_used(kb: KnowledgeBase,
+                                                          utterance, resource):
+    stub = StubRouter(kb.lexicon, {n.resource for n in kb.nodes})
+    call = stub.route(utterance, kb.lexicon.rank(utterance))
+    assert isinstance(call, ToolCall)
+    assert call.args["resource"] == resource
+
+
+def test_widening_never_claims_the_inventory_question(kb: KnowledgeBase):
+    """Names a resource, is not a location question, and the model declined it too.
+
+    It has stayed deferred through every widening, which is the evidence that the cue
+    gate discriminates rather than just matching resource nouns.
+    """
+    for cues in ("standard", "proximity", "wide"):
+        stub = StubRouter(kb.lexicon, {n.resource for n in kb.nodes}, cues=cues)
+        utterance = "hey pal, do I have enough sulfur for this?"
+        assert isinstance(stub.route(utterance, kb.lexicon.rank(utterance)), Decline)

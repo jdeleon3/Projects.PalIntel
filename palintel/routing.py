@@ -83,11 +83,11 @@ class FastPathRouter:
     with no model in the loop to fabricate anything.
 
     This is safe only because the stub declines rather than guesses. Measured on the A5
-    transcripts it answered 11 of the 15 Q1 prompts, every one with the right resource,
+    transcripts it answered 12 of the 15 Q1 prompts, every one with the right resource,
     and claimed nothing belonging to another query class - and where it did answer, the
     model had independently made the same call. It defers everything else, including
     "do I have enough sulfur for this", which names a resource but is not a location
-    question at all.
+    question at all, and which stayed deferred through every cue widening.
 
     The order matters and is not reversible: the stub goes first because a `ToolCall`
     from it is a certainty, not a preference. If it ever became a preference, this would
@@ -164,7 +164,7 @@ class FallbackRouter:
 #
 #   standard    8/15 = 53%   0 claimed outside Q1
 #   proximity  10/15 = 67%   0 claimed outside Q1
-#   wide       11/15 = 73%   0 claimed outside Q1
+#   wide       12/15 = 80%   0 claimed outside Q1
 #
 # Nothing was stolen at any width and no resource was ever wrong. Treat that with care:
 # 15 prompts is a thin basis, and the zero outside Q1 is the number most likely to move
@@ -175,12 +175,19 @@ _CUE_SETS = {
     "standard": r"where|nearest|closest|find|locate|show me|spot|deposit|node",
     "proximity": r"where|nearest|closest|find|locate|show me|spot|deposit|node"
                  r"|near|nearby|around here|round here",
-    # `gimme` comes from a real transcript. "Hey pal, gimme some quartz" ranked quartz at
-    # a perfect 1.00 and still cost a 1.9s model round trip, because the cue list knew
-    # "get me" and not the contraction. Spoken phrasing is not written phrasing, and the
-    # only way to find these is to read what STT actually produced.
+    # Every entry past "any" came from reading real transcripts, and none of them would
+    # have been guessed. "gimme some quartz" ranked quartz at 1.00 and still paid 1.9s
+    # because the list knew "get me" and not the contraction; "can I get coal at this
+    # level" and "what's the best place to farm quartz" both had clean entities and no
+    # cue at all, and were the two slowest ANSWERED queries of a session. Spoken phrasing
+    # is not written phrasing, and `/palintel recent` is the only way to find the gap.
+    #
+    # Candidates were measured, not assumed: "gather", "harvest", "stock up" and "pick
+    # up" added no coverage over these and are deliberately absent rather than included
+    # on the theory that more is better.
     "wide": r"where|nearest|closest|find|locate|show me|spot|deposit|node"
-            r"|near|nearby|around here|round here|i need|get me|gimme|give me|any",
+            r"|near|nearby|around here|round here|i need|get me|gimme|give me|any"
+            r"|place|farm|mine|can i get|is there",
 }
 DEFAULT_CUES = "wide"
 _LOCATION_CUES = re.compile(rf"\b({_CUE_SETS[DEFAULT_CUES]})\b", re.I)
