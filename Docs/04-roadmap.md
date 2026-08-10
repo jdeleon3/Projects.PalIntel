@@ -986,11 +986,14 @@ budgeted at 2.5s — plus stragglers at 56-64s. Both hosted backends now bound r
 8s (Claude had no timeout at all). 8s rather than the 4s first proposed, because the data
 overruled the guess: 4s cuts 20 correct answers, 8s cuts 5, and all five had already blown
 the budget threefold. **This is not a latency saving** — nothing recovers a 60s query — it
-is a bound on the worst case. A transient failure now falls through to `StubRouter` via
-`FallbackRouter`, which answers a clear Q1 resource query outright. Only *transient*
-declines fall through: a considered decline is passed on untouched, because the stub knows
-strictly less than the model did and re-deciding on less is how a "no" becomes a
-confidently wrong "yes".
+is a bound on the worst case. A transient failure falls through to `StubRouter` via
+`FallbackRouter`. Only *transient* declines fall through: a considered decline is passed on
+untouched, because the stub knows strictly less than the model did and re-deciding on less
+is how a "no" becomes a confidently wrong "yes".
+
+> **Corrected below.** As first written this fallthrough could not rescue anything once the
+> fast path shipped, and the claim that it "answers a clear Q1 resource query outright" was
+> false for the whole time it stood here. See *A backstop that could not back anything up*.
 
 **`routing_gemini.py` was importing the local backend's system prompt** — the one that says
 "your only output is one JSON object… otherwise pick `decline`" — while using real function
@@ -1141,10 +1144,57 @@ This is not a fudge, and the first simulated card proves it: with a third of ans
 model-routed, voice p95 sits at 3.3s on answered queries alone and still fails. Excluding
 declines removed a distortion, not the problem.
 
-**Still open in Phase 1:** the latency and real-play exit criteria. The next session is
-the first one where the fast path should carry the median rather than the tail, so it is
-also the first whose p95 means anything. Note what the two sessions so far have *not*
-produced: a single wrong answer. 27 queries, mangled nouns and all, every one correct.
+### Phase 1 progress — a backstop that could not back anything up (2026-08-09)
+
+The third session put the fast path on the median: **route p50 0.11s** against 1.70s the
+session before, voice p50 **1.5s** inside a 2.5s bar, text p50 0.3s. It also exposed a
+wrapper that had never been able to do its job.
+
+**`FallbackRouter` could not rescue a single query.** `FastPathRouter` asks the stub first,
+so anything reaching the model is by definition something that stub already declined — and
+on a timeout the fallthrough asked *the same deterministic router the same question* and
+got the same decline. Sharing one instance had been written up as the careful choice, on
+the grounds that the cue width could not then diverge between the two roles. It was
+actually what made the safety net decorative, and the docstring and roadmap both claimed
+otherwise for as long as it stood.
+
+The fix is asymmetry, because the two roles face different alternatives. The fast path
+preempts a *working* model and must stay strict — everything it claims is a query the model
+never sees. The backstop runs only when the model did not answer at all, so its alternative
+is not a better answer but nothing.
+
+**The first attempt at that was wrong, and the measurement said so.** Lowering
+`MIN_CONFIDENT` from 0.78 to 0.55 recovered exactly **one** query in 232, which looked like
+proof that permissiveness does not help. It was proof the knob was wrong: one constant
+gated both the Pal guard ("the top candidate is confidently a Pal, so this is a Pal
+question") and resource acceptance, and lowering it made the second looser while making the
+first *tighter* — a Pal at 0.71 started clearing the bar and triggering the guard. Split
+them, hold the guard at 0.78, and sweep the resource floor alone:
+
+| resource floor | Q1 right | wrong | claimed outside Q1 |
+|---|---|---|---|
+| 0.78 | 12 | 0 | 0 |
+| **0.68** | **12** | **0** | **0** |
+| 0.64 | 13 | 0 | 3 — "can I get Zendelord" → ore |
+| 0.60 | 13 | 0 | 4 — also answers a no-entity prompt |
+
+0.64 is where confidently wrong cards start appearing on Pal queries, which
+[ADR-0007](adr/0007-entity-lexicon-boundary.md) refuses to ship whether or not the model
+was reachable. 0.68 recovers two of the three mangled transcripts from the session —
+"nearest **goal**" and "near **a store**", both heard as coal and ore at 0.75 — and none of
+the wrong ones. Chosen by where wrong answers begin, not by where coverage stops improving.
+
+**The cue list also gained the phrasings the session actually used.** `/palintel recent`
+showed the two slowest *answered* queries were cue misses on clean entities: "can I get coal
+at this level" and "what's the best place to farm quartz", both 1.00 on the resource, both
+paying a full model round trip. Q1 coverage 11/15 → 12/15, still nothing claimed outside
+Q1. `gather`, `harvest`, `stock up` and `pick up` were measured, added nothing, and are
+deliberately absent. None of these would have been guessed from typed text — the queries
+that miss are exactly the ones nobody thinks to write down.
+
+**Still open in Phase 1:** the latency and real-play exit criteria. Note what four sessions
+have *not* produced: a single wrong answer. Every mangled noun either recovered correctly
+or declined honestly.
 
 ---
 

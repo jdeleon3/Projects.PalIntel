@@ -121,8 +121,15 @@ class FallbackRouter:
 
     The point is not to salvage latency. A request that timed out has already blown the
     2.5s budget several times over, and nothing recovers that. It is that the player gets
-    a card either way: on Q1 the stub answers a clear resource query outright, and where
-    it cannot, it names what it can answer instead of leaving the bot looking hung.
+    a card rather than an apology where one can honestly be given.
+
+    **The backstop must be a MORE PERMISSIVE stub than any fast path in front of it.** An
+    identical one is dead code: `FastPathRouter` asks the stub first, so anything reaching
+    the model is by definition something that stub already declined, and asking the same
+    deterministic router the same question again returns the same decline. That was true
+    of the first version of this class - it could not rescue a single query in the default
+    configuration while its docstring claimed otherwise. `build_router` now hands it a
+    stub with a lower resource floor, which is what makes the fallthrough mean anything.
     """
 
     def __init__(self, primary: RouterBackend, backstop: RouterBackend):
@@ -202,6 +209,26 @@ _LEVEL_WORDS = {
 # still hands every candidate to whichever router is in use.
 MIN_CONFIDENT = 0.78
 
+# The floor for the backstop only, where the alternative to answering is not a better
+# answer but nothing at all - the model did not reply. That asymmetry justifies a lower
+# bar than the fast path, which preempts a *working* model and must stay strict.
+#
+# It does not justify guessing, and the value is chosen by where wrong answers start
+# rather than where coverage stops improving. Swept over the 232 A5 utterances with the
+# Pal guard held at MIN_CONFIDENT:
+#
+#   resource floor   Q1 right   wrong   claimed outside Q1
+#       0.78            12        0            0
+#       0.68            12        0            0     <- this
+#       0.64            13        0            3     "can I get Zendelord" -> ore
+#       0.60            13        0            4     also answers a no-entity prompt
+#
+# 0.64 is where it starts putting confidently wrong cards on Pal queries, which is the
+# failure ADR-0007 refuses to ship whether or not the model was reachable. 0.68 recovers
+# two of the three mangled transcripts from a real session - "nearest goal" and "near a
+# store" - and none of the wrong ones.
+BACKSTOP_CONFIDENT = 0.68
+
 
 class StubRouter:
     """Deterministic keyword router. No model, no network.
@@ -211,7 +238,18 @@ class StubRouter:
     """
 
     def __init__(self, lexicon: Lexicon, locatable: set[str] | None = None,
-                 cues: str = DEFAULT_CUES):
+                 cues: str = DEFAULT_CUES, resource_floor: float = MIN_CONFIDENT):
+        """`resource_floor` is how well a resource must match to be answered on.
+
+        Separate from the Pal guard, which stays at MIN_CONFIDENT, because one constant
+        was doing two opposing jobs: it decided both "the top candidate is confidently a
+        Pal, so this is a Pal question" and "this resource matched well enough to act
+        on". Lowering it to be more permissive made the second looser and the first
+        TIGHTER - a Pal at 0.71 started clearing the bar and triggering the guard - so a
+        single-knob sweep from 0.78 to 0.55 recovered exactly one query out of 232 and
+        looked like evidence that permissiveness does not help. It was evidence that the
+        knob was wrong.
+        """
         # Recognised and locatable are different sets. Crude oil is recognised - the
         # player can name it and deserves a real answer - but has no map locations, so
         # offering it as something we can "find" would be misleading.
@@ -221,10 +259,13 @@ class StubRouter:
             raise ValueError(f"unknown cue set {cues!r}, expected one of "
                              f"{sorted(_CUE_SETS)}")
         self._cues = re.compile(rf"\b({_CUE_SETS[cues]})\b", re.I)
-        # The width is in the name so it reaches `/palintel status` and every routing
-        # log line. A fast path that quietly widened would be indistinguishable from the
-        # model getting worse.
-        self.name = f"stub:{cues}"
+        self._floor = resource_floor
+        # Width and floor are both in the name so they reach `/palintel status` and every
+        # routing log line. A fast path that quietly widened, or a backstop quietly
+        # answering on weaker matches, would be indistinguishable from the model getting
+        # worse.
+        self.name = f"stub:{cues}" + (f"@{resource_floor:g}"
+                                      if resource_floor != MIN_CONFIDENT else "")
 
     def route(self, utterance: str, candidates: list[Candidate]) -> ToolCall | Decline:
         if not self._cues.search(utterance):
@@ -241,6 +282,9 @@ class StubRouter:
         # This one cannot, so it applies its own bar - without it, "where can I find
         # Suzaku" answered with a coal location, because *some* resource always appears
         # somewhere in a top-10 candidate list.
+        # MIN_CONFIDENT here, never self._floor: the guard must not loosen when the
+        # backstop does. A permissive backstop should answer weaker RESOURCE matches, not
+        # become quicker to call something a Pal question and give up.
         top = candidates[0] if candidates else None
         if top is not None and top.kind == "pal" and top.score >= MIN_CONFIDENT:
             # A confidently-matched Pal means the query is about a Pal, and no Pal tool
@@ -252,7 +296,7 @@ class StubRouter:
 
         resource = next((c for c in candidates
                          if c.kind == "resource" and c.canonical in self._resources
-                         and c.score >= MIN_CONFIDENT),
+                         and c.score >= self._floor),
                         None)
         if resource is None:
             # Deliberately NOT reporting the top candidate's matched text as the

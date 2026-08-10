@@ -82,15 +82,26 @@ def build_router(kb: KnowledgeBase, prefer: str = "auto",
     matching would look like a capability regression with no visible cause.
     """
     from .config import RouterConfig
-    from .routing import FallbackRouter, FastPathRouter, StubRouter
+    from .routing import (BACKSTOP_CONFIDENT, FallbackRouter, FastPathRouter,
+                          StubRouter)
 
     cfg = router_config or RouterConfig()
     locatable = {n.resource for n in kb.nodes}
-    # One stub in both roles. In front it answers what it is certain of; behind it keeps
-    # a transport failure from costing the player a card. Sharing the instance means the
-    # cue width cannot differ between the two, which would be indefensible - the same
-    # query would be claimed or deferred depending on whether the network was up.
-    stub = StubRouter(kb.lexicon, locatable, cues=cfg.cues)
+
+    # Two stubs, and the asymmetry is the whole point.
+    #
+    # The fast path preempts a working model, so it must be strict: everything it claims
+    # is a query the model never sees. The backstop runs only when the model did not
+    # answer at all, so its alternative is not a better answer but nothing, and it can
+    # afford a lower resource floor.
+    #
+    # They were the same instance until a session showed the backstop could not rescue a
+    # single query: the fast path had already asked that exact stub the same question, so
+    # the fallthrough was guaranteed to re-decline. Sharing looked like the careful choice
+    # and was actually what made the safety net decorative.
+    fast = StubRouter(kb.lexicon, locatable, cues=cfg.cues)
+    backstop = StubRouter(kb.lexicon, locatable, cues="wide",
+                          resource_floor=BACKSTOP_CONFIDENT)
 
     def wrapped(primary):
         """Wrap a hosted router with the backstop, and the fast path if enabled.
@@ -98,8 +109,8 @@ def build_router(kb: KnowledgeBase, prefer: str = "auto",
         Only the hosted backends get this. The stub cannot back itself up, and the local
         backend already fails against a server on this machine rather than the network.
         """
-        routed = FallbackRouter(primary, stub)
-        return FastPathRouter(stub, routed) if cfg.fast_path else routed
+        routed = FallbackRouter(primary, backstop)
+        return FastPathRouter(fast, routed) if cfg.fast_path else routed
 
     if prefer in ("auto", "gemini"):
         try:
@@ -138,7 +149,7 @@ def build_router(kb: KnowledgeBase, prefer: str = "auto",
             raise RuntimeError("No local model server - start `ollama serve`.")
         return routing_local.LocalRouter(kb.lexicon, locatable)
 
-    return stub
+    return fast
 
 
 class Pipeline:

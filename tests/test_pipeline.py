@@ -13,7 +13,8 @@ from palintel.cards import decline_card, resource_card
 from palintel.execution import find_resource_nodes
 from palintel.knowledge import KnowledgeBase, phonetic, squash
 from palintel.pipeline import Pipeline, PlayerState
-from palintel.routing import FallbackRouter, FastPathRouter, StubRouter
+from palintel.routing import (BACKSTOP_CONFIDENT, FallbackRouter, FastPathRouter,
+                              StubRouter)
 from palintel.tools import Decline, ToolCall
 
 
@@ -365,3 +366,63 @@ def test_widening_never_claims_the_inventory_question(kb: KnowledgeBase):
         stub = StubRouter(kb.lexicon, {n.resource for n in kb.nodes}, cues=cues)
         utterance = "hey pal, do I have enough sulfur for this?"
         assert isinstance(stub.route(utterance, kb.lexicon.rank(utterance)), Decline)
+
+
+# --------------------------------------------------------- permissive backstop
+
+def test_backstop_rescues_what_the_fast_path_would_not(kb: KnowledgeBase):
+    """The backstop must be MORE permissive than the fast path, or it is dead code.
+
+    An identical stub cannot rescue anything: the fast path asked it first, so whatever
+    reaches the model is by definition something it already declined. The first version
+    of this wiring shared one instance and could not rescue a single query while its
+    docstring claimed it answered clear resource queries outright.
+
+    "where's the nearest goal?" is verbatim from a session - coal heard as "goal",
+    ranking 0.75, under the fast path's 0.78 and over the backstop's 0.68.
+    """
+    from palintel.pipeline import build_router
+    from palintel.routing import BACKSTOP_CONFIDENT, MIN_CONFIDENT
+
+    assert BACKSTOP_CONFIDENT < MIN_CONFIDENT
+
+    locatable = {n.resource for n in kb.nodes}
+    fast = StubRouter(kb.lexicon, locatable)
+    backstop = StubRouter(kb.lexicon, locatable, cues="wide",
+                          resource_floor=BACKSTOP_CONFIDENT)
+    utterance = "hey pal, where's the nearest goal?"
+    cands = kb.lexicon.rank(utterance)
+
+    assert isinstance(fast.route(utterance, cands), Decline)      # too weak to preempt
+    rescued = backstop.route(utterance, cands)
+    assert isinstance(rescued, ToolCall)                          # good enough to salvage
+    assert rescued.args["resource"] == "coal"
+
+    router = FastPathRouter(fast, FallbackRouter(
+        _Fixed(Decline(reason="gemini unreachable", transient=True)), backstop))
+    out = Pipeline(kb, router).handle(utterance)
+    assert isinstance(out.call, ToolCall)
+    assert out.call.args["resource"] == "coal"
+
+
+def test_backstop_does_not_loosen_the_pal_guard(kb: KnowledgeBase):
+    """A permissive backstop answers weaker RESOURCE matches. It must not become quicker
+    to call something a Pal question and give up, which is what happened when one
+    constant gated both."""
+    locatable = {n.resource for n in kb.nodes}
+    backstop = StubRouter(kb.lexicon, locatable, cues="wide",
+                          resource_floor=BACKSTOP_CONFIDENT)
+    utterance = "hey pal, where can I find Suzaku?"
+    call = backstop.route(utterance, kb.lexicon.rank(utterance))
+    assert isinstance(call, Decline)
+    assert "Suzaku" in call.reason
+
+
+def test_backstop_floor_stays_above_where_wrong_answers_start(kb: KnowledgeBase):
+    """0.64 put a resource card on "can I get Zendelord before the first tower"."""
+    locatable = {n.resource for n in kb.nodes}
+    utterance = "Hey pal, can I get Zendelord before the first tower?"
+    cands = kb.lexicon.rank(utterance)
+    safe = StubRouter(kb.lexicon, locatable, cues="wide",
+                      resource_floor=BACKSTOP_CONFIDENT)
+    assert isinstance(safe.route(utterance, cands), Decline)
