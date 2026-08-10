@@ -21,6 +21,8 @@ import re
 import sys
 from pathlib import Path
 
+from _resources import UNPLACED_RESOURCES, derive
+
 REPO = Path(__file__).resolve().parents[2]
 RAW = REPO / "data" / "raw"
 
@@ -51,14 +53,32 @@ SEED_ALIASES: dict[str, list[str]] = {
     "Grizzbolt": ["grizz bolt", "grizzly bolt", "gris bolt"],
 }
 
-# Resource vocabulary for Q1. Small, closed, and hand-maintained: these are ordinary
-# English words whose STT failure modes are homophones rather than novel morphology.
-RESOURCES: dict[str, list[str]] = {
+# Resource ALIASES, hand-maintained. The resource *set* is no longer written here - it is
+# derived from the game's item categories in _resources.py, the same derivation the node
+# ingest uses, so the lexicon cannot know about a resource the data does not have or miss
+# one it does. What stays hand-written is the part no table contains: how speech-to-text
+# mangles the word. These are ordinary English words, so the failure mode is homophones
+# rather than the novel morphology the Pal names suffer from.
+#
+# A resource with no entry here is still in the lexicon; it simply carries only the
+# aliases generated from its own name. Entries grow from observed failures.
+RESOURCE_ALIASES: dict[str, list[str]] = {
     "ore": ["oar", "ore deposit", "ore node"],
     "coal": ["cole", "kohl", "coel"],
     "sulfur": ["sulphur", "sulfa", "sulfer"],
-    "quartz": ["quarts", "kwartz"],
+    "quartz": ["quarts", "kwartz", "pure quartz"],
     "crude_oil": ["crude oil", "cruel oil"],
+    "stone": ["stones", "rock", "rocks"],
+    "wood": ["logs", "timber", "lumber"],
+    "paldium_fragment": ["paldium", "palladium", "pal dium", "paldium fragments"],
+    "hexolite_quartz": ["hexolite", "hexalite quartz", "hexolight"],
+    "chromite": ["chromium", "cromite", "chrome ore"],
+    "soralite": ["sorolite", "solarite", "sky island ore"],
+    "paloxite": ["paloxide", "pal oxite", "world tree ore"],
+    "nightstar_sand": ["nightstar", "night star sand", "night stone"],
+    "red_berries": ["berries", "red berry", "berry"],
+    "cavern_mushroom": ["cave mushroom", "cavern mushrooms"],
+    "mushroom": ["mushrooms"],
 }
 
 # Aliases this short, or this common, cause more false matches than they fix. "or" as
@@ -174,11 +194,17 @@ def build(version: str) -> dict:
             "phonetic": metaphone_key(name),
         })
 
+    _, display = derive()
+    resource_names = {**display, **UNPLACED_RESOURCES}
     resources = [{
         "canonical": c,
-        "aliases": sorted(set(safe_aliases(a + ([c.replace("_", " ")] if "_" in c else [])))),
+        "display": resource_names[c],
+        "aliases": sorted(set(safe_aliases(
+            RESOURCE_ALIASES.get(c, [])
+            + ([c.replace("_", " ")] if "_" in c else [])
+            + ([resource_names[c].lower()] if resource_names[c].lower() != c else [])))),
         "phonetic": metaphone_key(c.replace("_", " ")),
-    } for c, a in RESOURCES.items()]
+    } for c in sorted(resource_names)]
 
     return {
         "lexicon_version": 1,
