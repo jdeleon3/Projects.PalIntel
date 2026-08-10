@@ -19,7 +19,15 @@ using Newtonsoft.Json;
 //
 //   dotnet run                 full scan
 //   dotnet run -- 200          first 200 cells (smoke test)
+//   dotnet run -- sheets       spawner sheet -> Pal species tables
+//   dotnet run -- probe <s>    list pak paths containing <s> (asset discovery)
+//   dotnet run -- dump <path>  print one asset's exports as JSON
+//
+// The cell scan says WHERE a BP_PalSpawner_Sheets_* actor stands; it says nothing about
+// which Pal it spawns. That lives in the sheet blueprint's own default object, which is
+// a different asset tree entirely - hence the second mode.
 
+var mode = args.Length > 0 && !int.TryParse(args[0], out _) ? args[0] : "cells";
 var limit = args.Length > 0 && int.TryParse(args[0], out var l) ? l : int.MaxValue;
 
 var pakDir = @"C:\Program Files (x86)\Steam\steamapps\common\Palworld\Pal\Content\Paks";
@@ -43,6 +51,100 @@ provider.Initialize();
 provider.Mount();
 provider.MappingsContainer = new FileUsmapTypeMappingsProvider(
     Path.Combine(root, "Mappings.usmap"), StringComparer.OrdinalIgnoreCase);
+
+if (mode == "probe")
+{
+    var needle = args.Length > 1 ? args[1] : "Spawner";
+    var hits = provider.Files.Keys
+        .Where(p => p.Contains(needle, StringComparison.OrdinalIgnoreCase)
+                    && !p.Contains("_Generated_", StringComparison.OrdinalIgnoreCase))
+        .OrderBy(p => p).ToList();
+    Console.WriteLine($"{hits.Count:N0} paths containing '{needle}'");
+    foreach (var h in hits.Take(200)) Console.WriteLine("  " + h);
+    return;
+}
+
+if (mode == "dump")
+{
+    var path = args[1];
+    var pkg = provider.LoadPackage(path);
+    Console.WriteLine(JsonConvert.SerializeObject(pkg.GetExports(), Formatting.Indented));
+    return;
+}
+
+if (mode == "sheets")
+{
+    // The class default object carries SpawnGroupList. Variant sheets frequently define
+    // nothing of their own and inherit the whole table from a parent blueprint, so an
+    // absent list is not an empty spawner - it means "ask the parent". Following the
+    // Template chain rather than treating absence as empty is the difference between
+    // 411 populated sheets and a silent hole wherever a designer used inheritance.
+    const int MAX_TEMPLATE_DEPTH = 8;
+
+    Newtonsoft.Json.Linq.JToken? SpawnGroups(string pkgPath, out string resolvedFrom)
+    {
+        resolvedFrom = pkgPath;
+        for (var depth = 0; depth < MAX_TEMPLATE_DEPTH; depth++)
+        {
+            var pkg = provider.LoadPackage(resolvedFrom);
+            var cdo = pkg.GetExports().FirstOrDefault(
+                e => e.Name.StartsWith("Default__", StringComparison.Ordinal));
+            if (cdo is null) return null;
+
+            var json = Newtonsoft.Json.Linq.JObject.Parse(JsonConvert.SerializeObject(cdo));
+            var groups = json["Properties"]?["SpawnGroupList"];
+            if (groups is not null && groups.HasValues) return groups;
+
+            // Template points at the parent CDO as "<package>.<exportIndex>".
+            var template = json["Template"]?["ObjectPath"]?.ToString();
+            if (string.IsNullOrEmpty(template)) return null;
+            var dot = template.LastIndexOf('.');
+            var parent = dot >= 0 ? template[..dot] : template;
+            if (parent == resolvedFrom) return null;
+            resolvedFrom = parent;
+        }
+        return null;
+    }
+
+    var sheetPaths = provider.Files.Keys
+        .Where(p => p.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase)
+                    && Path.GetFileName(p).StartsWith("BP_PalSpawner_Sheets",
+                                                      StringComparison.Ordinal))
+        .OrderBy(p => p).ToList();
+    Console.WriteLine($"reading {sheetPaths.Count:N0} spawner sheet blueprints\n");
+
+    var sheets = new List<object>();
+    int inherited = 0, empty = 0, failed = 0;
+    foreach (var p in sheetPaths)
+    {
+        var pkgPath = p[..p.LastIndexOf('.')];
+        var cls = Path.GetFileNameWithoutExtension(p) + "_C";
+        try
+        {
+            var groups = SpawnGroups(pkgPath, out var from);
+            if (groups is null) { empty++; continue; }
+            if (from != pkgPath) inherited++;
+            sheets.Add(new
+            {
+                cls,
+                package = pkgPath,
+                inherited_from = from == pkgPath ? null : from,
+                spawn_group_list = groups,
+            });
+        }
+        catch (Exception e) { failed++; Console.WriteLine($"  FAILED {cls}: {e.Message}"); }
+    }
+
+    Console.WriteLine($"\n  sheets with a table : {sheets.Count:N0}");
+    Console.WriteLine($"  inherited from parent: {inherited:N0}");
+    Console.WriteLine($"  no table found       : {empty:N0}");
+    Console.WriteLine($"  failed to load       : {failed:N0}");
+
+    var sheetsOut = Path.Combine(outDir, "spawner_sheets.json");
+    File.WriteAllText(sheetsOut, JsonConvert.SerializeObject(sheets, Formatting.None));
+    Console.WriteLine($"\n-> {sheetsOut}");
+    return;
+}
 
 var cells = provider.Files.Keys
     .Where(p => p.Contains("PL_MainWorld5/_Generated_/", StringComparison.OrdinalIgnoreCase)
