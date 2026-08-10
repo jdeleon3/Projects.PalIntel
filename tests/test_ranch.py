@@ -44,28 +44,36 @@ def test_a_ranchable_pal_names_what_it_makes(kb: KnowledgeBase):
     assert "Wool" in _ranch_line(card)
 
 
-def test_the_source_is_attributed_whenever_the_line_appears():
-    """Not decoration. This is the only non-extracted fact on a Tier 1 card."""
+def test_every_ranch_line_is_marked_unofficial():
+    """Not a hedge - the point of the line.
+
+    This is the only fact on a Tier 1 card that is not extracted from the game files,
+    and it must not read in the same voice as the coordinates above it. The marker
+    replaced a full source URL, which repeated the same address on every ranchable
+    Pal's card; attribution still travels on the dataset.
+    """
     card = spawn_card(_result(Ranch(drops=[RanchDrop("Wool")], per_cycle=1, food=1)))
-    assert _ranch_line(card) is not None
-    assert any(SOURCE in l for l in card.lines)
+    assert "(unofficial)" in _ranch_line(card)
+    assert not any(SOURCE in l for l in card.lines), "the URL belongs on the data"
 
 
-def test_an_uncorroborated_entry_says_so():
+def test_an_uncorroborated_entry_escalates_the_same_marker():
     """Mau Cryst is on the wiki with no matching asset in the pak.
 
-    Shown, because the roster is not a complete authority either - but never in the same
-    voice as a coordinate.
+    Shown, because the roster is not a complete authority either - but the caveat
+    sharpens the existing parenthetical rather than adding a second one.
     """
     card = spawn_card(_result(Ranch(drops=[RanchDrop("Ice Organ")], per_cycle=1,
                                     food=1, verified=False)))
     line = _ranch_line(card)
-    assert "wiki only" in line
+    assert "unofficial" in line
+    assert "don't list this one as ranchable" in line
 
 
-def test_a_corroborated_entry_carries_no_caveat():
-    card = spawn_card(_result(Ranch(drops=[RanchDrop("Wool")], per_cycle=1, food=1)))
-    assert "wiki only" not in _ranch_line(card)
+def test_a_corroborated_entry_carries_only_the_plain_marker():
+    line = _ranch_line(spawn_card(
+        _result(Ranch(drops=[RanchDrop("Wool")], per_cycle=1, food=1))))
+    assert "ranchable" not in line
 
 
 def test_the_line_is_capped_and_counts_the_rest(kb: KnowledgeBase):

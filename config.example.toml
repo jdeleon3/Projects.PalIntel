@@ -109,10 +109,10 @@ cues = "wide"
 #           own numbering. Drawn only when every point sits inside one published map
 #           region - the World Tree is a separate map, and a coordinate belonging to
 #           neither gets no picture rather than a marker in open sea.
-#   icons   a thumbnail on the card: the Pal's own game icon on Pal queries, and the
-#           material's inventory icon on resource queries. Note the resource one shows
-#           what the item looks like in your pack, NOT what the rock looks like in the
-#           world - the game ships no 2D art for that, only meshes.
+#   icons   the Pal's own game icon as a thumbnail, on Pal queries. Resource cards get
+#           no thumbnail: the item's inventory icon was tried there and withdrawn, since
+#           it shows the material in your pack rather than the rock in the world, which
+#           is the thing that actually makes a deposit recognisable.
 #
 # Neither is on the graded latency path: the text card is posted first and the picture
 # is edited in on a second round trip, so the cost the player sees is a reflow rather

@@ -60,19 +60,14 @@ class Artwork:
 
         Nothing is rendered here. The caller posts the text card first and calls this
         afterwards, so the milliseconds land after the answer rather than in front of it.
+
+        Map only, no thumbnail. The material's inventory icon was tried and dropped: it
+        shows what the item looks like in your pack, and what a player actually needs is
+        the rock in the world, which the game ships no 2D art for. A picture that answers
+        a question nobody asked still costs the reader a glance.
         """
         points = [(n.map_x, n.map_y, result.resource) for n in result.nodes]
-
-        def draw() -> None:
-            # The material's own icon, which answers a question the coordinates do not:
-            # what you are looking for when you get there. Quartz cost two days of
-            # searching for exactly this reason - the coordinate was findable and the
-            # rock was not recognisable.
-            if self.icons:
-                card.thumbnail = self.assets.resource_icon(result.resource)
-            self._draw_map(card, points, result.near)
-
-        return draw
+        return lambda: self._draw_map(card, points, result.near)
 
     def illustrate_spawn(self, card: Card, result: SpawnResult) -> Callable[[], None]:
         points = [(a.map_x, a.map_y, result.pal) for a in result.areas]

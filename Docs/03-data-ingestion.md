@@ -169,22 +169,22 @@ Sources are all in the pak, via `PakExtract.exe textures`:
 | Map bounds | `DT_WorldMapUIData` | 2 regions with `landScapeRealPosition{Min,Max}` and a priority |
 | Basemaps | `Texture/UI/Map/T_WorldMap`, `T_TreeMap` | 8192², PF_DXT1 |
 | Pal icons | `Texture/PalIcon/Normal/T_<InternalId>_icon_normal` | 424 files, 128², PF_DXT5 |
-| Item icons | `Others/InventoryItemIcon/Texture/T_itemicon_<Category>_<ItemId>` | 796 files, 256² |
+| Item icons | `Others/InventoryItemIcon/Texture/T_itemicon_<Category>_<ItemId>` | 796 files, 256² — extracted, **not published** |
 
 Pal icons join the lexicon on `internal_ids` — no new key. Coverage is **285 of 286
 Paldeck entries**; the gap is Rayhound Cryst, which has no icon in the pak.
 
-Item icons join a resource to its drop via `_resources.item_ids()`, which re-walks the
-same spawner → drop chain as `derive()` so the two cannot be updated apart. The item id
-is *not* the canonical id — `ore` is `CopperOre`, `paldium_fragment` is `Pal_crystal_S` —
-and the filename keeps the game's category prefix because item ids contain underscores of
-their own. **17 of 18 resources**; `cavern_mushroom` (`CaveMushroom`) has no icon, and
-the several other mushroom icons are near enough to be a tempting guess and are not it.
+**Item icons were tried on resource cards and withdrawn.** They joined cleanly — 17 of 18
+resources via `_resources.item_ids()` — and were still the wrong picture. An item icon
+shows the material as it sits in your pack; what a player needs in order to recognise a
+deposit is the rock in the world, and the game carries no 2D art for that at all (map
+objects have no icon field, only meshes). Read in play the icon answered a question nobody
+had asked while costing a glance, so the thumbnail slot on resource cards is now empty.
 
-**What an item icon is not.** It shows the material in your inventory, not the node in the
-world — and the world appearance is what a player actually needs to recognise a deposit.
-The game carries no 2D art for it: map objects have no icon field, only meshes. Rendering
-those is a materially larger job (mesh, material, lighting) and is not in scope.
+They remain in `data/raw/textures/item/` because raw extraction is cheap and regenerable;
+only what a card actually reads gets published. Rendering the node meshes is the thing
+that would answer the real question, and is a materially larger job — mesh, material,
+lighting — kept on the backlog.
 
 Hazards, both of which produce an authoritative-looking wrong picture rather than a
 visibly broken one:

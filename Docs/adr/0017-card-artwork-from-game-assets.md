@@ -90,8 +90,10 @@ Orientation vote, fraction of known-terrain placements landing on terrain:
 Icon coverage: 296 of 313 lexicon entries; **285 of 286 Paldeck entries**. The single
 Paldeck gap is Rayhound Cryst (`ThunderDog_Ice`), which has no icon asset in the pak at
 all. The remaining misses are tower-boss human+Pal pairs, Terraria collab entities and
-PIDF Rider — none of them Paldeck members. Resource cards carry the item's inventory icon
-on the same thumbnail slot: **17 of 18**, the gap being `cavern_mushroom`.
+PIDF Rider — none of them Paldeck members. **Resource cards carry no thumbnail.** The
+item's inventory icon was shipped there, read in play, and withdrawn: it joined cleanly at
+17 of 18 resources and still showed the wrong thing, since recognising a deposit is a
+question about the rock in the world rather than the item in your pack.
 
 ## Alternatives considered
 

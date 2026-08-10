@@ -184,31 +184,19 @@ def test_artwork_timings_stay_out_of_the_graded_total():
     assert not {"art_render", "art_post"} & set(GRADED_KINDS + DECLINE_KINDS)
 
 
-def test_a_resource_card_carries_the_material_icon(assets):
-    """Answers "what am I looking for", which the coordinates do not.
+def test_a_resource_card_gets_a_map_and_no_thumbnail(assets):
+    """The material's inventory icon was tried on these cards and dropped.
 
-    Deliberately the *inventory* icon and described as such - the game has no 2D art for
-    a node's world appearance, so this narrows recognition rather than settling it.
+    It shows what the item looks like in your pack; recognising a deposit needs the rock
+    in the world, which the game ships no 2D art for. A picture answering a question
+    nobody asked still costs the reader a glance, so the slot stays empty.
     """
     main = next(r for r in assets.regions if r.name == "MainMap")
     cx = (main.map_x_left + main.map_x_right) / 2
     cy = (main.map_y_top + main.map_y_bottom) / 2
     card = Card(title="Quartz locations")
     Artwork(assets).illustrate_resource(card, _result([(cx, cy)]))()
-    assert card.thumbnail is not None and card.thumbnail.exists()
-
-
-def test_a_resource_with_no_icon_still_answers(assets):
-    """cavern_mushroom has no item icon, and several near-miss mushrooms exist.
-
-    Attaching one of those would be a guess dressed as a fact - the same failure the
-    map refusals exist to prevent, in a smaller slot.
-    """
-    assert assets.resource_icon("cavern_mushroom") is None
-    card = Card(title="Cavern Mushroom locations")
-    result = _result([(0.0, 0.0)])
-    object.__setattr__(result, "resource", "cavern_mushroom")
-    Artwork(assets).illustrate_resource(card, result)()
+    assert card.image is not None
     assert card.thumbnail is None
 
 

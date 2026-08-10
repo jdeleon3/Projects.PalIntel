@@ -1,5 +1,11 @@
 """Publish card artwork: world-map tiles and one icon per Pal.
 
+Item icons are extracted but deliberately NOT published. They were tried on resource
+cards and dropped: an item icon shows the material as it sits in your pack, and what a
+player needs in order to recognise a deposit is the rock in the world, which the game
+ships no 2D art for. They stay in data/raw/textures/item/ because raw extraction is
+cheap and regenerable; only what a card actually reads gets published.
+
 Input : data/raw/textures/     (PakExtract.exe textures)
         data/raw/placements.json
         data/<version>/lexicon.json
@@ -45,9 +51,6 @@ import sys
 from pathlib import Path
 
 from PIL import Image
-
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _resources import item_ids  # noqa: E402
 
 # The basemaps are 8192x8192. Pillow's decompression-bomb guard trips well below that,
 # and it is guarding against untrusted downloads, not a file we extracted ourselves.
@@ -303,25 +306,6 @@ def build(version: str) -> dict:
     deck = [p["canonical"] for p in lexicon["pals"] if p["in_paldeck"]]
     deck_missing = [c for c in missing if c in set(deck)]
 
-    # Resource icons. The filename keeps the game's category prefix (Material_Coal,
-    # Food_Berries) because item ids contain underscores themselves, so the id is matched
-    # against the stem after the FIRST underscore rather than parsed out of it.
-    item_src = TEXTURES / "item"
-    by_item = {p.stem.split("_", 1)[1]: p for p in item_src.glob("*.png")
-               if "_" in p.stem}
-    resource_icons: dict[str, str] = {}
-    resources_missing: list[str] = []
-    for canonical, item_id in item_ids().items():
-        source = by_item.get(item_id)
-        if source is None:
-            resources_missing.append(f"{canonical} ({item_id})")
-            continue
-        resource_icons[canonical] = f"item/{source.name}"
-        dest = out / "item" / source.name
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        if not dest.exists():
-            dest.write_bytes(source.read_bytes())
-
     return {
         "assets_version": 1,
         "game_version": version,
@@ -335,14 +319,10 @@ def build(version: str) -> dict:
             "icon_files_available": len(available),
             "pals_without_icon": len(missing),
             "paldeck_without_icon": len(deck_missing),
-            "resource_icons": len(resource_icons),
-            "resources_without_icon": len(resources_missing),
         },
         "map_regions": sorted(regions, key=lambda r: -r["priority"]),
         "icons": dict(sorted(icons.items())),
-        "resource_icons": dict(sorted(resource_icons.items())),
         "pals_without_icon": sorted(missing),
-        "resources_without_icon": sorted(resources_missing),
     }
 
 

@@ -97,12 +97,10 @@ class MapAssets:
     cached, so a second query in the same area costs no file IO at all.
     """
 
-    def __init__(self, root: Path, regions: list[Region], icons: dict[str, str],
-                 resource_icons: dict[str, str] | None = None):
+    def __init__(self, root: Path, regions: list[Region], icons: dict[str, str]):
         self.root = root
         self.regions = sorted(regions, key=lambda r: -r.priority)
         self.icons = icons
-        self.resource_icons = resource_icons or {}
 
     @classmethod
     def load(cls, root: Path) -> "MapAssets | None":
@@ -119,8 +117,7 @@ class MapAssets:
                    map_x_left=r["map_x_left"], map_x_right=r["map_x_right"],
                    map_y_top=r["map_y_top"], map_y_bottom=r["map_y_bottom"])
             for r in data["map_regions"]]
-        return cls(root, regions, data.get("icons", {}),
-                   data.get("resource_icons", {}))
+        return cls(root, regions, data.get("icons", {}))
 
     def _file(self, index: dict[str, str], key: str) -> Path | None:
         rel = index.get(key)
@@ -129,16 +126,6 @@ class MapAssets:
 
     def icon(self, canonical: str) -> Path | None:
         return self._file(self.icons, canonical)
-
-    def resource_icon(self, resource: str) -> Path | None:
-        """The item's inventory icon.
-
-        Worth being precise about what this shows: the *material*, as it appears in your
-        pack - not the rock in the world. The game carries no 2D art for a node's
-        appearance at all; map objects have no icon field, only meshes. So this narrows
-        "what am I looking for" without answering it outright.
-        """
-        return self._file(self.resource_icons, resource)
 
     @lru_cache(maxsize=64)
     def _tile(self, directory: str, col: int, row: int):

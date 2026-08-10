@@ -161,17 +161,23 @@ MAX_RANCH_ITEMS = 3
 
 
 def _ranch_lines(result: SpawnResult) -> list[str]:
-    """"Ranch:" - what this Pal makes if you assign it, plus where that fact came from.
+    """"Ranch:" - what this Pal makes if you assign it, marked as unofficial.
 
-    The attribution is not decoration. Every other value on this card is extracted from
-    the game's own files; these come from a community wiki, because the mapping is in
-    blueprint bytecode and none of the 284 data tables carries it (ADR-0014's amendment).
-    That is a weaker claim than the coordinates above it, and a card that presented both
-    in the same voice would be overstating one of them.
+    Every other value on this card is extracted from the game's own files; these come
+    from a community wiki, because the mapping is in blueprint bytecode and none of the
+    284 data tables carries it (ADR-0014's amendment). That is a weaker claim than the
+    coordinates above it, so it does not get to sit in the same voice - `(unofficial)`
+    is the whole point of the line, not a hedge on it.
 
-    An entry the pak's roster could not corroborate says so outright rather than being
-    hidden or quietly shown - there is exactly one (Mau Cryst), and it is a real answer
-    with a real caveat.
+    The marker replaces a full source URL, which cost a line on every ranchable Pal's
+    card to repeat the same address. Attribution still travels with the *data*:
+    `provenance` and `source` are fields on ranch_drops.json, and
+    Docs/03-data-ingestion.md section 7 asks for source attribution on Tier 3 cards,
+    which this is not.
+
+    An entry the pak's roster could not corroborate escalates the same parenthetical
+    rather than adding a second one - there is exactly one (Mau Cryst), and it is a real
+    answer with a real caveat.
     """
     ranch = result.ranch
     if ranch is None:
@@ -181,14 +187,9 @@ def _ranch_lines(result: SpawnResult) -> list[str]:
     rest = len(ranch.drops) - len(shown)
     items = ", ".join(f"**{d.label()}**" for d in shown)
     more = f" _+{rest} more_" if rest > 0 else ""
-    line = f"Ranch: {items}{more}"
-    if not ranch.verified:
-        line += " _(wiki only - the game files don't list this one as ranchable)_"
-
-    out = ["", line]
-    if result.ranch_source:
-        out.append(f"_ranch data: {result.ranch_source}_")
-    return out
+    mark = ("_(unofficial)_" if ranch.verified else
+            "_(unofficial - the game files don't list this one as ranchable)_")
+    return ["", f"Ranch: {items}{more} {mark}"]
 
 
 def spawn_card(result: SpawnResult) -> Card:
