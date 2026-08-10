@@ -29,14 +29,29 @@ from dataclasses import dataclass
 from typing import Any
 
 from .knowledge import Candidate, Lexicon
-from .routing_local import SYSTEM
+# The function-calling wording, shared with the Claude backend - not routing_local's,
+# which asks for a JSON object and names a "decline" tool that exists only in that
+# backend's grammar. Gemini followed those instructions faithfully: it called a function
+# named `decline` (an unregistered tool, so a hard error at the dispatcher) and put bare
+# `{}` in the text half of a decline, which rendered verbatim on the player's card.
+# routing.py's module docstring always said the output-format sentence is the one thing
+# that differs per backend; this import was the exception that proved it.
+from .routing_anthropic import SYSTEM
 from .tools import Decline, ToolCall
 
 log = logging.getLogger("palintel.routing.gemini")
 
 MODEL = "gemini-3.6-flash"
 API = "https://generativelanguage.googleapis.com/v1beta"
+# Evaluation timeout. A slow response is data there, so the harness waits for it.
 TIMEOUT_S = 120
+# Runtime timeout. Measured over the 232-utterance A5 set: the routed p95 is 7.9s, but
+# the tail runs to 64s and two requests hit the old 120s ceiling - two minutes of a bot
+# that looks hung, for a query budgeted at 2.5s end to end. Cutting at 8s costs 5 of 184
+# routed calls (2.2%), every one of which had already blown the budget by 3x, and in
+# exchange the worst case becomes bounded and falls to a backstop router that answers
+# clear resource queries instantly. Not a latency saving - a promise about the worst case.
+RUNTIME_TIMEOUT_S = 8.0
 # Long enough to outlast a full 1000-prompt run; the cache is deleted explicitly when the
 # router is done, so this is a backstop against a crashed run leaking storage, not the
 # normal path. Storage bills per token-hour (~$0.016/hour for this schema).
@@ -44,6 +59,10 @@ CACHE_TTL_S = 7200
 # Gemini will not create a cache below this; see the pricing/caching docs. Production Q1
 # sits under it, so context caching is an evaluation-time saving rather than a runtime one.
 CACHE_MIN_TOKENS = 2048
+# Gemini 3 replaced `thinkingBudget` with `thinkingLevel`; a budget of 0 is now a 400
+# rather than "thinking off". `minimal` is the only setting that reaches zero thought
+# tokens - `low` still thinks, and measured barely below `high`.
+THINKING_LEVELS = ("minimal", "low", "high")
 
 # Per million tokens: (input, output).
 #
@@ -138,12 +157,28 @@ def _to_function_declarations(tools: list[dict[str, Any]]) -> list[dict[str, Any
     return decls
 
 
+def _reason_from(parts: list[dict]) -> str:
+    """The model's own words for why it declined - but only if they are words.
+
+    The decline reason is rendered on the player's card, and this backend inherits a
+    system prompt that asks for JSON. So the text half of a decline is sometimes a bare
+    `{}` or a fenced JSON object, which reached the card verbatim. There is nothing to
+    salvage from those, and an empty string makes the caller use its own wording.
+    """
+    said = " ".join(p.get("text", "") for p in parts).strip()
+    if said.startswith(("{", "[", "```")):
+        return ""
+    return said
+
+
 class GeminiRouter:
     """RouterBackend backed by the Gemini API with typed function declarations."""
 
     def __init__(self, lexicon: Lexicon, locatable: set[str] | None = None,
                  api_key: str | None = None, extra_tools: list[dict] | None = None,
-                 model: str = MODEL, use_cache: bool = True):
+                 model: str = MODEL, use_cache: bool = True,
+                 thinking_level: str | None = None,
+                 timeout_s: float = RUNTIME_TIMEOUT_S):
         from .routing_anthropic import _tool_schema  # one registry, one definition
 
         key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
@@ -151,7 +186,10 @@ class GeminiRouter:
             raise RuntimeError("set GEMINI_API_KEY (or GOOGLE_API_KEY) in .env")
         self._key = key
         self._model = model
-        self.name = f"gemini:{model}"
+        self._thinking_level = thinking_level
+        self._timeout_s = timeout_s
+        self.name = f"gemini:{model}" + (f":think={thinking_level}"
+                                         if thinking_level else "")
 
         self._resources = sorted(locatable if locatable is not None
                                  else set(lexicon.resources()))
@@ -208,7 +246,9 @@ class GeminiRouter:
             f"{API}/cachedContents", data=json.dumps(body).encode("utf-8"),
             headers={"Content-Type": "application/json", "x-goog-api-key": self._key})
         try:
-            with urllib.request.urlopen(req, timeout=TIMEOUT_S) as r:
+            # The instance timeout, not TIMEOUT_S: this runs lazily inside the first
+            # route(), so a hang here is a hang on a real query.
+            with urllib.request.urlopen(req, timeout=self._timeout_s) as r:
                 data = json.loads(r.read())
         except (urllib.error.URLError, TimeoutError) as e:
             log.warning("gemini cache creation failed (%s); sending schemas inline", e)
@@ -237,10 +277,15 @@ class GeminiRouter:
             self._cache = self._create_cache()
             self._use_cache = self._cache is not None
 
+        # thinkingConfig rides in generationConfig, which is per-request and outside the
+        # cache, so a cached run can still vary the level.
+        gen: dict[str, Any] = {"temperature": 0}
+        if self._thinking_level:
+            gen["thinkingConfig"] = {"thinkingLevel": self._thinking_level}
         body: dict[str, Any] = {
             "contents": [{"role": "user",
                           "parts": [{"text": self._user_content(utterance, candidates)}]}],
-            "generationConfig": {"temperature": 0},
+            "generationConfig": gen,
         }
         if self._cache:
             # Schemas and system prompt come from the cache; resending them here is
@@ -258,7 +303,7 @@ class GeminiRouter:
             headers={"Content-Type": "application/json", "x-goog-api-key": self._key},
         )
         try:
-            with urllib.request.urlopen(req, timeout=TIMEOUT_S) as r:
+            with urllib.request.urlopen(req, timeout=self._timeout_s) as r:
                 data = json.loads(r.read())
         except urllib.error.HTTPError as e:
             # A 403/404 here usually means the cache expired or was deleted underneath a
@@ -272,9 +317,13 @@ class GeminiRouter:
                 return self.route(utterance, candidates)
             # The key rides in a header, so the URL is safe to log; the body is not.
             log.error("gemini %s on %s", e.code, self._model)
-            return Decline(reason=f"gemini error {e.code}")
+            # 429 and 5xx are the provider asking to be tried again; a 4xx is our bug and
+            # retrying it just spends the budget twice.
+            return Decline(reason=f"gemini error {e.code}",
+                           transient=e.code == 429 or e.code >= 500)
         except (urllib.error.URLError, TimeoutError):
-            return Decline(reason="gemini unreachable")
+            log.warning("gemini did not answer within %.0fs", self._timeout_s)
+            return Decline(reason="gemini unreachable", transient=True)
 
         u = data.get("usageMetadata", {})
         self.last_usage = GeminiUsage(
@@ -296,8 +345,18 @@ class GeminiRouter:
             return Decline(reason="gemini returned no candidate")
         parts = (cands[0].get("content") or {}).get("parts") or []
         call = next((p["functionCall"] for p in parts if "functionCall" in p), None)
+        # SYSTEM is shared with the local backend, where declining means emitting a JSON
+        # object with tool "decline". This backend has no such tool - it declines by
+        # returning text - but the model follows the instruction anyway and sometimes
+        # calls a function by that name. Reaching the dispatcher, that is an unregistered
+        # tool and a hard error; it is really a decline wearing the local backend's
+        # clothes. See the SYSTEM note in routing_local.py.
+        if call is not None and call.get("name") not in self.tool_names:
+            log.info("gemini declined via a %r call %s", call.get("name"),
+                     self.last_usage)
+            call = None
         if call is None:
-            said = " ".join(p.get("text", "") for p in parts).strip()
+            said = _reason_from(parts)
             log.info("gemini declined %s: %s", self.last_usage, said or "(no reason)")
             return Decline(reason=said or "no matching query type",
                            known_options=self._resources)

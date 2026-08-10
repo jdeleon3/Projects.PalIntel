@@ -77,9 +77,12 @@ def main() -> None:
 
     kb = KnowledgeBase.load("1.0.2")
     entities = set(kb.lexicon.canonical_names)
+    # timeout_s=None keeps the SDK default: this measures run-to-run variance, and a
+    # request cut off at the runtime bound would enter the tally as a decline.
     router = ClaudeRouter(kb.lexicon, {n.resource for n in kb.nodes}, model=args.model,
                           extra_tools=[pal_spawn_schema(kb.lexicon.pals()),
-                                       *eval_tool_schemas(kb.lexicon.pals())])
+                                       *eval_tool_schemas(kb.lexicon.pals())],
+                          timeout_s=None)
 
     print(f"model={args.model}  boundary prompts={len(selected)}  reps={args.reps}  "
           f"requests={len(selected) * args.reps}\n")

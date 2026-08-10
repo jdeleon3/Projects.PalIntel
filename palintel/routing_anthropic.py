@@ -38,6 +38,10 @@ MODEL = "claude-opus-5"
 EFFORT = "low"
 # Small ceiling: the output is one tool call. Headroom is for thinking, not prose.
 MAX_TOKENS = 4096
+# Runtime request timeout. Matches the Gemini backend's bound and exists for the same
+# reason: without one the SDK's default let a stalled request outlive the query it was
+# answering. The eval harness passes None to restore the SDK default.
+RUNTIME_TIMEOUT_S = 8.0
 # Pre-4.6 models reject both `adaptive` thinking and `effort` with a 400, and take a fixed
 # token budget instead. Kept as a table rather than a version check so an unknown model
 # fails loudly on the API rather than silently routing without thinking - the comparison
@@ -175,7 +179,7 @@ class ClaudeRouter:
 
     def __init__(self, lexicon: Lexicon, locatable: set[str] | None = None,
                  api_key: str | None = None, extra_tools: list[dict] | None = None,
-                 model: str = MODEL):
+                 model: str = MODEL, timeout_s: float | None = RUNTIME_TIMEOUT_S):
         try:
             import anthropic
         except ImportError as e:  # pragma: no cover
@@ -185,8 +189,12 @@ class ClaudeRouter:
         self._anthropic = anthropic
         # A bare client also resolves an `ant auth login` profile, so do not require the
         # env var to be set - only pass a key when one was supplied explicitly.
-        self._client = (anthropic.Anthropic(api_key=api_key) if api_key
-                        else anthropic.Anthropic())
+        # `timeout=None` restores the SDK's own default, which is what the eval harness
+        # wants; the runtime wants a bound it can state. The SDK also retries internally,
+        # and its retries sit *inside* this budget rather than multiplying it.
+        opts: dict = {"timeout": timeout_s} if timeout_s is not None else {}
+        self._client = (anthropic.Anthropic(api_key=api_key, **opts) if api_key
+                        else anthropic.Anthropic(**opts))
         self._resources = sorted(locatable if locatable is not None
                                  else set(lexicon.resources()))
         self._model = model
@@ -221,12 +229,17 @@ class ClaudeRouter:
                            "content": self._user_content(utterance, candidates)}],
             )
         except self._anthropic.RateLimitError:
-            return Decline(reason="router rate limited - try again shortly")
+            return Decline(reason="router rate limited - try again shortly",
+                           transient=True)
         except self._anthropic.APIStatusError as e:
             log.error("router API error %s: %s", e.status_code, e.message)
-            return Decline(reason="router unavailable")
+            return Decline(reason="router unavailable",
+                           transient=e.status_code >= 500)
         except self._anthropic.APIConnectionError:
-            return Decline(reason="router unreachable - check your connection")
+            # Covers APITimeoutError, which subclasses it.
+            log.warning("router did not answer in time")
+            return Decline(reason="router unreachable - check your connection",
+                           transient=True)
 
         self.last_usage = Usage.of(response, self._model)
 

@@ -31,6 +31,10 @@ class Decline:
     unrecognized: str | None = None
     # What the system *can* answer, when naming that is more useful than an apology.
     known_options: list[str] = field(default_factory=list)
+    # The router never reached a judgement - it timed out, was rate limited, or could not
+    # be reached. Distinct from a considered decline, because a backstop router can
+    # usefully retry this one and cannot usefully second-guess the other.
+    transient: bool = False
 
 
 def find_resource_nodes_schema(resources: list[str]) -> dict[str, Any]:

@@ -38,7 +38,8 @@ from palintel.tools import Decline  # noqa: E402
 EVAL = REPO / "data" / "stt_eval"
 
 
-def build_router(model: str, kb: KnowledgeBase, think: bool = False):
+def build_router(model: str, kb: KnowledgeBase, think: bool = False,
+                 thinking_level: str | None = None):
     """Construct the backend `model` names, plus its tool-name list.
 
     One place, so score_router.py and repeat_router.py cannot drift into scoring
@@ -55,11 +56,17 @@ def build_router(model: str, kb: KnowledgeBase, think: bool = False):
         r = LocalRouter(kb.lexicon, locatable, model=model.split(":", 1)[1],
                         extra_tools=extra, think=think)
         return r, r._schema["properties"]["tool"]["enum"]
+    # Both hosted backends take the evaluation timeout, not the runtime one. A router
+    # that takes 60s is a measurement here - cutting it off at the runtime bound would
+    # score the timeout rather than the model, and would silently redefine what every
+    # earlier run in this file's history measured.
     if model.startswith("gemini"):
-        from palintel.routing_gemini import GeminiRouter
-        r = GeminiRouter(kb.lexicon, locatable, model=model, extra_tools=extra)
+        from palintel.routing_gemini import TIMEOUT_S, GeminiRouter
+        r = GeminiRouter(kb.lexicon, locatable, model=model, extra_tools=extra,
+                         thinking_level=thinking_level, timeout_s=TIMEOUT_S)
         return r, r.tool_names
-    r = ClaudeRouter(kb.lexicon, locatable, model=model, extra_tools=extra)
+    r = ClaudeRouter(kb.lexicon, locatable, model=model, extra_tools=extra,
+                     timeout_s=None)
     return r, [t["name"] for t in r._tools]
 
 
@@ -130,6 +137,11 @@ def main() -> None:
                     help="local models only: enable the model's own thinking mode. "
                          "Both hosted baselines thought, so this is the fair comparison; "
                          "without it the local run is the latency variant.")
+    # Gemini only. Declines cost ~3.7x the thinking of a routed call and land ~2.6x the
+    # latency, so the level is the lever on the decline tail. Omitted means the model's
+    # default, which is what every earlier run measured.
+    ap.add_argument("--thinking-level", choices=("minimal", "low", "high"),
+                    help="gemini only: cap reasoning effort per request")
     args = ap.parse_args()
 
     results_path = EVAL / args.condition / "results.json"
@@ -145,7 +157,8 @@ def main() -> None:
 
     kb = KnowledgeBase.load("1.0.2")
     entities = set(kb.lexicon.canonical_names)
-    router, tool_names = build_router(args.model, kb, think=args.think)
+    router, tool_names = build_router(args.model, kb, think=args.think,
+                                      thinking_level=args.thinking_level)
 
     # A prompt asking for an entity no registered tool can name is unanswerable by
     # construction, and the router is right to decline it. Scoring it as a miss measures
@@ -294,6 +307,10 @@ def main() -> None:
 
     # ":" is legal in a model id and illegal in a Windows filename.
     stem = f"router_{args.model.replace(':', '-')}"
+    # A thinking-level run is a different configuration of the same model, so it must not
+    # land on the default run's filename - that is the baseline every sweep compares to.
+    if args.thinking_level:
+        stem += f"_think-{args.thinking_level}"
     if args.limit:
         # A truncated run must never overwrite a full one. This has already destroyed
         # the Opus 5 per-prompt detail once, leaving only the summary in the roadmap.
