@@ -91,12 +91,13 @@ def test_a_coordinate_on_no_published_map_gets_no_map(assets):
     assert render(assets, [(-99999.0, -99999.0, "coal")]) is None
 
 
-def test_points_straddling_two_maps_get_no_map(assets):
-    """Cropping to one region would drop the rest while the card still lists them.
+def test_points_straddling_two_maps_draw_one_and_report_the_rest(assets):
+    """"Where can I find Kingpaca" returns two spots on the main island and one on the
+    World Tree. Refusing outright meant the card that mattered got no picture at all.
 
-    The failure this prevents is subtler than a wrong marker: the picture would be
-    correct as far as it went, and would silently disagree with the text above it about
-    how many answers there are.
+    The invariant was never "all or nothing" - it was that the picture must not
+    *silently* disagree with the text. Anchoring on result 1 and naming the numbers left
+    off keeps that and keeps the map.
     """
     main = next(r for r in assets.regions if r.name == "MainMap")
     tree = next(r for r in assets.regions if r.name == "Tree")
@@ -104,9 +105,38 @@ def test_points_straddling_two_maps_get_no_map(assets):
                (main.map_y_top + main.map_y_bottom) / 2)
     in_tree = ((tree.map_x_left + tree.map_x_right) / 2,
                (tree.map_y_top + tree.map_y_bottom) / 2)
-    assert assets.region_for([in_main]) is not None
-    assert assets.region_for([in_tree]) is not None
-    assert render(assets, [(*in_main, "coal"), (*in_tree, "coal")]) is None
+
+    drawn = render(assets, [(*in_main, "coal"), (*in_tree, "coal")])
+    assert drawn is not None
+    assert drawn.region == "MainMap", "anchored on result 1, not on the wider region"
+    assert drawn.omitted == [2]
+
+
+def test_the_top_answer_decides_which_map_is_drawn(assets):
+    """Not the region holding the most markers - result 1 is what the player acts on."""
+    main = next(r for r in assets.regions if r.name == "MainMap")
+    tree = next(r for r in assets.regions if r.name == "Tree")
+    in_main = ((main.map_x_left + main.map_x_right) / 2,
+               (main.map_y_top + main.map_y_bottom) / 2)
+    in_tree = ((tree.map_x_left + tree.map_x_right) / 2,
+               (tree.map_y_top + tree.map_y_bottom) / 2)
+
+    drawn = render(assets, [(*in_tree, "x"), (*in_main, "x"), (*in_main, "x")])
+    assert drawn.region == "Tree" and drawn.omitted == [2, 3]
+
+
+def test_the_omission_reaches_the_card(assets):
+    """A crop that looks complete and is not is the failure the region rules exist for."""
+    main = next(r for r in assets.regions if r.name == "MainMap")
+    tree = next(r for r in assets.regions if r.name == "Tree")
+    card = Card(title="Kingpaca locations", lines=["**1. ...**", "**2. ...**"])
+    result = _result([((main.map_x_left + main.map_x_right) / 2,
+                       (main.map_y_top + main.map_y_bottom) / 2),
+                      ((tree.map_x_left + tree.map_x_right) / 2,
+                       (tree.map_y_top + tree.map_y_bottom) / 2)])
+    Artwork(assets).illustrate_resource(card, result)()
+    assert card.image is not None
+    assert any("#2" in l and "another map" in l for l in card.lines)
 
 
 def test_no_points_is_no_map(assets):
@@ -147,7 +177,8 @@ def test_a_wide_spread_still_draws_and_stays_cheap(assets):
     cx = (main.map_x_left + main.map_x_right) / 2
     cy = (main.map_y_top + main.map_y_bottom) / 2
     wide = render(assets, [(cx - 500, cy - 500, "pal"), (cx + 500, cy + 500, "pal")])
-    assert wide is not None and wide[:2] == b"\xff\xd8"
+    assert wide is not None and wide.image[:2] == b"\xff\xd8"
+    assert wide.omitted == [], "both points are on the same region"
 
 
 def test_render_and_upload_are_reported_apart():

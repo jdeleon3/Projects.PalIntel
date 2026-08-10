@@ -54,10 +54,15 @@ needs a crop spanning 3,570 source pixels.
    fitting the measurement to its example. The ingest **fails closed** if they ever
    disagree.
 
-3. **A coordinate belonging to no region gets no picture, and points straddling two
-   regions get none either.** Not a clamp, not a best effort, not the region holding the
-   most points — a picture that shows two of three answers without saying so disagrees
-   with the text above it about how many answers there are.
+3. **A coordinate belonging to no region gets no picture.** Not a clamp, not a best
+   effort. Where the *top* answer sits on no published map there is nothing to anchor a
+   crop on, and the text card is the honest output.
+
+   **Results spread across two regions are drawn on the region holding result 1, and the
+   card names the numbers left off** — refined 2026-08-10, see below. The crop is
+   anchored on the top answer rather than on whichever region holds the most markers,
+   because result 1 is the one the player acts on. Markers keep their original numbering
+   so the picture and the text agree about which answer is which.
 
 4. **Rendering happens after the answer is posted.** `Outcome` carries a deferred
    `illustrate`; the bot sends the text embed, then renders and edits the attachment in
@@ -122,6 +127,26 @@ Open, and knowingly accepted:
   is transform work, not card work.
 - **Markers at near-identical coordinates overlap**, reading as fewer answers than the
   text lists.
+
+## Refinement (2026-08-10) — partial coverage, stated
+
+Straddling regions was originally a flat refusal, on the reasoning that a crop showing
+two of three answers disagrees with the text above it. Real use showed the rule was
+drawn one clause too wide.
+
+*"Show me where I can find Kingpaca"* returns two spots on the main island and one at
+level 80 on the World Tree. The variant card beside it (Kingpaca Cryst, both spawns on
+MainMap) rendered fine, so the answer the player actually wanted was the one with no
+picture — and nothing on the card said why. From the outside it read as broken.
+
+The operative words in the original reasoning were **without saying so**. Saying so
+restores the invariant at full strength while keeping the map: the crop is anchored on
+result 1, off-region results are omitted rather than mis-drawn, and the card carries
+*"Map shows MainMap only — #3 is on another map."* The player marker is drawn only when
+the player is on the same region.
+
+This is a refinement of decision 3, not a reversal of it. What it does not do is clamp,
+guess, or renumber.
 
 ## Alternatives considered
 

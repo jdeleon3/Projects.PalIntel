@@ -49,11 +49,28 @@ class Artwork:
         if not self.maps or not points:
             return
         try:
-            card.image = render(self.assets, points, near=near)
+            drawn = render(self.assets, points, near=near)
         except Exception:
             # A broken tile or an unreadable manifest must not cost the player the
             # answer that is already sitting in the card.
             log.exception("map render failed; sending the card without it")
+            return
+
+        if drawn is None:
+            # Nothing to anchor on - the top answer sits on no published map.
+            log.info("no map for %r (result 1 is outside every region)", card.title)
+            return
+
+        card.image = drawn.image
+        if drawn.omitted:
+            # The map shows some of the answers, so the card has to say which. Silence
+            # here is the failure the region rules exist to prevent: a crop that looks
+            # complete and is not. Reported as the card's own numbering, because that is
+            # what the reader is looking at.
+            missing = ", ".join(f"#{i}" for i in drawn.omitted)
+            card.lines.append(
+                f"_Map shows {drawn.region} only - {missing} "
+                f"{'is' if len(drawn.omitted) == 1 else 'are'} on another map._")
 
     def illustrate_resource(self, card: Card, result: ResourceResult) -> Callable[[], None]:
         """Plan the artwork for a resource card; the returned callable draws it.

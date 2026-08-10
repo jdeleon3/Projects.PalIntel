@@ -11,9 +11,13 @@ Two refusals matter and both return None rather than a best effort:
     (Docs/03-data-ingestion.md), and the World Tree lies entirely outside the main
     island's rectangle. Drawing a Tree coordinate on the main map puts a marker in open
     sea.
-  * **Points spread across two regions.** Cropping to one of them would silently drop
-    the others while the card above still lists them, so the picture and the text would
-    disagree about how many answers there are.
+  * **A point spread across two regions is drawn on the region holding the top answer,
+    and the card is told which results were left off.** This started as a flat refusal,
+    on the reasoning that a crop showing two of three answers disagrees with the text
+    above it. The operative words were *without saying so* - "show me where I can find
+    Kingpaca" returns two spots on the main island and one at level 80 on the World Tree,
+    and refusing meant the card that mattered got no picture at all. Saying which numbers
+    are missing keeps the invariant and keeps the map.
 
 Every value drawn here comes from the same typed result the card text is interpolated
 from, so this does not widen the surface ADR-0006 protects - it is the same numbers,
@@ -138,16 +142,20 @@ class MapAssets:
         return Image.open(path).convert("RGB") if path.exists() else None
 
     def region_for(self, points: list[tuple[float, float]]) -> Region | None:
-        """The highest-priority region holding *every* point, or None.
-
-        All-or-nothing on purpose. Picking the region that holds the most would crop away
-        the rest while the card text still lists them, and a picture that shows two of
-        three answers without saying so is worse than no picture.
-        """
+        """The highest-priority region holding *every* point, or None."""
         for region in self.regions:
             if all(region.contains(mx, my) for mx, my in points):
                 return region
         return None
+
+    def region_holding(self, mx: float, my: float) -> Region | None:
+        """The highest-priority region containing one point.
+
+        Used to anchor a crop on the card's TOP answer rather than on whichever region
+        happens to hold the most markers. Result 1 is the one the player acts on, so it
+        is the one the picture has to serve.
+        """
+        return next((r for r in self.regions if r.contains(mx, my)), None)
 
     def _compose(self, region: Region, box: tuple[int, int, int, int], out_px: int):
         """The requested pixel box, rendered at `out_px`, from whichever level is cheaper.
@@ -216,26 +224,47 @@ def _scale_bar(draw, size: int, px_per_unit: float, font) -> None:
     _text(draw, (x, y - 18), label, font)
 
 
+@dataclass(frozen=True)
+class Rendered:
+    """A drawn crop, and an honest account of what it left out."""
+    image: bytes
+    region: str
+    # 1-based card numbers of results NOT on this map, because they sit on another
+    # region's. Empty is the common case. The caller must surface these - a crop that
+    # quietly shows two of three answers is the failure this whole module guards.
+    omitted: list[int]
+
+
 def render(assets: MapAssets, points: list[tuple[float, float, str]],
            near: tuple[float, float] | None = None,
-           out_px: int = OUT_PX) -> bytes | None:
-    """A cropped basemap with the results marked, as JPEG bytes, or None.
+           out_px: int = OUT_PX) -> Rendered | None:
+    """A cropped basemap with the results marked, or None if nothing can be drawn.
 
     `points` are (map_x, map_y, label) in the order the card lists them, so the numbers
-    on the picture and the numbers in the text are the same numbers.
+    on the picture and the numbers in the text are the same numbers - including when some
+    are missing, which is why markers keep their original index rather than being
+    renumbered.
     """
     if Image is None or not points:
         return None
 
-    coords = [(x, y) for x, y, _ in points]
-    if near is not None:
-        coords.append(near)
-
-    region = assets.region_for(coords)
+    # Anchored on result 1, not on the region holding the most markers: the top answer is
+    # the one the player acts on, so it is the one that decides which map they get.
+    region = assets.region_holding(points[0][0], points[0][1])
     if region is None:
-        # Either outside every published map, or straddling two of them. Both are cases
-        # where the honest output is the text card alone.
         return None
+
+    drawn = [(i, x, y) for i, (x, y, _) in enumerate(points, 1)
+             if region.contains(x, y)]
+    omitted = [i for i, (x, y, _) in enumerate(points, 1)
+               if not region.contains(x, y)]
+
+    coords = [(x, y) for _, x, y in drawn]
+    # The player marker only belongs here if the player is on this map at all.
+    if near is not None and region.contains(*near):
+        coords.append(near)
+    else:
+        near = None
 
     xs = [c[0] for c in coords]
     ys = [c[1] for c in coords]
@@ -275,7 +304,7 @@ def render(assets: MapAssets, points: list[tuple[float, float, str]],
         _text(draw, (x, y + 21), "you", halo_font, anchor="ma")
 
     label_font = _font(15)
-    for i, (mx, my, _) in enumerate(points, 1):
+    for i, mx, my in drawn:
         x, y = place(mx, my)
         # A white ring inside a dark one. The game's own map art uses red for dungeon
         # and camp markers, so a bare red disc reads as scenery over the volcano; the
@@ -297,4 +326,4 @@ def render(assets: MapAssets, points: list[tuple[float, float, str]],
     # basemap that is photographic art. Nothing the player acts on is at risk from the
     # compressor, since every number on the picture is also printed on the card.
     image.save(buffer, format="JPEG", quality=85, optimize=True)
-    return buffer.getvalue()
+    return Rendered(image=buffer.getvalue(), region=region.name, omitted=omitted)
