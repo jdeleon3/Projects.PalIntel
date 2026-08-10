@@ -180,3 +180,12 @@ def test_latency_block_appears_for_declines_alone():
     log.timed("text_decline", 3100.0)
     text = status_card(log, voice="x").to_text()
     assert "Latency" in text and "3.1s" in text
+
+
+def test_model_name_survives_discord_markdown():
+    """`hey_pal` paired its underscore with the latency header's and italicised the gap,
+    rendering the model as "heypal" and leaving a stray marker on the card."""
+    log = ActivityLog()
+    log.timed("voice", 1200.0)
+    text = status_card(log, voice="Microphone (Arctis) - hey_pal @ 0.1").to_text()
+    assert r"hey\_pal" in text

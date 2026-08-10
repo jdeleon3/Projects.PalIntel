@@ -114,6 +114,23 @@ def clarify_card(options: list[str]) -> Card:
     )
 
 
+def plain(text: str) -> str:
+    """Escape Discord markdown in an interpolated value.
+
+    `hey_pal` carries a lone underscore, and Discord pairs it with the next one anywhere
+    in the same embed - the `_(answered queries)_` in the latency header - italicising
+    everything between and swallowing both. The status card rendered the model as
+    "heypal" and left a stray `_` behind, which is a garbled diagnostic on the one card
+    read when something is already wrong.
+
+    Only values interpolated *into* a template need this. The templates' own `**` and `_`
+    are deliberate.
+    """
+    for ch in ("\\", "_", "*", "`", "~", "|"):
+        text = text.replace(ch, "\\" + ch)
+    return text
+
+
 def status_card(log, *, voice: str, save: str = "not configured",
                 window_label: str = "last hour") -> Card:
     """Report what the pipeline has actually seen, stage by stage.
@@ -129,11 +146,11 @@ def status_card(log, *, voice: str, save: str = "not configured",
 
     c = log.counts()
     fired = c.get("wake", 0)
-    lines = [f"**Voice:** {voice}",
+    lines = [f"**Voice:** {plain(voice)}",
              # Worth its own line: a stale or unread save is invisible in the answers -
              # "nearest" silently falls back to ranking by cluster size and still returns
              # a confident-looking coordinate.
-             f"**Save:** {save}",
+             f"**Save:** {plain(save)}",
              f"**Up:** {duration(log.uptime())}",
              "",
              f"__In the {window_label}__",
