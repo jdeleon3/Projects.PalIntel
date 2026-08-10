@@ -13,9 +13,10 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 from collections import defaultdict
 from pathlib import Path
+
+from _cluster import anchor, cluster, spread
 
 REPO = Path(__file__).resolve().parents[2]
 RAW = REPO / "data" / "raw"
@@ -42,51 +43,6 @@ CLASS_TO_AREA_HINT = {
 # a group a player can see from its centre. Leader clustering bounds cluster DIAMETER
 # at 2x this value.
 CLUSTER_RADIUS = 12.0
-
-
-def cluster(points: list[dict], radius: float) -> list[list[dict]]:
-    """Leader clustering: every member lies within `radius` of the cluster seed.
-
-    Single-link clustering was tried first and chains badly - deposits strung along a
-    cliff face merge into one 171-member "cluster" spanning a whole region, which is
-    not a place a player can go. Seeding bounds cluster diameter at 2*radius by
-    construction, so a cluster is always somewhere you can stand and see the group.
-
-    Seeds are chosen densest-first so the natural centre of a group wins, rather than
-    an arbitrary edge deposit.
-    """
-    buckets: dict[tuple[int, int], list[int]] = defaultdict(list)
-    for i, p in enumerate(points):
-        buckets[(int(p["map_x"] // radius), int(p["map_y"] // radius))].append(i)
-
-    def neighbours(i: int) -> list[int]:
-        bx, by = int(points[i]["map_x"] // radius), int(points[i]["map_y"] // radius)
-        out = []
-        for dx in (-1, 0, 1):
-            for dy in (-1, 0, 1):
-                for k in buckets.get((bx + dx, by + dy), ()):
-                    if math.dist((points[i]["map_x"], points[i]["map_y"]),
-                                 (points[k]["map_x"], points[k]["map_y"])) <= radius:
-                        out.append(k)
-        return out
-
-    density = {i: len(neighbours(i)) for i in range(len(points))}
-    taken = [False] * len(points)
-    clusters = []
-
-    for i in sorted(density, key=lambda k: -density[k]):
-        if taken[i]:
-            continue
-        group = [k for k in neighbours(i) if not taken[k]]
-        for k in group:
-            taken[k] = True
-        clusters.append([points[k] for k in group])
-    return clusters
-
-
-def spread(group: list[dict], cx: float, cy: float) -> float:
-    """Greatest distance from the reported coordinate to any member deposit."""
-    return max(math.dist((p["map_x"], p["map_y"]), (cx, cy)) for p in group)
 
 
 # A cluster spans at most 2*CLUSTER_RADIUS (~110 m). More than this many deposits in that
@@ -116,21 +72,17 @@ def main() -> None:
         groups.sort(key=len, reverse=True)
         print(f"{res:<10}{len(pts):>10,}{len(groups):>10,}{len(groups[0]):>9}")
         for gi, g in enumerate(groups):
-            cx = sum(p["map_x"] for p in g) / len(g)
-            cy = sum(p["map_y"] for p in g) / len(g)
-            # Report an ACTUAL deposit, not the centroid. A centroid can land in a lake
-            # or off a cliff; every coordinate we hand a player must be a real node.
-            anchor = min(g, key=lambda p: math.dist((p["map_x"], p["map_y"]), (cx, cy)))
+            at = anchor(g)
             hints = {CLASS_TO_AREA_HINT[p["cls"]] for p in g if p["cls"] in CLASS_TO_AREA_HINT}
             records.append({
                 "node_id": f"{res}_{gi:04d}",
                 "resource": res,
-                "map_x": anchor["map_x"],
-                "map_y": anchor["map_y"],
+                "map_x": at["map_x"],
+                "map_y": at["map_y"],
                 "node_count": len(g),
-                "spread_map_units": round(spread(g, anchor["map_x"], anchor["map_y"]), 1),
+                "spread_map_units": round(spread(g, at["map_x"], at["map_y"]), 1),
                 "area_hint": sorted(hints)[0] if hints else None,
-                "world": {"x": anchor["world_x"], "y": anchor["world_y"], "z": anchor["world_z"]},
+                "world": {"x": at["world_x"], "y": at["world_y"], "z": at["world_z"]},
                 "transform_id": "palworld-1.0.2-linear-axisswap-v2",
                 # Derived gating fields are NOT populated here. They require wild Pal
                 # level data per area, which comes from the Pal spawner sheets.
