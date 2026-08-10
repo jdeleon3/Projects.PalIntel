@@ -36,15 +36,25 @@ from palintel.tools import Decline  # noqa: E402
 CASES = Path(__file__).parent / "followups.json"
 
 
-def check(outcome, case: dict) -> tuple[bool, str]:
-    """Did the last turn produce what the case expects?"""
+def check(outcome, case: dict, deterministic: bool = True) -> tuple[bool, str]:
+    """Did the last turn produce what the case expects?
+
+    A `model` block overrides the expectation when a model-backed router is scored. The
+    two routers are allowed to differ and one of them is allowed to be better: the stub
+    defers a mangled entity because it cannot reason about it, and the model resolves it,
+    which is ADR-0016 working rather than a disagreement to be flattened.
+    """
     call = outcome.call
     want = case.get("expect")
+    restate = case.get("restate", False)
+    if not deterministic and "model" in case:
+        want = case["model"].get("expect", want)
+        restate = case["model"].get("restate", False)
 
     if want is None:
         if not isinstance(call, Decline):
             return False, f"answered {call.name}({call.args})"
-        if case.get("restate") and not call.needs_restatement:
+        if restate and not call.needs_restatement:
             return False, f"declined without asking to restate: {call.reason}"
         return True, "declined"
 
@@ -62,6 +72,11 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--router", default="stub")
     ap.add_argument("--ttl", type=float, default=300.0)
+    # The shipped stack answers most of these deterministically before the model sees
+    # them, which is the right behaviour and the wrong measurement: it says nothing about
+    # whether the model uses the context block. Turning the fast path off is what scores
+    # the model's own follow-up handling.
+    ap.add_argument("--no-fast-path", action="store_true")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()
 
@@ -69,7 +84,8 @@ def main() -> None:
     if args.router == "stub":
         router = StubRouter(kb.lexicon, {n.resource for n in kb.nodes})
     else:
-        router = build_router(kb, args.router, RouterConfig())
+        router = build_router(kb, args.router,
+                              RouterConfig(fast_path=not args.no_fast_path))
     print(f"router: {router.name}\n")
 
     cases = json.loads(CASES.read_text(encoding="utf-8"))["cases"]
@@ -81,7 +97,7 @@ def main() -> None:
         outcome = None
         for turn in case["turns"]:
             outcome = pipe.handle(turn, who="eval")
-        ok, detail = check(outcome, case)
+        ok, detail = check(outcome, case, deterministic=args.router == "stub")
         results.append((case, ok, detail))
 
     for group, label in ((False, "follow-up"), (True, "negative")):

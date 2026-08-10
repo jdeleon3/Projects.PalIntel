@@ -46,8 +46,15 @@ EVAL = REPO / "data" / "stt_eval"
 _LOCATION_TEMPLATES = re.compile(
     r"where (can i find|do|does|is|are|'s)"
     r"|nearest|closest|near my|around here|somewhere close|right now"
-    r"|find me a|\bspawn|how do i get\b",
+    r"|find me a|\bspawn",
     re.I)
+
+# "How do I get X" splits on the entity's kind, and getting this wrong cost real
+# credibility once: folded into the shared list above, it labelled "how do I get
+# Broncherry Aqua" a location question and scored the model's correct
+# `get_breeding_combo` as a routing failure. For a resource it means "where"; for a Pal
+# it means breeding or catching, which are other query classes entirely.
+_RESOURCE_ONLY_TEMPLATES = re.compile(r"how do i get\b", re.I)
 
 # The resource side needs no allowlist. Of the 19 resource-entity prompts in the A5 set,
 # 18 ask where to get the stuff, in eighteen different phrasings ("show me a safe sulfur
@@ -60,7 +67,9 @@ _NOT_A_LOCATION = re.compile(r"do i have enough", re.I)
 def classify(clean: str, expected: list[str], resources: set[str]) -> str:
     if any(e in resources for e in expected):
         return "other" if _NOT_A_LOCATION.search(clean) else "q1_resource"
-    return "q2_pal" if _LOCATION_TEMPLATES.search(clean) else "other"
+    if _LOCATION_TEMPLATES.search(clean):
+        return "q2_pal"
+    return "other"
 
 
 def score(router: StubRouter, rows: list[dict], kb: KnowledgeBase,
