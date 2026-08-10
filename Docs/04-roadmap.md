@@ -1714,12 +1714,55 @@ improvise; no Tier 2 card contains a candidate absent from its computed set.
   made it the difference between passing and failing a Phase 1 exit criterion rather than a
   hardening nicety. Shipped for Q1 only; it needs re-measuring per query class as tools are
   registered, since a keyword matcher's failure mode is claiming another class's queries.
+- **Discord voice receive (DAVE)** — see below. Upstream-blocked, not abandoned.
 - Lexicon growth from observed STT failures — standing task, not a one-off
 - Corpus coverage expansion against the checklist
 - Patch refresh exercised against a real Palworld update
 - Local STT evaluation — removes the last unavoidable network hop and the per-query STT cost
 - Optional: local intent model and local embeddings, making the system fully offline apart
   from Discord
+
+### Backlog — Discord voice receive, blocked on DAVE
+
+**The single largest capability the project has lost, and it is the only one lost to
+something outside the repo.** Discord's DAVE end-to-end encryption broke voice reception
+in py-cord ([pycord#3139](https://github.com/Pycord-Development/pycord/issues/3139)): the
+connection succeeds, a sink attaches, and no audio ever arrives — a failure
+indistinguishable from a wake word that never fires. Voice pivoted to the local
+microphone in Phase 1 ([ADR-0004](adr/0004-wake-word-activation.md),
+[ADR-0012](adr/0012-dual-input-channels.md)).
+
+**What it costs, stated plainly rather than absorbed:**
+
+- **Party members cannot ask by voice at all.** They are served by the text path alone, so
+  for them text is not the convenient second channel ADR-0012 describes — it is the only
+  one, and typing mid-fight is exactly the friction this project exists to remove.
+- Multi-speaker attribution is moot rather than solved. A local mic cannot tell two people
+  apart, so the Phase 2 item reduced to naming the one person at the machine.
+- The voice half of the system serves exactly one player, which is a much smaller product
+  than the one the design describes.
+
+**What is already in place for the day it works.** `voice.py`'s `SpeakerStream` keys a
+full wake-word pipeline per speaker id and is deliberately kept as dead code — Discord
+tags every packet with a user, so per-speaker attribution costs nothing there and would
+have to be rebuilt from scratch if deleted. `mic.py` and `voice.py` feed the same
+transport-agnostic `UtteranceBuffer`, and conversation memory is already keyed per user,
+so restoring reception is closer to configuration than to a port.
+
+**Routes worth evaluating, cheapest first:**
+
+1. **Re-test the upstream issue.** It is a live bug in an actively maintained library and
+   costs minutes to check. Nothing here should be built before this is re-run.
+2. **Another library.** discord.py, and the newer voice-receive forks, may land DAVE
+   support on a different schedule. The receiver is one module behind an interface that
+   already has two implementations, so swapping it is bounded work.
+3. **Implement DAVE.** Discord's protocol is published and libdave exists, but this is
+   cryptographic transport code in the audio hot path — a different order of commitment
+   from the other two, and only worth it if both fail and party voice is wanted badly.
+
+**How it gets checked**: re-run route 1 at each patch refresh, alongside the "patch refresh
+exercised against a real Palworld update" item above. Both are the same kind of task —
+something outside the repo moved, and only re-running tells you.
 
 ---
 
