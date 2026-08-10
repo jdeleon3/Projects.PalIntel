@@ -13,7 +13,7 @@ them against the roadmap rather than attempting them all at once.
 
 ```
 [source] → [acquire] → [normalize] → [derive] → [validate] → [publish]
-            raw cache   canonical     computed   invariants   data/v0.6.x/
+            raw cache   canonical     computed   invariants   data/v1.0.2/
                         schema        fields     + spot check
 ```
 
@@ -38,16 +38,54 @@ Corpus ingestion (§4) adds a `chunk → embed` stage before publish.
 
 **Needs:** coordinates, resource type, cluster size, surrounding threat level, region.
 
-**Sources:** community interactive maps are the only practical origin. Evaluate candidates
-in Phase 0 on: coordinate space published, coverage, whether data is reachable as
-structured JSON behind the map UI rather than requiring DOM scraping, and licensing.
+**Source: extract from the game's own `.pak` files.** Community interactive maps are
+cross-validation, not the origin. See [ADR-0014](adr/0014-game-files-as-source.md).
+
+Phase 0.5 survey established that the leading community maps derive their marker
+coordinates from PAK extraction themselves, then verify against in-game tile coordinates.
+Extracting directly puts us at the same source rather than one hop downstream of it.
+
+Path: `tools/extract/PakExtract` (CUE4Parse, .NET 10) against the local game install,
+using the community Palworld mapping file. **No AES key is needed** — the pak carries a
+zero encryption GUID and `bEncryptedIndex=0`.
+
+**Actor positions are not uniformly in world space.** Nodes scattered by a designer
+placement volume (`BP_BoxPlacementTool_*`) store `RelativeLocation` relative to that
+volume; taken literally they collapse onto world origin, which maps to a plausible-looking
+but empty spot. The extractor walks each actor's `Owner` chain and composes parent
+transforms to recover world positions. Anything whose owner lies outside the loaded cell
+is excluded rather than guessed.
 
 Hazards:
 - **Coordinate space ambiguity** — see [02-data-model.md](02-data-model.md) §2. Establish
-  and validate the transform before ingesting at volume.
+  and validate the transform before ingesting at volume. This is assumption **A4** and the
+  only hard gate on v1.
 - **Cluster granularity** — sources disagree on whether a node is one deposit or a cluster.
   Normalize to cluster with an explicit `node_count`.
+- **Scope disagreement between sources** — one surveyed source reports 553 coal nodes;
+  another reports 1,021 across 119 maps, the latter likely including dungeon instances.
+  Overworld and instanced-dungeon nodes must be distinguished explicitly, and a node count
+  that matches neither source is a validation failure, not a rounding difference.
 - **`min_player_level` does not exist upstream.** It is derived (§5).
+
+#### 3.1.1 Deriving the coordinate transform
+
+The expected form is a linear map from UE world coordinates to in-game map coordinates:
+
+```
+map_x = (world_y - offset_y) / scale
+map_y = (world_x - offset_x) / scale
+```
+
+Axis swap and sign conventions are unverified — UE's world axes do not necessarily align
+with the in-game map's, and this is exactly where a silent systematic error would enter.
+
+Fit against ≥ 3 known landmarks (fast travel points are ideal: fixed, unambiguous, and
+readable in-game), then **validate against ≥ 20 independent nodes by standing on them
+in-game and reading the map coordinate**. Fit and validation sets must be disjoint — a
+transform that reproduces its own fit points proves nothing.
+
+Record the resulting transform as a versioned `transform_id` on every `Coord`.
 
 ### 3.2 Paldeck, spawns, and base stats (Q2, Q5, lexicon)
 
@@ -150,7 +188,7 @@ uniformly, because results are gated on them.
 Gates every Q1 result — it determines whether the system sends the player somewhere they
 will die.
 
-Proposed rule, calibrated in Phase 0:
+Proposed rule:
 
 ```
 min_player_level = ceil(max_local_wild_pal_level * 0.8)
@@ -158,13 +196,54 @@ min_player_level = ceil(max_local_wild_pal_level * 0.8)
   +5 if danger == HIGH
 ```
 
-Calibrate against ~20 nodes of known difficulty. Record the final rule **and its version**
-in the published data so an answer is traceable to the rule that produced it.
+**Implemented in Phase 2 as `local-wild-pal-level-v1`**, with two departures from the
+proposal, both recorded in `difficulty_inputs` on the published dataset:
+
+- **`local_wild_level` is a weighted 90th percentile, not the maximum.** The literal
+  maximum does not survive contact with the data. In the level 1–7 starting area a
+  Mammorest spawns on a 1% roll at level 33–35; taking the max makes the beginner zone a
+  level-35 region, and it rated 65% of every node on the map "high" danger with a median
+  gating level of 44. Each nearby spawn area is weighted by its expected encounter rate
+  (spawn points × the share of rolls producing that species), and the level is read at
+  p90 — the hardest *common* encounter, which is what sets the danger of a place. Checked
+  against four zones of known difficulty: starter 35→7, desert 53→42, volcano 56→56,
+  Feybreak 72→68.
+- **The raid-territory term is not applied.** Raid territory is not in any extracted
+  table, and a proxy would make the rule untraceable to its inputs.
+
+"Local" is 50 map units (~230 m) — spawn areas cluster at 25, so this is the Pals you meet
+walking in. Field alphas are excluded: a level 55 boss beside a starter-zone node would
+gate it at 44 and hide a place low-level players actually farm.
+
+**Still uncalibrated.** This section asks for ~20 nodes of known difficulty read in-game
+and that has not been done, so the rule is checked for self-consistency and against four
+reference zones rather than validated. Recorded as a known gap on the dataset.
 
 ### `ResourceNode.danger`
 
-From local Pal levels and proximity to hostile camps. Three buckets — resist adding
-precision the underlying data cannot support.
+From local Pal levels. Three buckets — resist adding precision the underlying data cannot
+support: `low` ≤ 20, `moderate` 21–40, `high` > 40, at the boundaries where the game's own
+progression gates sit. Proximity to hostile camps is *not* an input; camp placements have
+not been extracted.
+
+### `ResourceNode.resource`
+
+**Derived, not hand-mapped**, since Phase 2. The chain is entirely in the game data:
+
+```
+spawner CDO -> MapObjectId -> map object master table -> DropItems[].StaticItemId
+```
+
+A node with several drops is named by its largest. What counts as a locatable resource is
+the game's own item category — `MaterialOre`, `MaterialStone`, `MaterialWood`,
+`FoodVegetable` — which admits the mined and gathered materials and excludes the stat
+lotuses, Dog Coins and Kinship Peaches.
+
+This replaced a six-entry hand-written map, and **reading blueprint names had got two of
+the six wrong**: `SkyIslandOre` yields Soralite and `WorldTreeOre` yields Paloxite,
+neither of which is Ore, and both shipped as `ore` through the whole of Phase 1 — 306
+clusters telling a player they had found ore. `RockIron` would have been guessed as iron;
+it yields Pure Quartz.
 
 ### `BaseSite.flatness_score`
 
@@ -224,10 +303,10 @@ accept.
 ## 8. Refresh workflow
 
 ```bash
-palintel-ingest   --version 0.6.x --source-config sources.yaml
-palintel-corpus   --version 0.6.x --embed          # chunk + embed prose
-palintel-validate --version 0.6.x --compare-to 0.5.x
-palintel-publish  --version 0.6.x                  # writes data/, updates `current`
+palintel-ingest   --version 1.0.2 --source-config sources.yaml
+palintel-corpus   --version 1.0.2 --embed          # chunk + embed prose
+palintel-validate --version 1.0.2 --compare-to 1.0.1
+palintel-publish  --version 1.0.2                  # writes data/, updates `current`
 ```
 
 Ingestion tooling lives in the repo but is **not** part of the runtime process. The bot

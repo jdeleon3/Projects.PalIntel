@@ -9,8 +9,8 @@ about how the game's systems work. Obtaining any of these today means alt-tabbin
 wiki — which interrupts play, and in multiplayer leaves the character vulnerable.
 
 Input is constrained by the game client: mouse and keyboard are captured during play, so
-**voice is the only free input channel**. Output goes to a **Discord text channel**,
-readable via the in-game overlay, a second monitor, a phone, or a Discord popout.
+**voice is the only free input channel**. Output goes to a **Discord text channel** read
+on a **second monitor** beside the game.
 
 ## 2. Core objective
 
@@ -111,14 +111,25 @@ microphone, which accelerates every phase after v1. See
 
 | Criterion | Target |
 |---|---|
-| End-to-end latency, voice (end of speech → card) | p95 ≤ 2.5s |
-| End-to-end latency, text | p95 ≤ 1.5s |
+| End-to-end latency, voice (end of speech → card), **answered queries** | p95 ≤ 2.5s |
+| End-to-end latency, text, **answered queries** | p95 ≤ 1.5s |
+| End-to-end latency, **declines** | tracked, not graded |
 | Intent classification accuracy (eval set, ≥ 100 utterances across all classes) | ≥ 90% |
 | Entity extraction accuracy after lexicon correction | ≥ 95% |
 | Fabricated values in Tier 1 and Tier 2 cards | **0** (structurally prevented) |
 | Tier 3 answers carrying a source citation | 100% |
 | Idle cost | $0 |
 | Marginal cost per query | < $0.005 |
+
+**Latency is graded on answers, and declines are tracked beside them.** A decline costs
+~3s because [ADR-0016](adr/0016-entity-resolution-in-router.md)'s routing policy makes
+declining the expensive judgement deliberately — it names a false decline as the more
+common failure — and the measured alternative, cutting the model's reasoning, doubles the
+wrong-entity rate. Graded together, p95 landed on a decline whatever the answer path did,
+so the bar measured how often the system declined rather than how fast it answers. They
+are different promises: "here are the coordinates" and "I can't do that yet" are not the
+same product event. Tracked rather than dropped, because a slow decline is still the
+player waiting, and an untracked number is one nobody notices getting worse.
 
 The zero-fabrication criterion is an architectural invariant, not an aspiration: Tier 1
 and Tier 2 factual values reach the card from typed results without passing through a
@@ -130,17 +141,46 @@ Each has a verification task in [04-roadmap.md](04-roadmap.md) Phase 0.
 
 | # | Assumption | Risk if wrong |
 |---|---|---|
-| A1 | Discord cards are legible in the in-game overlay | Overlay viewing degraded; other surfaces (second monitor, phone, popout) unaffected |
+| A1 | ~~Discord cards are legible in the in-game overlay~~ **RETIRED** — there is no overlay; cards are read on a second monitor | — |
 | A2 | Palworld saves are parseable from local disk with community tooling | Q3, Q5, Q6 degrade to generic answers |
 | A3 | Breeding is derivable from a per-Pal combination rank plus exceptions | Breeding graph needs thousands of scraped combos |
-| A4 | Community coordinate data is usable and its map transform derivable | Q1 answers wrong or unusable |
+| A4 | Node coordinates are PAK-extractable and the world → map transform is derivable | Q1 answers wrong or unusable |
 | A5 | STT with keyterm boosting reaches ≥ 95% on Palworld proper nouns | Entity extraction caps total system accuracy |
 | A6 | The save exposes unlocked technologies | Q6 falls back to asking the player what they have |
-| A7 | A licensable knowledge corpus of sufficient coverage can be assembled | Q7 coverage gaps; corpus grows incrementally |
+| A7 | A licensable prose corpus of sufficient coverage can be assembled | Q7 coverage gaps; corpus grows incrementally |
 
-**A5 remains the highest-rated accuracy risk.** Palworld proper nouns — *Lifmunk,
-Jormuntide, Depresso, Chillet, Faleris* — are invented words that general-purpose STT will
-mangle, and a corrupted entity name poisons every downstream stage.
+**Status after Phase 0.3 / 0.5 / 0.7** — details in [04-roadmap.md](04-roadmap.md):
 
-**A1 is no longer existential.** The output is a Discord channel; the overlay is one
-viewing surface among several. It informs card density, not project viability.
+- **A6 confirmed.** The player save exposes `UnlockedRecipeTechnologyNames` (118 entries on
+  the test save) plus tech-point balances. Q6 is unblocked.
+- **A2 confirmed with a caveat.** Saves parse, but 1.0.2 uses Oodle (`PlM`) compression that
+  the current `palworld-save-tools` release does not handle, and two `RawData` sub-decoders
+  are stale. Both are bounded; per-Pal detail (Q3/Q5) depends on the decoder work.
+- **A3 de-risked.** The breeding exception table is exposed as a distinct dataset, which
+  corroborates the rank model.
+- **A7 narrowed.** Licensing risk is now confined to the Q7 prose corpus, since structured
+  data comes from game files ([ADR-0014](adr/0014-game-files-as-source.md)).
+- **A4 confirmed.** The world → map transform is derived, independently validated (7
+  held-out landmarks, worst error 3.0 map units against a 10-unit threshold) and
+  **accepted** as [`data/coord_transform.json`](../data/coord_transform.json). The axes
+  turn out to be **swapped** — exactly the failure mode that would otherwise have produced
+  confidently wrong coordinates everywhere. **The hard gate on v1 is cleared.**
+
+Save-format drift is now a **demonstrated** risk rather than a hypothetical one: the
+compression codec changed between minor versions. This raises the value of the
+`SaveParser` interface and the degradation path in
+[ADR-0005](adr/0005-save-file-player-state.md).
+
+**A5 remains the highest-rated accuracy risk, and measurement reshaped it.** STT does not
+garble Palworld proper nouns — it renders them as confident English ("Helzephyr" →
+*"health sphere"*). Fuzzy matching still ranks the correct entity first 79.5% of the time
+and in the top 3 **89.7%** of the time; the original design simply discarded those
+candidates at a threshold. Entity resolution has moved to the router, which has sentence
+context and makes a forced choice
+([ADR-0016](adr/0016-entity-resolution-in-router.md)). Router accuracy is now the binding
+constraint and is measured in Phase 1.
+
+**A1 is retired, not verified.** There is no in-game overlay: cards are read on a second
+monitor beside the game, so the legibility question the assumption asked never arises.
+What survives of it is a design note — cards are read at a glance, mid-play, so field
+count and contrast still matter. That informs card density, not project viability.

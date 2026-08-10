@@ -1,0 +1,320 @@
+{
+  "version": 1,
+  "note": "Multi-turn follow-up cases for ADR-0013. `turns` are spoken in order; only the LAST is scored. `expect` is the tool call the last turn should produce, or null for a decline. `restate` marks the declines that must specifically ask for restatement rather than apologise. Cases marked `negative` are the ones memory must NOT resolve - they carry the failure this feature is priced at, and a run that resolves them all is worse than one that misses a few follow-ups.",
+  "model_note": "A `model` block overrides `expect`/`restate` when a model-backed router is scored, because the two routers are allowed to differ and one of them is allowed to be better. The deterministic stub defers a mangled entity (ADR-0016 says the model has the sentence context to resolve it, and it does); and `needs_restatement` is a stub concept the tool APIs cannot express, so a model decline is scored on being a decline, not on carrying the flag. Where a `model` block records something WORSE, it is a limitation and says so.",
+  "cases": [
+    {
+      "id": "F01",
+      "why": "bare referential inherits the entity",
+      "turns": [
+        "where can I find Chillet",
+        "what about the alpha?"
+      ],
+      "expect": {
+        "tool": "find_pal_spawns",
+        "args": {
+          "pal": "Chillet"
+        }
+      }
+    },
+    {
+      "id": "F02",
+      "why": "modifier comes from the follow-up, entity from memory",
+      "turns": [
+        "where can I find Anubis",
+        "what about the alpha?"
+      ],
+      "expect": {
+        "tool": "find_pal_spawns",
+        "args": {
+          "pal": "Anubis"
+        }
+      }
+    },
+    {
+      "id": "F03",
+      "why": "elliptical new entity, verb inherited",
+      "turns": [
+        "where's the nearest ore",
+        "and coal?"
+      ],
+      "expect": {
+        "tool": "find_resource_nodes",
+        "args": {
+          "resource": "coal"
+        }
+      }
+    },
+    {
+      "id": "F04",
+      "why": "elliptical new entity switches tool class",
+      "turns": [
+        "where can I find Anubis",
+        "and coal?"
+      ],
+      "expect": {
+        "tool": "find_resource_nodes",
+        "args": {
+          "resource": "coal"
+        }
+      }
+    },
+    {
+      "id": "F05",
+      "why": "resource follow-up after a resource query",
+      "turns": [
+        "where's the nearest coal",
+        "what about quartz"
+      ],
+      "expect": {
+        "tool": "find_resource_nodes",
+        "args": {
+          "resource": "quartz"
+        }
+      }
+    },
+    {
+      "id": "F06",
+      "why": "anaphora with no new information",
+      "turns": [
+        "where can I find Chillet",
+        "where's the closest one"
+      ],
+      "expect": {
+        "tool": "find_pal_spawns",
+        "args": {
+          "pal": "Chillet"
+        }
+      }
+    },
+    {
+      "id": "F07",
+      "why": "reaches back past a decline to the last real answer",
+      "turns": [
+        "where can I find Chillet",
+        "what should I research next",
+        "where's the closest one"
+      ],
+      "expect": {
+        "tool": "find_pal_spawns",
+        "args": {
+          "pal": "Chillet"
+        }
+      }
+    },
+    {
+      "id": "F08",
+      "why": "two follow-ups in a row keep the same referent",
+      "turns": [
+        "where can I find Chillet",
+        "what about the alpha?",
+        "where's the closest one"
+      ],
+      "expect": {
+        "tool": "find_pal_spawns",
+        "args": {
+          "pal": "Chillet"
+        }
+      }
+    },
+    {
+      "id": "F09",
+      "why": "referent survives to the buffer depth",
+      "turns": [
+        "where can I find Chillet",
+        "where's the nearest coal",
+        "and sulfur?",
+        "what about quartz"
+      ],
+      "expect": {
+        "tool": "find_resource_nodes",
+        "args": {
+          "resource": "quartz"
+        }
+      }
+    },
+    {
+      "id": "F10",
+      "why": "night modifier on an inherited entity",
+      "turns": [
+        "where can I find Depresso",
+        "what about at night?"
+      ],
+      "expect": {
+        "tool": "find_pal_spawns",
+        "args": {
+          "pal": "Depresso"
+        }
+      }
+    },
+    {
+      "id": "F11",
+      "why": "follow-up after a variant-family answer keeps the named Pal",
+      "turns": [
+        "where can I find Chillet",
+        "what about the alpha?"
+      ],
+      "expect": {
+        "tool": "find_pal_spawns",
+        "args": {
+          "pal": "Chillet"
+        }
+      }
+    },
+    {
+      "id": "F12",
+      "why": "a mangled entity in the follow-up is not forced through",
+      "turns": [
+        "where's the nearest coal",
+        "and Banner and Cryst?"
+      ],
+      "expect": null,
+      "model": {
+        "expect": {
+          "tool": "find_pal_spawns",
+          "args": {
+            "pal": "Vanwyrm Cryst"
+          }
+        },
+        "why": "the model resolves what the stub defers - ADR-0016 working as designed"
+      }
+    },
+    {
+      "id": "N01",
+      "negative": true,
+      "why": "a fresh question must ignore memory",
+      "turns": [
+        "where can I find Chillet",
+        "where's the nearest coal"
+      ],
+      "expect": {
+        "tool": "find_resource_nodes",
+        "args": {
+          "resource": "coal"
+        }
+      }
+    },
+    {
+      "id": "N02",
+      "negative": true,
+      "why": "a fresh Pal question must ignore memory",
+      "turns": [
+        "where's the nearest coal",
+        "where can I find Anubis"
+      ],
+      "expect": {
+        "tool": "find_pal_spawns",
+        "args": {
+          "pal": "Anubis"
+        }
+      }
+    },
+    {
+      "id": "N03",
+      "negative": true,
+      "why": "an opener does not licence a new verb",
+      "turns": [
+        "where can I find Chillet",
+        "how about breeding Anubis"
+      ],
+      "expect": null
+    },
+    {
+      "id": "N04",
+      "negative": true,
+      "why": "an opener does not licence a work question",
+      "turns": [
+        "where can I find Chillet",
+        "and is Pierdon any good for logging"
+      ],
+      "expect": null
+    },
+    {
+      "id": "N05",
+      "negative": true,
+      "why": "no history at all asks for restatement",
+      "turns": [
+        "what about the alpha?"
+      ],
+      "expect": null,
+      "restate": true,
+      "model": {
+        "expect": null,
+        "restate": false,
+        "why": "declines with actionable prose; needs_restatement is a stub concept"
+      }
+    },
+    {
+      "id": "N06",
+      "negative": true,
+      "why": "a decline alone leaves nothing to refer to",
+      "turns": [
+        "what should I research next",
+        "where's the closest one"
+      ],
+      "expect": null,
+      "restate": true,
+      "model": {
+        "expect": null,
+        "restate": false,
+        "why": "same"
+      }
+    },
+    {
+      "id": "N07",
+      "negative": true,
+      "why": "an unrelated question after a follow-up chain",
+      "turns": [
+        "where can I find Chillet",
+        "what about the alpha?",
+        "how important is base defence"
+      ],
+      "expect": null
+    },
+    {
+      "id": "N08",
+      "negative": true,
+      "why": "referring back to a Pal that was never named",
+      "turns": [
+        "how do I breed Anubis",
+        "where's the closest one"
+      ],
+      "expect": null,
+      "restate": true,
+      "model": {
+        "expect": null,
+        "restate": false,
+        "why": "same"
+      }
+    },
+    {
+      "id": "N09",
+      "negative": true,
+      "why": "crude oil is recognised but unplaced",
+      "turns": [
+        "where's the nearest coal",
+        "and crude oil?"
+      ],
+      "expect": {
+        "tool": "find_resource_nodes",
+        "args": {
+          "resource": "crude_oil"
+        }
+      },
+      "model": {
+        "expect": null,
+        "why": "LIMITATION: crude_oil is in the lexicon but not in the tool enum, which is built from resources that HAVE nodes - so the model cannot route it and cannot reach the 'not a mineable node' card. The fast path covers it in the shipped stack."
+      }
+    },
+    {
+      "id": "N10",
+      "negative": true,
+      "why": "an inventory question is not a location one",
+      "turns": [
+        "where's the nearest sulfur",
+        "do I have enough sulfur for this"
+      ],
+      "expect": null
+    }
+  ]
+}

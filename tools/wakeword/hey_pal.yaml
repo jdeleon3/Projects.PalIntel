@@ -1,0 +1,75 @@
+# openWakeWord training config for the "hey pal" wake word.
+#
+# Run from the pinned piper-sample-generator checkout (see train_hey_pal.md):
+#   python -m openwakeword.train --training_config tools/wakeword/hey_pal.yaml \
+#       --generate_clips --augment_clips --train_model
+#
+# Why this exists at all: none of openWakeWord's six pretrained models fire on
+# "hey pal". Measured against 60 real recordings, hey_jarvis peaked at 0.06,
+# hey_mycroft at 0.00, hey_rhasspy at 0.02, against a 0.5 firing threshold. The
+# phrase shape is wrong - all of them are "hey + two syllables" or a three-syllable
+# name, and "hey pal" is "hey + one". No threshold recovers that.
+
+model_name: hey_pal
+target_phrase:
+  - hey pal
+
+# Deliberately more than the phrase itself. STT transcribed the real recordings as
+# "hippel", "hippow", "hapell", "apel", "ippel", "apal" and "hey power" - the phrase
+# is routinely slurred into a single word, so the model should hear those as positives
+# rather than learn a crisp two-word boundary that real speech does not have.
+custom_negative_phrases:
+  - hey pale
+  - hey pow
+  - hey powell
+  - hey paul
+  - hey ball
+  - hey gal
+  - a pal
+  - hey
+
+# 30k positives at ~9 clips/sec on the 5080 is roughly an hour. The upstream notebook
+# uses more; this is a first pass whose value is the validation against 240 real
+# recordings, which no amount of synthetic data substitutes for.
+n_samples: 30000
+n_samples_val: 2000
+tts_batch_size: 50
+piper_sample_generator_path: C:/Users/jd02_/tools/piper-sample-generator
+
+# Augmentation. RIR = 270 MIT environmental impulse responses; background = 2000
+# ESC-50 environmental clips resampled to 16k. Both matter more than raw sample count:
+# the deployment condition is a gaming headset in a room with game audio bleeding in.
+augmentation_rounds: 1
+augmentation_batch_size: 16
+background_paths:
+  - C:/Users/jd02_/tools/owwtrain/data/background
+rir_paths:
+  - C:/Users/jd02_/tools/owwtrain/data/rir
+background_paths_duplication_rate:
+  - 1
+
+# 2000 hours of precomputed negative features. This is what buys a low false-positive
+# rate; the wake word runs continuously against party chatter, so false positives are
+# the failure that makes the feature unusable rather than merely imperfect.
+feature_data_files:
+  ACAV100M_sample: C:/Users/jd02_/tools/owwtrain/data/oww_features_ACAV100M_2000hrs.npy
+false_positive_validation_data_path: C:/Users/jd02_/tools/owwtrain/data/validation_set_features.npy
+
+# ADR-0004 names false negatives as the worst failure - the player speaks and nothing
+# happens, with nothing to diagnose. But a wake word that fires on conversation is
+# worse in practice, because it is the failure the whole channel sees. 0.5/hr is the
+# upstream default and a sane starting point; the real bar is the measurement against
+# the 240 recordings.
+target_false_positives_per_hour: 0.5
+
+layer_size: 32
+steps: 50000
+max_negative_weight: 1500
+batch_n_per_class:
+  ACAV100M_sample: 1024
+  adversarial_negative: 50
+  positive: 50
+
+output_dir: C:/Users/jd02_/tools/owwtrain/out
+model_type: dnn
+total_length: 16000

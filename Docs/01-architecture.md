@@ -61,7 +61,7 @@ See [ADR-0002](adr/0002-llm-as-router.md) and
 └──────────────────────────────────────────────────────┼───────────────┘
                                                        ▼
                                           Discord #copilot-hud
-                                  (overlay / 2nd monitor / phone / popout)
+                                    (read on a second monitor)
 ```
 
 Everything inside the box is one process on the player's machine. The only network
@@ -99,10 +99,19 @@ two defenses against entity corruption.
 
 ### 3.5 Lexicon Corrector
 
-Second defense. Fuzzy-matches tokens and n-grams against canonical entity names using
-phonetic and edit-distance scoring. `"life monk"` → `Lifmunk`. Correction happens once;
-everything downstream may assume canonical names.
-See [ADR-0007](adr/0007-entity-lexicon-boundary.md).
+Second defense. Ranks lexicon entities against transcript n-grams using phonetic and
+edit-distance scoring, and emits the **top-K candidates with scores** — it does not
+decide. `"health sphere"` → `[Helzephyr 0.72, Helzephyr Lux 0.68, …]`.
+
+**It does not threshold or reject.** Measurement showed a threshold here discarding
+candidates that were correctly ranked first: 61.5% accepted versus 89.7% present in the
+top 3. The corrector has the least context of any component and is the wrong place to
+judge confidence. See [ADR-0016](adr/0016-entity-resolution-in-router.md).
+
+Matching normalises away whitespace and punctuation before comparison, because STT
+renders one invented word as several English ones — *"Lee's bunk"* for `Leezpunk`,
+*"my Korra"* for `Mycora`. Comparing across that split without normalising drops
+similarity below any usable threshold.
 
 ### 3.6 Conversation Memory
 
@@ -117,8 +126,19 @@ detected topic change. See [ADR-0013](adr/0013-conversation-memory.md).
 
 ### 3.7 Intent Router
 
-One LLM call with tool calling enabled, given the tool schemas (§4) and any live
-conversation context. Entity parameters are constrained to lexicon-generated enums.
+One LLM call with tool calling enabled, given the tool schemas (§4), any live
+conversation context, and the corrector's ranked entity candidates. Entity parameters are
+constrained to lexicon-generated enums.
+
+**The router owns entity resolution**, not just intent. It is the only component with
+sentence context — *"against the first tower"* implies a combat matchup, *"how do I breed
+X"* constrains X to a breedable species — and it selects from a constrained enum, so it
+makes a forced choice rather than a threshold judgement. It declines when genuinely
+unsure; that decline is the system's guard against confident wrong entities
+([ADR-0016](adr/0016-entity-resolution-in-router.md)).
+
+This makes router accuracy the binding constraint on entity extraction. It is **not yet
+measured** — it needs a live model and is Phase 1 work.
 
 Outcomes:
 - **Specific tool matched** → dispatch to Tier 1 or Tier 2.
@@ -278,7 +298,7 @@ From the moment the player stops speaking (voice) or sends a message (text).
 | Utterance endpointing | 300–800ms | — |
 | STT | ~300ms | — |
 | Lexicon correction | < 5ms | < 5ms |
-| Intent routing (LLM) | 300–600ms | 300–600ms |
+| Intent routing (LLM) | 300–600ms *(measured 3.8–4.1s — see note 4)* | same |
 | Tier 1/2 execution | < 5ms | < 5ms |
 | Tier 3 retrieval + synthesis | +400–900ms | +400–900ms |
 | Card render | < 5ms | < 5ms |
@@ -296,6 +316,45 @@ Notes:
 3. **LLM stages dominate.** Removing generative card formatting
    ([ADR-0006](adr/0006-templated-cards.md)) removed 300–800ms and the hallucination risk
    at once. The fast-path matcher targets the remaining routing call.
+4. **The routing estimate is wrong, and it is the whole budget.** Measured against Claude
+   Opus 5 the routing call takes **3.8–4.1s median**, six to thirteen times the estimate,
+   which alone exceeds the 2.5s end-to-end target. It is not a tuning problem:
+
+   | Configuration | Median | Output |
+   |---|---|---|
+   | Opus 5, `effort: low`, adaptive thinking | 4087ms | 72 tok |
+   | Opus 5, `effort: low`, thinking disabled | 3768ms | 82 tok |
+
+   Disabling thinking buys ~320ms and costs the correctness guarantee that keeps it on
+   (see `routing_anthropic.py`), and the model emitted no thinking content at `low`
+   anyway. Roughly 4s is what a frontier model costs for one tool call. Prompt caching
+   was added for the tool schemas — it cuts cost substantially but **not latency**, since
+   time-to-first-token is dominated by generation, not prefill.
+
+   **Tool schemas, not tokens of thought, are what a query costs.** The Pal enum is ~2,630
+   tokens, and a tool-per-query-class registry repeats it in every tool that names a Pal:
+
+   | Registered tools | Schema tokens | Enum copies | $/query (cached) |
+   |---|---|---|---|
+   | Q1 only — production today | 852 | 0 | $0.0004 |
+   | Q1 + Q2 | 3,481 | 1 | $0.0017 |
+   | All 7 — what the A5 harness needs | 21,741 | 8 | $0.0109 |
+
+   Completing the query classes therefore makes each query **25× more expensive** before
+   a single extra token is generated, and it is charged on every request forever. In the
+   measured 40-prompt run this was ~80% of total spend; output averaged only ~140 tokens.
+
+   The lever is enum duplication, not the model. A single `answer_query(query_class, pal,
+   resource, …)` tool carries one copy of each enum (~3,500 tokens) instead of eight, at
+   the cost of the per-tool descriptions that currently help the router choose. Whether
+   that trade hurts accuracy is untested, and A5 must be re-measured across the change
+   rather than assumed neutral.
+
+   This makes two items that were Phase 2 conveniences into requirements for the voice
+   path: the **fast-path matcher** (a confident lexicon match plus a template phrasing
+   skips the model entirely) and **routing on a small model**. Neither is measured yet —
+   the Haiku 4.5 comparison is the open question, and the A5 accuracy run must complete
+   before either is chosen on anything but latency.
 
 ## 8. Failure modes
 
@@ -303,7 +362,7 @@ Notes:
 |---|---|
 | Wake word false positive | Fails routing → decline card |
 | Low STT confidence | Card asks for a repeat; no query executed |
-| Entity below lexicon threshold | Card names the unrecognized token explicitly |
+| Router cannot resolve an entity from candidates | Card names the unrecognized token explicitly |
 | Intent ambiguous between tools | Decline; never guess between query classes |
 | Tier 1/2 query returns zero rows | Explicit "no results" card |
 | Tier 2 model output references unknown candidate | Discard the addition; render validated set |

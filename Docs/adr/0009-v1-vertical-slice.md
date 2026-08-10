@@ -5,7 +5,7 @@
 ## Context
 
 Four query classes, one pipeline. The pipeline itself — wake word → STT → lexicon
-correction → intent routing → typed query → templated card → overlay — is unproven end to
+correction → intent routing → typed query → templated card → Discord — is unproven end to
 end and carries most of the project's integration risk.
 
 The choice is which query class to build first, knowing the first one pays the full cost

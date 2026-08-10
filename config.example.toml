@@ -1,0 +1,110 @@
+# PalIntel configuration.
+#
+# Copy to config.local.toml and fill in. config.local.* is gitignored: the token is a
+# credential and the save path is machine-specific.
+#
+#   copy config.example.toml config.local.toml
+#
+# Every value can also come from the environment, which wins over the file:
+#   PALINTEL_DISCORD_TOKEN, PALINTEL_CHANNEL_ID, PALINTEL_DATA_VERSION
+
+[discord]
+# Bot token from https://discord.com/developers/applications -> your app -> Bot.
+# Treat it like a password. Anyone holding it controls the bot.
+token = ""
+
+# Channel the bot listens in and posts to. Enable Developer Mode in Discord
+# (Settings -> Advanced), then right-click the channel -> Copy Channel ID.
+channel_id = 0
+
+# How to address the bot in that channel:
+#   "any"     - respond to every message. Fine for a dedicated #copilot-hud channel.
+#   "prefix"  - respond only to messages starting with `prefix`.
+#   "mention" - respond only when the bot is @mentioned.
+listen_mode = "any"
+prefix = "?"
+
+[voice]
+# Listen on the local microphone. Leave false to run text-only.
+#
+# Input is the local mic, not a Discord voice channel: Discord's DAVE end-to-end
+# encryption broke voice reception in py-cord (Pycord-Development/pycord#3139), where
+# the connection succeeds, a sink attaches, and no audio ever arrives. Output is still
+# a Discord channel - only the input moved. The trade-off is that party members cannot
+# ask by voice; they keep the text path.
+enabled = false
+
+# Input device: an index, a name substring, or omit for the system default.
+# Run `python -c "from palintel.mic import devices; print(devices())"` to list them.
+# device = 1
+
+# Who the microphone belongs to. Conversation memory is per person, and the text path
+# keys on your Discord display name - so setting this to the same name is what lets you
+# ask by voice and follow up by text ("where can I find Chillet" ... "what about the
+# alpha?"). Left unset, spoken queries are attributed to "voice" and keep their own
+# thread, because guessing which Discord user is at the machine would attribute speech
+# to the wrong person in a shared channel.
+# speaker = "YourDiscordName"
+
+# Wake-word models. Bare names are openWakeWord's pretrained set
+# (hey_jarvis, hey_mycroft, hey_rhasspy, alexa); "hey_pal" is the custom model built
+# by tools/wakeword/. Several can run at once - inference is CPU-bound at a realtime
+# factor near 0.015, the highest score wins, so a second model only adds sensitivity.
+# Useful while a custom model is being evaluated against a known-good one.
+models = ["hey_pal"]
+
+# Firing threshold, 0-1. Lower catches more genuine activations and more chatter.
+#
+# 0.1 is measured, not guessed. Against 236 real recordings of this phrase, hey_pal
+# recalls 91.9% at 0.1 and 79.2% at 0.5, while the highest score any non-wake-word clip
+# reached was 0.001 - so within the evidence available, lower is strictly better. Misses
+# are bunched near zero rather than just under the line (13 clips score below 0.05), so
+# 94.5% is the ceiling any threshold can reach.
+#
+# The caveat is that the negative evidence is thin: a handful of clips, no continuous
+# room chatter. ADR-0004 argues for biasing low anyway, because a false negative is
+# silent and a false positive is not - and a false positive is now *visible*, as an
+# activation with no transcript in `/palintel status`. If that count climbs during real
+# play, raise this.
+threshold = 0.1
+
+[router]
+# The fast path answers a clearly-phrased resource query from the knowledge base without
+# calling the model at all. The model round trip is a ~2s median and the whole voice
+# budget is 2.5s, so on "where's the nearest coal" that round trip IS the latency problem.
+# Nothing is skipped that the model would have done better: the stub only claims a query
+# when the phrasing is unambiguous, and defers everything else.
+#
+#   fast_path = false   every query goes to the model. Restores the earlier behaviour
+#                       exactly, at the cost of ~2s on queries the stub could answer.
+fast_path = true
+
+# How eagerly the fast path claims a query. Measured on the 15 A5 prompts a Q1 build can
+# answer, with precision checked across all 232 - a wider list fails by stealing queries
+# from OTHER classes, so Q1 alone cannot show the damage:
+#
+#   standard    8/15 = 53%   only explicit place words (where, nearest, find, ...)
+#   proximity  10/15 = 67%   adds near, nearby, around here
+#   wide       11/15 = 73%   adds i need, get me, any
+#
+# No width answered a wrong resource or claimed anything outside Q1. Hold that lightly:
+# 15 prompts is thin, and "wide" is the only one that guesses at intent rather than
+# naming a place, so it is the first thing to step back if a fast, confident, wrong card
+# ever shows up. Drop to "proximity" - the coverage cost is two queries.
+cues = "wide"
+
+[data]
+# Which extracted dataset to load, matching a directory under data/.
+version = "1.0.2"
+
+[game]
+# Palworld save directory, used later by the save watcher to resolve "nearest" and
+# level gating. Leave empty to run without player state.
+#
+# NOTE THE SINGLE QUOTES. In TOML, single quotes make a *literal* string, so Windows
+# backslashes work as-is. With double quotes, "C:\Users\..." fails to parse because
+# \U starts a unicode escape.
+#
+#   save_dir = 'C:\Users\you\AppData\Local\Pal\Saved\SaveGames\<steamid>\<worldid>'
+#   save_dir = "C:/Users/you/AppData/Local/Pal/Saved/SaveGames/..."   # also fine
+save_dir = ''

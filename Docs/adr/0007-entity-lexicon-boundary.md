@@ -1,7 +1,16 @@
 # ADR-0007 — One entity lexicon serving three consumers
 
-**Status:** Accepted
+**Status:** Accepted, **amended** by [ADR-0016](0016-entity-resolution-in-router.md)
 **Addresses:** Assumption A5 — the highest-rated accuracy risk in the system
+
+> **Amendment (ADR-0016):** The three-layer defence below is retained, but the **decline
+> decision moves out of the fuzzy corrector and into the router**. Measurement showed the
+> corrector was rejecting matches that were correctly ranked first — threshold failures,
+> not ranking failures. The corrector now emits ranked candidates without a threshold;
+> the router chooses using sentence context and declines when unsure.
+>
+> The principle stated below — never silently coerce a low-confidence match — is
+> **unchanged**. Only the layer that enforces it moves.
 
 ## Context
 

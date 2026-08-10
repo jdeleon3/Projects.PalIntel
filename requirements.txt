@@ -1,0 +1,54 @@
+# PalIntel tooling dependencies (ingestion + evaluation).
+# Not the runtime bot - that has its own set once Phase 1 begins.
+#
+#   py -m venv .venv
+#   .venv\Scripts\python -m pip install -r requirements.txt
+
+# --- save parsing (Phase 0.3) ---
+palworld-save-tools==0.24.0   # PlZ only; PlM/Oodle handled by our own shim
+pyooz==0.0.8                  # open-source Oodle decompressor (module name: ooz)
+
+# --- STT evaluation (Phase 0.6) ---
+sounddevice>=0.4.6            # microphone capture for the eval recorder
+faster-whisper>=1.2.1
+
+# --- CUDA runtime for GPU inference (Windows) ---
+# CTranslate2 needs these at runtime. Installing them is not enough on its own:
+# see tools/eval/_cuda.py for why PATH must also be set.
+nvidia-cublas-cu12
+nvidia-cudnn-cu12
+
+# --- Discord (text intake + voice receive) ---
+# py-cord, not discord.py: both install as `discord` and conflict, and
+# py-cord is the one with voice RECEIVE support the wake-word path needs.
+# The [voice] extra is required, not optional: py-cord 2.8 moved voice onto
+# `davey`, and a bare install imports discord fine and then raises
+# MissingVoiceDependenciesError at connect time.
+py-cord[voice]>=2.8
+# Voice encryption. Not used by text intake, but py-cord warns loudly without it.
+PyNaCl>=1.5
+
+# --- wake word (Phase 1 voice) ---
+# Pretrained models do not include "hey pal" and none of them fire on it -
+# measured at 0/60 against real recordings. tools/wakeword/ trains one.
+openwakeword>=0.6
+
+# --- intent router (Claude) ---
+# Resolves ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN, or an `ant auth login`
+# profile - a bare client works with any of them.
+anthropic>=0.60
+
+# --- configuration ---
+# Loads a repo-root .env at package import. The SDKs read os.environ only;
+# without this a key sitting in .env is silently ignored.
+python-dotenv>=1.0
+
+# --- tests ---
+pytest>=8.0
+
+# --- wake-word TRAINING only (tools/wakeword) ---
+# Not needed at runtime: inference is a ~1MB ONNX model on CPU. Install these to
+# retrain the wake word, then remove them. torch must come from the cu128 index
+# for Blackwell (sm_120) - the default PyPI wheel has no kernels for it:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu128
+#   pip install torchinfo torchmetrics datasets mutagen speechbrain piper-tts

@@ -53,3 +53,27 @@ trailing silence (default 700ms) or a hard cap (default 10s).
 **Neutral**
 - Wake-word phrase and detection threshold are configuration, allowing per-user tuning
   without code changes.
+
+## Amendment (2026-08-09) — the audio source is the local microphone
+
+The context above assumed the audio came from a Discord voice channel. It does not, and
+cannot: Discord's DAVE end-to-end encryption broke voice reception in py-cord
+([pycord#3139](https://github.com/Pycord-Development/pycord/issues/3139)), where the
+connection succeeds, a sink attaches, and no audio ever arrives. That is not fixable from
+this side. Input now comes from the local microphone; output is still a Discord channel.
+
+The decision — wake-word gating before any audio leaves the machine — is unchanged, and
+two of its stated consequences get *stronger*: the captured stream is now one player's
+microphone rather than a shared channel, so there is less to keep local and no party
+conversation to protect in the first place.
+
+Two things above no longer describe the implementation:
+
+- **Stage ordering.** VAD does not run before the wake word. openWakeWord scores every
+  frame directly, and the amplitude floor is consulted only *after* a wake word fires, to
+  decide where the utterance ends. Running VAD first would risk gating the wake word
+  itself behind an energy threshold, which is the failure this ADR calls silent.
+- **Party members asking by voice.** They cannot; they keep the text path. Recorded
+  against [ADR-0012](0012-dual-input-channels.md), which is where the reduction lands.
+
+`/palintel status` and its activation counts remain outstanding.

@@ -1,0 +1,254 @@
+"""Build the canonical entity lexicon from PAK-extracted tables.
+
+The lexicon is load-bearing infrastructure, not a lookup table. One source of truth
+feeds four consumers (see Docs/adr/0007-entity-lexicon-boundary.md):
+
+  1. STT keyterm boosting      - bias the acoustic model toward Palworld proper nouns
+  2. Fuzzy transcript repair   - map mangled tokens back to canonical names
+  3. LLM enum constraints      - generate the tool schemas' entity parameters
+  4. Corpus entity tagging     - hybrid retrieval for Tier 3
+
+Input : data/raw/*.json          (extracted from Pal-Windows.pak)
+Output: data/<version>/lexicon.json
+
+Usage: python tools/ingest/build_lexicon.py --version 1.0.2
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import sys
+from pathlib import Path
+
+from _resources import UNPLACED_RESOURCES, derive
+
+REPO = Path(__file__).resolve().parents[2]
+RAW = REPO / "data" / "raw"
+
+# Placeholder strings that appear in untranslated or deliberately hidden rows. These
+# are not names and must never reach the lexicon: "Unidentified Pal" is the game's
+# mask for unreleased content and would otherwise become a matchable entity that
+# resolves to three different Pals at once.
+PLACEHOLDERS = {"en_text", "ja_text", "None", "", "Unidentified Pal"}
+
+# Seed aliases for names whose spelling and pronunciation diverge badly enough that
+# STT is unlikely to recover them unaided. This set is expected to GROW from observed
+# failures - every misrecognition found in evaluation becomes a permanent alias.
+SEED_ALIASES: dict[str, list[str]] = {
+    "Lifmunk": ["life monk", "lif munk", "liftmunk", "lifmonk", "live monk"],
+    "Jormuntide": ["jormun tide", "your mun tide", "jorman tide", "jormuntied"],
+    "Depresso": ["depress oh", "de presso", "espresso", "depresa"],
+    "Chillet": ["chill it", "chilet", "shall it", "chillette"],
+    "Faleris": ["fal aris", "phaleris", "valeris", "feleris"],
+    "Digtoise": ["dig toise", "dig tortoise", "digtois", "dictoise"],
+    "Foxparks": ["fox parks", "fox sparks", "foxpark"],
+    "Pengullet": ["pen gullet", "penguin let", "pengulet"],
+    "Tanzee": ["tan zee", "tansy", "tanzy"],
+    "Cattiva": ["cat eva", "cateva", "kativa"],
+    "Lamball": ["lamb ball", "lambhall", "lam ball"],
+    "Nitewing": ["night wing", "nitewin", "knight wing"],
+    "Incineram": ["incinerate", "in cinerham", "incineran"],
+    "Anubis": ["anubus", "a newbis"],
+    "Grizzbolt": ["grizz bolt", "grizzly bolt", "gris bolt"],
+}
+
+# Resource ALIASES, hand-maintained. The resource *set* is no longer written here - it is
+# derived from the game's item categories in _resources.py, the same derivation the node
+# ingest uses, so the lexicon cannot know about a resource the data does not have or miss
+# one it does. What stays hand-written is the part no table contains: how speech-to-text
+# mangles the word. These are ordinary English words, so the failure mode is homophones
+# rather than the novel morphology the Pal names suffer from.
+#
+# A resource with no entry here is still in the lexicon; it simply carries only the
+# aliases generated from its own name. Entries grow from observed failures.
+RESOURCE_ALIASES: dict[str, list[str]] = {
+    "ore": ["oar", "ore deposit", "ore node"],
+    "coal": ["cole", "kohl", "coel"],
+    "sulfur": ["sulphur", "sulfa", "sulfer"],
+    "quartz": ["quarts", "kwartz", "pure quartz"],
+    "crude_oil": ["crude oil", "cruel oil"],
+    "stone": ["stones", "rock", "rocks"],
+    "wood": ["logs", "timber", "lumber"],
+    "paldium_fragment": ["paldium", "palladium", "pal dium", "paldium fragments"],
+    "hexolite_quartz": ["hexolite", "hexalite quartz", "hexolight"],
+    "chromite": ["chromium", "cromite", "chrome ore"],
+    "soralite": ["sorolite", "solarite", "sky island ore"],
+    "paloxite": ["paloxide", "pal oxite", "world tree ore"],
+    "nightstar_sand": ["nightstar", "night star sand", "night stone"],
+    "red_berries": ["berries", "red berry", "berry"],
+    "cavern_mushroom": ["cave mushroom", "cavern mushrooms"],
+    "mushroom": ["mushrooms"],
+}
+
+# Aliases this short, or this common, cause more false matches than they fix. "or" as
+# an alias for "ore" is a fair spoken homophone but matches "for" at 0.80 similarity,
+# which silently tags half the corpus. "call" for "coal" and "courts" for "quartz" fail
+# the same way. Precision matters more than recall here: ADR-0007 treats a confident
+# wrong entity as worse than an admitted miss.
+MIN_ALIAS_LEN = 4
+ALIAS_STOPWORDS = {
+    "or", "oar", "awe", "call", "courts", "oil", "for", "more", "your", "our",
+    "all", "coil", "cold", "gold", "goal", "tall", "sort", "short",
+}
+
+
+def metaphone_key(word: str) -> str:
+    """Phonetic skeleton for fuzzy matching.
+
+    Prefers jellyfish's metaphone when available; otherwise falls back to a compact
+    consonant-skeleton reduction. The fallback is deliberately simple - it exists so
+    the pipeline never hard-depends on an optional package, and matching always pairs
+    the phonetic key with edit distance rather than relying on it alone.
+    """
+    try:
+        import jellyfish
+
+        return jellyfish.metaphone(word)
+    except ImportError:
+        pass
+
+    w = re.sub(r"[^a-z]", "", word.lower())
+    if not w:
+        return ""
+    for a, b in (("ph", "f"), ("ck", "k"), ("qu", "kw"), ("x", "ks"),
+                 ("gh", "g"), ("kn", "n"), ("wr", "r"), ("mb", "m")):
+        w = w.replace(a, b)
+    head = w[0].upper()
+    tail = re.sub(r"[aeiou]", "", w[1:])
+    out = head + tail.upper()
+    return re.sub(r"(.)\1+", r"\1", out)
+
+
+def safe_aliases(aliases: list[str]) -> list[str]:
+    """Drop aliases too short or too common to be safe fuzzy-match targets."""
+    out = []
+    for a in aliases:
+        a = a.strip()
+        if not a or a.lower() in ALIAS_STOPWORDS:
+            continue
+        # Multi-word aliases are inherently specific, so the length floor applies to
+        # single tokens only.
+        if " " not in a and len(a) < MIN_ALIAS_LEN:
+            continue
+        out.append(a)
+    return out
+
+
+def variants(name: str) -> list[str]:
+    """Spacing and punctuation variants STT plausibly emits for a canonical name."""
+    out = set()
+    low = name.lower()
+    out.add(low)
+    if " " in low:
+        out.add(low.replace(" ", ""))
+        out.add(low.replace(" ", "-"))
+    if "-" in low:
+        out.add(low.replace("-", " "))
+        out.add(low.replace("-", ""))
+    # Split camel-ish compounds: "Foxparks" -> "fox parks" is handled by seeds, but
+    # multi-word forms benefit from their parts being searchable.
+    out.discard(low)
+    return sorted(out)
+
+
+def build(version: str) -> dict:
+    names_path = RAW / "pal_names_flat.json"
+    if not names_path.exists():
+        sys.exit(f"missing {names_path} - run the pak extractor first")
+
+    raw_names = json.loads(names_path.read_text(encoding="utf-8"))
+
+    # A canonical display name maps to MANY internal ids: event and quest variants
+    # (Horus / Horus_Oilrig, SUMMON_*, Quest_*) all share one player-facing name.
+    # Collapsing to a single id would silently drop rows on any later join.
+    by_name: dict[str, list[str]] = {}
+    dropped: list[str] = []
+
+    for row in raw_names:
+        key, name = row.get("key", ""), (row.get("name") or "").strip()
+        if name in PLACEHOLDERS or not name or name.startswith("PAL_NAME"):
+            dropped.append(key)
+            continue
+        internal = key[len("PAL_NAME_"):] if key.startswith("PAL_NAME_") else key
+        by_name.setdefault(name, []).append(internal)
+
+    # Join to the parameter table for Paldeck membership, so downstream code can tell
+    # a real Pal from a summon or quest actor without re-reading the raw tables.
+    params = {}
+    param_path = RAW / "pal_monster_parameter.json"
+    if param_path.exists():
+        params = json.loads(param_path.read_text(encoding="utf-8")).get("Rows", {})
+
+    pals: list[dict] = []
+    for name, ids in by_name.items():
+        zukan = [params[i]["ZukanIndex"] for i in ids
+                 if i in params and isinstance(params[i].get("ZukanIndex"), int)
+                 and params[i]["ZukanIndex"] > 0]
+        pals.append({
+            "canonical": name,
+            "internal_ids": sorted(ids),
+            "zukan_index": min(zukan) if zukan else None,
+            "in_paldeck": bool(zukan),
+            "aliases": sorted(set(safe_aliases(SEED_ALIASES.get(name, []) + variants(name)))),
+            "phonetic": metaphone_key(name),
+        })
+
+    _, display = derive()
+    resource_names = {**display, **UNPLACED_RESOURCES}
+    resources = [{
+        "canonical": c,
+        "display": resource_names[c],
+        "aliases": sorted(set(safe_aliases(
+            RESOURCE_ALIASES.get(c, [])
+            + ([c.replace("_", " ")] if "_" in c else [])
+            + ([resource_names[c].lower()] if resource_names[c].lower() != c else [])))),
+        "phonetic": metaphone_key(c.replace("_", " ")),
+    } for c in sorted(resource_names)]
+
+    return {
+        "lexicon_version": 1,
+        "game_version": version,
+        "source": "DT_PalNameText_Common (en), extracted from Pal-Windows.pak",
+        "notes": (
+            "Aliases are seeded by hand and grow from observed STT failures. "
+            "Matches below the confidence threshold are never silently coerced - "
+            "the card names the unrecognized token instead."
+        ),
+        "stats": {
+            "pals": len(pals),
+            "pals_in_paldeck": sum(1 for p in pals if p["in_paldeck"]),
+            "internal_ids_mapped": sum(len(p["internal_ids"]) for p in pals),
+            "resources": len(resources),
+            "dropped_placeholder_rows": len(dropped),
+            "seeded_alias_entries": sum(1 for p in pals if p["canonical"] in SEED_ALIASES),
+        },
+        "dropped_keys": sorted(dropped),
+        "pals": sorted(pals, key=lambda p: p["canonical"]),
+        "resources": resources,
+    }
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--version", default="1.0.2")
+    args = ap.parse_args()
+
+    lex = build(args.version)
+    dest = REPO / "data" / args.version / "lexicon.json"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(json.dumps(lex, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    s = lex["stats"]
+    print(f"lexicon -> {dest}")
+    print(f"  pals              {s['pals']}")
+    print(f"  resources         {s['resources']}")
+    print(f"  seeded aliases    {s['seeded_alias_entries']}")
+    print(f"  dropped rows      {s['dropped_placeholder_rows']}")
+    if lex["dropped_keys"]:
+        print(f"  dropped: {', '.join(lex['dropped_keys'][:10])}"
+              + (" ..." if len(lex["dropped_keys"]) > 10 else ""))
+
+
+if __name__ == "__main__":
+    main()

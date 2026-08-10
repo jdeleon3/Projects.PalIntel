@@ -17,7 +17,7 @@ Both stores are **local files**, versioned by game patch. No external service.
 
 ```
 data/
-  v0.6.x/                        # keyed by Palworld patch version
+  v1.0.2/                        # keyed by Palworld patch version
     pals.json                    # specs, work suitability, elements, combination rank
     breeding_exceptions.json     # special-case parent pairs
     elements.json                # elemental effectiveness matrix
@@ -28,7 +28,7 @@ data/
     base_sites.json              # curated candidate sites + prose rationale
     lexicon.json                 # canonical entity names + phonetic variants
     corpus.sqlite                # chunked prose + embeddings + source attribution
-  current -> v0.6.x/
+  current -> v1.0.2/
 ```
 
 JSON for hand-auditable reference data; SQLite where a query engine or vector index earns
@@ -62,8 +62,10 @@ confidently incorrect, the worst failure mode available here.
 
 ```python
 class ResourceType(StrEnum):
-    ORE = "ore"; COAL = "coal"; SULFUR = "sulfur"
-    QUARTZ = "quartz"; CRUDE_OIL = "crude_oil"
+    ORE = "ore"; COAL = "coal"; SULFUR = "sulfur"; QUARTZ = "quartz"
+    # CRUDE_OIL removed: extraction found no BP_PalMapObjectSpawner class for it in the
+    # overworld. Crude oil is not a placed node, so Q1 cannot answer "where is oil" the
+    # way it answers "where is coal". Revisit only if a placement source is found.
 
 class DangerRating(StrEnum):
     LOW = "low"; MODERATE = "moderate"; HIGH = "high"
