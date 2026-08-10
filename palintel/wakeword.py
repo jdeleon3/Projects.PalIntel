@@ -9,9 +9,9 @@ detail. This layer sees the waveform.
 **The model is trained, not configured.** None of openWakeWord's six pretrained models
 fire on "hey pal": measured across 60 real recordings, hey_jarvis peaked at 0.06 and
 hey_mycroft at 0.000 against a 0.5 threshold. The phrase shape is wrong - they are all
-"hey + two syllables" or a three-syllable name. `tools/wakeword/hey_pal.yaml` trains one;
-until it exists, `MODEL` can name any pretrained model so the rest of the voice path is
-testable end to end.
+"hey + two syllables" or a three-syllable name. `tools/wakeword/hey_pal.yaml` trained the
+one this loads from `data/wakeword/`; `MODEL` can still name a pretrained model, which is
+how the two were compared.
 """
 from __future__ import annotations
 
@@ -23,6 +23,10 @@ import numpy as np
 log = logging.getLogger("palintel.wakeword")
 
 MODEL = "hey_pal"
+# Where trained models land. `hey_pal` is not one of openWakeWord's pretrained names, so
+# a bare name has to be resolved here or the library raises "could not find pretrained
+# model" at startup.
+MODELS_DIR = Path(__file__).resolve().parents[1] / "data" / "wakeword"
 # Inference is CPU-only: onnxruntime here has no CUDA provider, and 4s of audio costs
 # ~51ms, a realtime factor near 0.01. It therefore never contends with the GPU, which
 # matters because the GPU is simultaneously running STT and, during development, the
@@ -63,9 +67,14 @@ class WakeWord:
         # A trained model is a path; a pretrained one is a bare name openWakeWord
         # resolves itself. Supporting both is what lets the voice path be built and
         # tested before "hey pal" finishes training, and what lets the two overlap
-        # afterwards rather than requiring a cutover.
-        specs = [str(models_dir / f"{n}.onnx") if models_dir and not n.endswith(".onnx")
-                 else n for n in names]
+        # afterwards rather than requiring a cutover. A bare name that matches a file in
+        # the models directory is ours; anything else is left for openWakeWord, so
+        # `hey_jarvis` still resolves the way it always did.
+        root = models_dir or MODELS_DIR
+        specs = []
+        for n in names:
+            local = root / f"{n}.onnx"
+            specs.append(str(local) if not n.endswith(".onnx") and local.exists() else n)
         self.model = Model(wakeword_models=specs, inference_framework="onnx")
         self.threshold = threshold
         self.names = names
