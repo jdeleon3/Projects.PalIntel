@@ -1791,6 +1791,67 @@ also appears on an ordinary row, and a test fails if a patch changes that. And t
 table's casing disagrees with the name table's (`Gorilla_ground` vs `Gorilla_Ground`),
 which silently cost five real droppers until the join was made case-insensitive.
 
+### Consolidation measured — accuracy-neutral, faster, and the cost argument was wrong
+
+[01-architecture.md](01-architecture.md) §7 note 4 named a single `answer_query` tool as
+the lever against enum duplication and said plainly that the accuracy trade was untested.
+Measured, same day, same config, Gemini 3.6 Flash, 232 prompts, all seven query classes
+registered both ways.
+
+| | per-class (7 tools) | unified (1 tool) |
+|---|---|---|
+| exact | **90.1%** (209) | 88.8% (206) |
+| **wrong entity** | **3.4%** (8) | **4.3%** (10) |
+| declined | 19.8% | 19.0% |
+| latency median | 2,299 ms | **1,819 ms** |
+| latency p95 | 7,797 ms | **5,322 ms** |
+| schema | 9,728 tok, cached | **2,014 tok**, uncached |
+| cost / request | **$0.0059** | $0.0072 |
+
+**Accuracy is indistinguishable.** Paired over the same 232 prompts: per-class wins 5,
+unified wins 2, **exact McNemar p = 0.453**. Seven discordant prompts out of 232, against
+a run-to-run noise floor of about three. All five per-class wins are unified *declining* —
+Majex twice, Dinossom Lux, Whalaska Ignis, Silvance — so what consolidation costs, if
+anything, is a little confidence on the hardest entities, not correctness. Wrong-entity
+sits at 4.3%, under the pre-registered 5% revert condition.
+
+**Latency is the real result: 21% off the median and 32% off p95.** Latency is this
+project's binding constraint — the voice budget is 2.5s and unmet — so a third off p95
+matters more than the accuracy question that motivated the experiment.
+
+**The cost argument in note 4 does not survive contact with caching, and is corrected
+there.** Consolidation is 4.8× smaller and *more* expensive per request, because the
+unified schema is **2,014 tokens against Gemini's 2,048-token cache minimum** — it misses
+cacheability by 34 tokens and therefore bills full rate on every request, while the bigger
+per-class registry bills at 0.1× after the first. The 25×-cost figure assumed uncached
+schemas throughout.
+
+That inverts only while the cache is warm. Cached content has a 2-hour TTL and the eval
+fires 236 requests back to back, which is the best case caching will ever see; a player
+asking a question every few minutes between sessions is not that. Cold, the per-class
+registry pays its full ~9.7k tokens against unified's ~2k.
+
+**Two measurement errors, both mine, both worth recording.**
+
+The first run scored 87.5% / 6.0% wrong and was **void**. Five of its six new errors were
+*"should I use Cremis against the first tower"* returning `[Cremis, Zoe & Grizzbolt]`.
+`evaluate_counter` takes `target` as a **verbatim string** precisely so the router never
+has to resolve a tower to a species; folding every entity into the Pal-enum array made the
+model's correct inference look like an invented entity. That measured the schema, not the
+router — the same mistake `_router_tools.py`'s own docstring warns about, made one level
+down. The corrected schema keeps `target` as free text.
+
+The second is smaller: the first attempt reached for nullable enums before
+`pal_spawn_schema`'s docstring reminded me they have no clean form under strict tool use.
+Slots are 0..n arrays instead, which also lets `check_breeding_pair` name two Pals against
+a single copy of the enum.
+
+**Verdict: adopt the unified shape, but it buys nothing yet.** Production registers two
+tools and ~1,418 tokens; consolidating those saves nothing today. The result that matters
+is that adding the remaining five classes no longer costs an enum copy each, and does so
+without a measurable accuracy penalty. Kept behind `unified=` with the per-class registry
+intact so the comparison stays reproducible.
+
 ### Spike — ranch production data: roster yes, item no
 
 Asked whether "ranched from" could join "drops from" on resource cards. **The roster is

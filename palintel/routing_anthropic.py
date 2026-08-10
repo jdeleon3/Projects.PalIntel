@@ -28,6 +28,7 @@ from typing import Any
 
 from .knowledge import Candidate, Lexicon
 from .routing import ROUTING_POLICY, context_block
+from .routing_unified import PRODUCTION_CLASSES, unified_schema, unpack
 from .tools import Decline, ToolCall
 
 log = logging.getLogger("palintel.routing.claude")
@@ -153,13 +154,22 @@ def pal_spawn_schema(pals: list[str]) -> dict[str, Any]:
     }
 
 
-def registry(resources: list[str], pals: list[str]) -> list[dict[str, Any]]:
+def registry(resources: list[str], pals: list[str], *,
+             unified: bool = False,
+             classes: tuple[str, ...] = PRODUCTION_CLASSES) -> list[dict[str, Any]]:
     """The tools PalIntel actually dispatches. One definition, three backends.
 
     Both hosted backends and the local grammar build from this list, so a tool cannot be
     registered with one router and not another - which would make their measurements
     incomparable while still looking like a fair test.
+
+    `unified` swaps the per-class tools for a single `answer_query` carrying one copy of
+    each enum (routing_unified). Both registries stay live so the accuracy trade can be
+    measured same-day and same-config, which is what 01-architecture.md section 7 asks
+    for and what a document number cannot supply.
     """
+    if unified:
+        return [unified_schema(resources, pals, classes)]
     return [_tool_schema(resources), pal_spawn_schema(pals)]
 
 
@@ -292,7 +302,8 @@ class ClaudeRouter:
         # keys - drop them so the dispatcher's defaults apply.
         args = {k: v for k, v in dict(tool_use.input).items() if v is not None}
         log.info("router -> %s(%s) %s", tool_use.name, args, self.last_usage)
-        return ToolCall(name=tool_use.name, args=args,
+        name, args = unpack(tool_use.name, args)
+        return ToolCall(name=name, args=args,
                         rationale=f"{self.name} chose {tool_use.name}")
 
 

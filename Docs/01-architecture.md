@@ -344,6 +344,15 @@ Notes:
    a single extra token is generated, and it is charged on every request forever. In the
    measured 40-prompt run this was ~80% of total spend; output averaged only ~140 tokens.
 
+   **Corrected 2026-08-10 — the cost half of this argument is wrong, and consolidation
+   was measured.** See the consolidation entry in [04-roadmap.md](04-roadmap.md). The
+   table below assumes uncached schemas; with Gemini context caching live the per-class
+   registry bills at 0.1x after the first request, and the consolidated tool is *more*
+   expensive per request because at 2,014 tokens it falls 34 tokens short of Gemini's
+   2,048-token cache minimum. What consolidation actually buys is latency — 21% off the
+   median, 32% off p95 — and cold-start cost, at no measurable accuracy penalty
+   (McNemar p = 0.45).
+
    The lever is enum duplication, not the model. A single `answer_query(query_class, pal,
    resource, …)` tool carries one copy of each enum (~3,500 tokens) instead of eight, at
    the cost of the per-tool descriptions that currently help the router choose. Whether

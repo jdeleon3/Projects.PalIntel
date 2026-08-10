@@ -38,7 +38,7 @@ EVAL = REPO / "data" / "stt_eval"
 
 
 def build_router(model: str, kb: KnowledgeBase, think: bool = False,
-                 thinking_level: str | None = None):
+                 thinking_level: str | None = None, unified: bool = False):
     """Construct the backend `model` names, plus its tool-name list.
 
     One place, so score_router.py and repeat_router.py cannot drift into scoring
@@ -63,8 +63,13 @@ def build_router(model: str, kb: KnowledgeBase, think: bool = False,
     # earlier run in this file's history measured.
     if model.startswith("gemini"):
         from palintel.routing_gemini import TIMEOUT_S, GeminiRouter
+        from palintel.routing_unified import CLASS_TO_TOOL
         r = GeminiRouter(kb.lexicon, locatable, model=model, extra_tools=extra,
-                         thinking_level=thinking_level, timeout_s=TIMEOUT_S)
+                         thinking_level=thinking_level, timeout_s=TIMEOUT_S,
+                         unified=unified,
+                         # All seven, so the consolidated run offers exactly the classes
+                         # the per-class run did. Fewer would measure the registry.
+                         classes=tuple(CLASS_TO_TOOL) if unified else None)
         return r, r.tool_names
     r = ClaudeRouter(kb.lexicon, locatable, model=model, extra_tools=extra,
                      timeout_s=None)
@@ -86,7 +91,13 @@ def score_one(router, row: dict, kb: KnowledgeBase, entities: set[str]) -> dict:
         # Collect entities by value, not by parameter name: the tools spell the slot
         # pal / parent_a / pal_b depending on arity, and which tool was selected is not
         # what A5 measures.
-        got = {v for v in call.args.values() if isinstance(v, str) and v in entities}
+        # By value, not by parameter name: the tools spell the slot differently, and
+        # the consolidated tool hands entities back in a list rather than a scalar - so
+        # flatten one level. A no-op for the per-class registry, whose args are scalars.
+        flat = []
+        for v in call.args.values():
+            flat.extend(v) if isinstance(v, list) else flat.append(v)
+        got = {v for v in flat if isinstance(v, str) and v in entities}
         kind = call.name
 
     # `wrong` is any entity the speaker did not say - except a variant of one they did.
@@ -128,6 +139,10 @@ def score_one(router, row: dict, kb: KnowledgeBase, entities: set[str]) -> dict:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--condition", default="quiet")
+    ap.add_argument("--unified", action="store_true",
+                    help="register one answer_query tool instead of one per class "
+                         "(01-architecture.md section 7 note 4). Re-measures A5 across "
+                         "the change rather than assuming it neutral.")
     # No default. Opus 5 used to be it, and at $1.11 per 80-prompt run an accidental
     # bare invocation is an expensive mistake - especially now that Opus is out of the
     # evaluation on cost grounds. Make the caller name the model they are paying for.
@@ -159,7 +174,8 @@ def main() -> None:
     kb = KnowledgeBase.load("1.0.2")
     entities = set(kb.lexicon.canonical_names)
     router, tool_names = build_router(args.model, kb, think=args.think,
-                                      thinking_level=args.thinking_level)
+                                      thinking_level=args.thinking_level,
+                                      unified=args.unified)
 
     # A prompt asking for an entity no registered tool can name is unanswerable by
     # construction, and the router is right to decline it. Scoring it as a miss measures
@@ -308,6 +324,8 @@ def main() -> None:
 
     # ":" is legal in a model id and illegal in a Windows filename.
     stem = f"router_{args.model.replace(':', '-')}"
+    if args.unified:
+        stem += "_unified"
     # A thinking-level run is a different configuration of the same model, so it must not
     # land on the default run's filename - that is the baseline every sweep compares to.
     if args.thinking_level:

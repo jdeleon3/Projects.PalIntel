@@ -38,6 +38,7 @@ from .knowledge import Candidate, Lexicon
 # that differs per backend; this import was the exception that proved it.
 from .routing import context_block
 from .routing_anthropic import SYSTEM
+from .routing_unified import unpack
 from .tools import Decline, ToolCall
 
 log = logging.getLogger("palintel.routing.gemini")
@@ -179,8 +180,11 @@ class GeminiRouter:
                  api_key: str | None = None, extra_tools: list[dict] | None = None,
                  model: str = MODEL, use_cache: bool = True,
                  thinking_level: str | None = None,
-                 timeout_s: float = RUNTIME_TIMEOUT_S):
+                 timeout_s: float = RUNTIME_TIMEOUT_S,
+                 unified: bool = False,
+                 classes: tuple[str, ...] | None = None):
         from .routing_anthropic import registry  # one registry, one definition
+        from .routing_unified import PRODUCTION_CLASSES
 
         key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
         if not key:
@@ -194,7 +198,14 @@ class GeminiRouter:
 
         self._resources = sorted(locatable if locatable is not None
                                  else set(lexicon.resources()))
-        tools = [*registry(self._resources, lexicon.pals()), *(extra_tools or [])]
+        if unified:
+            # One tool absorbs the extra classes too, rather than sitting beside them -
+            # otherwise the run would carry a consolidated tool AND five per-class ones,
+            # which is neither registry and measures nothing.
+            tools = registry(self._resources, lexicon.pals(), unified=True,
+                             classes=classes or PRODUCTION_CLASSES)
+        else:
+            tools = [*registry(self._resources, lexicon.pals()), *(extra_tools or [])]
         self._decls = _to_function_declarations(tools)
         self._entities = sorted(set(lexicon.canonical_names) | set(self._resources))
         self.tool_names = [t["name"] for t in tools]
@@ -370,8 +381,9 @@ class GeminiRouter:
                            known_options=self._resources)
 
         args = {k: v for k, v in (call.get("args") or {}).items() if v is not None}
-        log.info("gemini -> %s(%s) %s", call["name"], args, self.last_usage)
-        return ToolCall(name=call["name"], args=args,
+        name, args = unpack(call["name"], args)
+        log.info("gemini -> %s(%s) %s", name, args, self.last_usage)
+        return ToolCall(name=name, args=args,
                         rationale=f"{self.name} chose {call['name']}")
 
 
