@@ -1793,6 +1793,39 @@ locatable resources; widening it to all 151 droppable items for the query classe
 table's casing disagrees with the name table's (`Gorilla_ground` vs `Gorilla_Ground`),
 which silently cost five real droppers until the join was made case-insensitive.
 
+### `pal_drops` measured — free, and it found the case for consolidating
+
+The first item-drop class, measured against the same 232 prompts as the consolidation
+baseline. Same registry style, same model, one extra class.
+
+| | 2 production classes | 3 (`find_pal_drops` added) |
+|---|---|---|
+| exact | 90.1% (209) | **89.7%** (208) |
+| wrong entity | 3.4% (8) | **3.0%** (7) |
+| declined | 19.8% | 20.3% |
+| schema | 16,534 tok | 18,554 tok |
+| cost / request | $0.0059 | $0.0058 |
+
+**No detectable effect** — one prompt each way, against a noise floor of about three. The
+third Pal-enum copy costs 2,020 tokens and nothing at all in money, because it is cached.
+
+**The class works.** All nine drop prompts in the scoreable set routed to
+`find_pal_drops`, 9/9 exact, with **zero leakage** to `find_pal_spawns`. That was the
+specific risk: the two tools share a subject and differ only in what is asked about it —
+*"where do I find Vanwyrm"* against *"what does Vanwyrm drop"* — so they are the closest
+pair of descriptions in the registry. Per-tool discrimination held.
+
+**And one prompt found a structural limit the earlier comparison missed.** P151, *"what do
+I get from Astralym and Mycora"*, chose the right tool and returned only Astralym.
+`find_pal_drops(pal)` has one slot; the question names two. This is not a routing failure
+and no amount of prompt work fixes it — the schema cannot express the answer.
+
+The consolidated tool can: its `pals` array takes as many as the question names. That is a
+concrete argument for consolidation that the accuracy comparison could not surface, since
+both registries were measured on their ability to fill slots that existed. **Two-entity
+queries are a known weak class at 64%** (A5 final measurement), and one reason may be that
+some of them have nowhere to go.
+
 ### Consolidation measured — accuracy-neutral, faster, and the cost argument was wrong
 
 [01-architecture.md](01-architecture.md) §7 note 4 named a single `answer_query` tool as
