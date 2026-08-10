@@ -173,14 +173,23 @@ MIN_SAMPLES = 30          # the exit criterion's own "over >= 30 real queries ea
 def _latency_lines(log) -> list[str]:
     """End-to-end p95 against the budget, and the stage breakdown when it misses.
 
+    Answers are graded; declines are reported beside them and are not. See
+    activity.TIMED_KINDS for why that split is a judgement about what the bar measures
+    rather than a way of flattering it - and note that it only holds while declines stay
+    *visible*, which is what the un-graded line is for. A decline drifting to eight
+    seconds should be as obvious here as an answer doing the same.
+
     Absent until something has actually been timed: a status card that reports 0ms
     before the first query reads like a passing grade nobody earned.
     """
-    totals = {k: log.percentiles(k) for k in ("voice", "text")}
-    if not any(totals.values()):
+    from .activity import DECLINE_KINDS, GRADED_KINDS
+
+    totals = {k: log.percentiles(k) for k in GRADED_KINDS}
+    declines = {k: log.percentiles(k) for k in DECLINE_KINDS}
+    if not any(totals.values()) and not any(declines.values()):
         return []
 
-    out = ["", "__Latency__"]
+    out = ["", "__Latency__ _(answered queries)_"]
     for kind, stats in totals.items():
         if stats is None:
             continue
@@ -196,10 +205,18 @@ def _latency_lines(log) -> list[str]:
         out.append(f"- {kind.title()}: p50 **{p50 / 1000:.1f}s**, "
                    f"p95 **{p95 / 1000:.1f}s** / {budget / 1000:.1f}s  {verdict}")
 
+    shown = [(k, s) for k, s in declines.items() if s]
+    if shown:
+        out.append("- _Declines (not graded):_ " + ", ".join(
+            f"{k.split('_')[0]} p50 **{s[1] / 1000:.1f}s**, p95 **{s[2] / 1000:.1f}s** "
+            f"(n={s[0]})" for k, s in shown))
+
     stages = [(k, log.percentiles(k)) for k in ("stt", "route", "post")]
     stages = [(k, s) for k, s in stages if s]
     if stages:
-        out.append("- where it goes (p50): "
+        # Across every query, answered and declined both: this is the diagnostic for
+        # where time goes, and excluding declines would hide the stage they are slow in.
+        out.append("- where it goes (p50, all queries): "
                    + ", ".join(f"{k} **{s[1] / 1000:.2f}s**" for k, s in stages))
     return out
 

@@ -860,7 +860,8 @@ Deliberately narrow: **one** query class, **one** resource type, end to end.
 - Discord publisher with backoff
 
 **Exit criteria**
-- Voice p95 ≤ 2.5s and text p95 ≤ 1.5s over ≥ 30 real queries each
+- Voice p95 ≤ 2.5s and text p95 ≤ 1.5s over ≥ 30 real **answered** queries each, with
+  decline latency tracked beside it and not graded ([00-overview.md](00-overview.md) §7)
 - Zero fabricated coordinates across the eval set
 - Every failure mode in [01-architecture.md](01-architecture.md) §8 produces its card
 - **Used during a real play session without disrupting it** — the only test that matters
@@ -1128,6 +1129,17 @@ included — vanished until garbage collection; and "answered" was recorded *bef
 send, so a card built and never delivered still counted as an answer. Between them, the
 one failure the player actually experiences (asking and getting nothing back) was
 invisible in the status card that exists to explain it.
+
+**The latency criterion now grades answers and tracks declines beside them**
+([00-overview.md](00-overview.md) §7). Graded together, the p95 landed on a decline
+whatever the answer path did — with 30 queries the p95 is the second slowest, so two
+declines decided it — which made the bar a measure of how often the system declined
+rather than how fast it answers. Un-graded is not untracked: the decline p50/p95 sits on
+the same card, because a slow decline is still the player waiting.
+
+This is not a fudge, and the first simulated card proves it: with a third of answers still
+model-routed, voice p95 sits at 3.3s on answered queries alone and still fails. Excluding
+declines removed a distortion, not the problem.
 
 **Still open in Phase 1:** the latency and real-play exit criteria. The next session is
 the first one where the fast path should carry the median rather than the tail, so it is

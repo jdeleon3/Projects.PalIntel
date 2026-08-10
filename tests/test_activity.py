@@ -144,3 +144,39 @@ def test_status_card_shows_where_the_time_went():
         log.timed("route", 2100.0)
     text = status_card(log, voice="x").to_text()
     assert "stt" in text and "route" in text
+
+
+def test_declines_do_not_enter_the_graded_percentile():
+    """A slow decline must not be able to fail a bar written for answers.
+
+    This is the whole point of the split: before it, p95 landed on a decline whatever
+    the answer path did, so the bar measured the decline rate rather than answer speed.
+    """
+    log = ActivityLog()
+    for _ in range(30):
+        log.timed("voice", 1200.0)
+    for _ in range(10):
+        log.timed("voice_decline", 9000.0)
+    n, _, p95 = log.percentiles("voice")
+    assert (n, p95) == (30, 1200.0)
+    assert "✅" in status_card(log, voice="x").to_text()
+
+
+def test_declines_are_still_reported():
+    """Un-graded is not untracked - a decline drifting to 9s has to stay visible."""
+    log = ActivityLog()
+    for _ in range(30):
+        log.timed("voice", 1200.0)
+    for _ in range(10):
+        log.timed("voice_decline", 9000.0)
+    text = status_card(log, voice="x").to_text()
+    assert "not graded" in text
+    assert "9.0s" in text
+
+
+def test_latency_block_appears_for_declines_alone():
+    """A session that only ever declined still gets its latency reported."""
+    log = ActivityLog()
+    log.timed("text_decline", 3100.0)
+    text = status_card(log, voice="x").to_text()
+    assert "Latency" in text and "3.1s" in text

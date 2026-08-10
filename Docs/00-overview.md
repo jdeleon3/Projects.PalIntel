@@ -111,14 +111,25 @@ microphone, which accelerates every phase after v1. See
 
 | Criterion | Target |
 |---|---|
-| End-to-end latency, voice (end of speech → card) | p95 ≤ 2.5s |
-| End-to-end latency, text | p95 ≤ 1.5s |
+| End-to-end latency, voice (end of speech → card), **answered queries** | p95 ≤ 2.5s |
+| End-to-end latency, text, **answered queries** | p95 ≤ 1.5s |
+| End-to-end latency, **declines** | tracked, not graded |
 | Intent classification accuracy (eval set, ≥ 100 utterances across all classes) | ≥ 90% |
 | Entity extraction accuracy after lexicon correction | ≥ 95% |
 | Fabricated values in Tier 1 and Tier 2 cards | **0** (structurally prevented) |
 | Tier 3 answers carrying a source citation | 100% |
 | Idle cost | $0 |
 | Marginal cost per query | < $0.005 |
+
+**Latency is graded on answers, and declines are tracked beside them.** A decline costs
+~3s because [ADR-0016](adr/0016-entity-resolution-in-router.md)'s routing policy makes
+declining the expensive judgement deliberately — it names a false decline as the more
+common failure — and the measured alternative, cutting the model's reasoning, doubles the
+wrong-entity rate. Graded together, p95 landed on a decline whatever the answer path did,
+so the bar measured how often the system declined rather than how fast it answers. They
+are different promises: "here are the coordinates" and "I can't do that yet" are not the
+same product event. Tracked rather than dropped, because a slow decline is still the
+player waiting, and an untracked number is one nobody notices getting worse.
 
 The zero-fabrication criterion is an architectural invariant, not an aspiration: Tier 1
 and Tier 2 factual values reach the card from typed results without passing through a

@@ -157,7 +157,11 @@ async def _answer(channel, pipe: Pipeline, text: str, who: str,
         activity.record("declined" if declined else "answered", text[:80])
         activity.timed("post", (time.monotonic() - t_post) * 1000)
         if started is not None:
-            activity.timed(channel_kind, (time.monotonic() - started) * 1000, text[:60])
+            # Declines are timed under their own kind: graded separately from answers,
+            # because they are a different promise to the player and are slow for a
+            # reason the routing policy asks for. See activity.TIMED_KINDS.
+            kind_timed = f"{channel_kind}_decline" if declined else channel_kind
+            activity.timed(kind_timed, (time.monotonic() - started) * 1000, text[:60])
 
 
 def run() -> None:

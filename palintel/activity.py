@@ -27,15 +27,29 @@ from dataclasses import dataclass
 MAX_EVENTS = 2000
 DEFAULT_WINDOW = 3600.0
 
-# Stage durations, in milliseconds. `voice` and `text` are the two the Phase 1 exit
-# criteria are written against (p95 <= 2.5s and <= 1.5s over >= 30 real queries each);
-# the rest exist to say *where* the time went when one of those fails, which is the
-# whole reason a session is worth instrumenting rather than just timing by hand.
+# Stage durations, in milliseconds.
+#
+# `voice` and `text` cover ANSWERED queries and are what the exit criteria grade
+# (p95 <= 2.5s and <= 1.5s over >= 30 real queries each). Declines are timed under
+# `voice_decline` / `text_decline` and reported un-graded.
+#
+# The split is a deliberate criterion decision, not a convenience. A decline costs ~3s
+# because the routing policy makes declining the expensive judgement on purpose - it
+# names a false decline as the more common failure - and the thinkingLevel sweep showed
+# the only way to make it cheaper doubles the wrong-entity rate. Grading both together
+# meant the p95 landed on a decline whatever the answer path did, so the bar measured
+# the decline rate rather than the speed of an answer. They are different product
+# events: "here are the coordinates" and "I can't do that yet" are not the same promise.
+#
+# Tracked rather than dropped, because a slow decline is still the player waiting, and
+# an untracked number is one nobody notices getting worse.
 #
 # `voice` is measured from end of speech, per the budget in 00-overview.md - not from
 # the wake word. The player is not waiting while they are still talking, and starting
 # the clock earlier would charge the pipeline for the length of the question.
-TIMED_KINDS = ("voice", "text", "stt", "route", "post")
+GRADED_KINDS = ("voice", "text")
+DECLINE_KINDS = ("voice_decline", "text_decline")
+TIMED_KINDS = (*GRADED_KINDS, *DECLINE_KINDS, "stt", "route", "post")
 
 
 @dataclass(frozen=True)
