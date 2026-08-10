@@ -225,9 +225,15 @@ what the card's line claims:
 - **Boss variants are credited to the base species, and that is an inference.**
   `BOSS_RockBeast` is read as the alpha of `RockBeast` — derived from the naming, not
   stated by the data. `alpha_only` marks any dropper seen *only* on a variant row, so a
-  card can say "alpha" rather than implying an ordinary encounter. Currently **zero**
-  published droppers are alpha-only, so no claim depends on the inference; a test asserts
-  that, and fails loudly if a patch changes it.
+  card can say "alpha" rather than implying an ordinary encounter.
+
+  **This started load-bearing for nothing and no longer is.** Across the 18 locatable
+  resources, zero droppers were alpha-only. Widening to all 151 items put **705 of 1,990
+  claims (35%)** on the inference — and the distribution is itself the evidence it is
+  right: Ancient Civilization Parts is 290/290 alpha-only, every weapon and armour
+  schematic is a boss drop, while Flame Organ, Leather and Wool are 0%. The guard
+  therefore asserts that no alpha-only claim is *silent* rather than that none exists,
+  plus a sanity check that a common material never comes back wholly alpha-gated.
 - **Quest and NPC actors are excluded.** `_Quest`, `_Avatar` and human enemies share a
   base name with real Pals, so stripping the suffix would credit a Pal with a drop only
   its scenario version has.

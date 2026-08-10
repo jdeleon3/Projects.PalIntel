@@ -1786,8 +1786,10 @@ their base species as a **stated inference** with an `alpha_only` marker, and qu
 actors excluded.
 
 Two things measurement settled that guesswork would not have. The boss-collapse inference
-worried me most and turns out to be **load-bearing for nothing** — every published dropper
-also appears on an ordinary row, and a test fails if a patch changes that. And the drop
+worried me most and was **load-bearing for nothing** at the time — every published dropper
+also appeared on an ordinary row. That held only because the dataset covered the 18
+locatable resources; widening it to all 151 droppable items for the query classes put
+**35% of claims** on the inference. Amended where §3.8 describes it. And the drop
 table's casing disagrees with the name table's (`Gorilla_ground` vs `Gorilla_Ground`),
 which silently cost five real droppers until the join was made case-insensitive.
 

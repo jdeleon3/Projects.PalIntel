@@ -102,31 +102,56 @@ def test_no_published_dropper_has_a_zero_rate(published: dict):
     Pal on the card that never yields the item - a fabricated value in a slot the player
     would act on, which is the one thing Tier 1 must never do.
     """
-    for resource, droppers in published["drops"].items():
+    for resource, droppers in published["by_item"].items():
         for d in droppers:
             assert d["rate"] > 0, f"{resource}: {d['pal']} published at rate 0"
 
 
-def test_the_boss_collapse_is_not_load_bearing(published: dict):
+def test_every_alpha_only_claim_is_flagged(published: dict):
     """Crediting `BOSS_RockBeast` to RockBeast is an inference from the naming.
 
-    It is near-certainly right, but it is derived rather than stated by the data - so
-    what matters is whether any published claim *depends* on it. None does: every
-    dropper also appears on an ordinary row. If this fails, a patch has introduced a
-    drop that exists only on a variant, and the card's wording is carrying the weight of
-    my reading of a prefix.
+    It was load-bearing for *nothing* while the dataset covered only the 18 locatable
+    resources - zero droppers were alpha-only. Widening to all 151 items changed that:
+    **705 of 1,990 claims (35%) rest on it**, concentrated exactly where the game would
+    put them. Ancient Civilization Parts is 290/290 alpha-only; every rifle and armour
+    schematic is a boss drop; Flame Organ, Leather and Wool are 0%. That distribution is
+    evidence the inference is right, not that it stopped mattering.
+
+    So the invariant is no longer "none exist" but "none is silent": an alpha-only claim
+    must carry the flag that makes the card say `alpha`, because "Celesdir Noct drops
+    Ancient Civilization Parts" is only true of the alpha and a player reading it as an
+    ordinary encounter would farm the wrong thing.
     """
-    alpha_only = [(res, d["pal"]) for res, ds in published["drops"].items()
-                  for d in ds if d["alpha_only"]]
-    assert not alpha_only, (
-        f"{len(alpha_only)} alpha-only droppers now published: {alpha_only[:5]}. "
-        f"They render with an 'alpha' marker, which is correct - but confirm the "
-        f"variant-collapse rule still holds before trusting the rest of the dataset.")
+    flagged = 0
+    for item, droppers in published["by_item"].items():
+        for d in droppers:
+            assert isinstance(d.get("alpha_only"), bool), (
+                f"{item}: {d['pal']} has no alpha_only verdict, so the card cannot "
+                f"tell the reader which kind of encounter this drop needs")
+            flagged += d["alpha_only"]
+    assert flagged, "expected some alpha-only droppers once all items are covered"
+
+
+def test_a_common_material_is_not_alpha_gated(published: dict):
+    """A sanity check on the inference, not on the plumbing.
+
+    If ordinary Wool or Leather ever came back alpha-only, the variant collapse would be
+    crediting base species with drops only their bosses have - the failure direction that
+    matters, because it understates nothing and overstates the fight.
+    """
+    for item in ("Wool", "Leather", "Flame Organ"):
+        droppers = published["by_item"].get(item)
+        if not droppers:
+            continue
+        assert not all(d["alpha_only"] for d in droppers), (
+            f"every {item} dropper is marked alpha-only, which is not how the game "
+            f"works - check VARIANT_PREFIX in build_pal_drops.py")
 
 
 def test_the_rules_are_published_with_the_data(published: dict):
     """A derived dataset has to carry the rules that derived it."""
-    assert set(published["rules"]) >= {"rate_zero", "variant_collapse", "quest_actors"}
+    assert set(published["rules"]) >= {"rate_zero", "variant_collapse",
+                                       "scenario_actors", "placeholder_names"}
 
 
 def test_a_missing_dataset_does_not_break_the_knowledge_base(tmp_path: Path):

@@ -338,7 +338,7 @@ class KnowledgeBase:
             droppers = {res: [Dropper(pal=d["pal"], rate=d["rate"], low=d["min"],
                                       high=d["max"], alpha_only=d["alpha_only"])
                               for d in ds]
-                        for res, ds in drop_raw["drops"].items()}
+                        for res, ds in drop_raw["by_resource"].items()}
 
         ranch: dict[str, Ranch] = {}
         ranch_source = ""
