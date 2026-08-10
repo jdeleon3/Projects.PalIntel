@@ -20,6 +20,8 @@ using Newtonsoft.Json;
 //   dotnet run                 full scan
 //   dotnet run -- 200          first 200 cells (smoke test)
 //   dotnet run -- sheets       spawner sheet -> Pal species tables
+//   dotnet run -- drops        resource spawner -> the item it actually yields
+//   dotnet run -- items        item id -> English name and category
 //   dotnet run -- probe <s>    list pak paths containing <s> (asset discovery)
 //   dotnet run -- dump <path>  print one asset's exports as JSON
 //
@@ -69,6 +71,151 @@ if (mode == "dump")
     var path = args[1];
     var pkg = provider.LoadPackage(path);
     Console.WriteLine(JsonConvert.SerializeObject(pkg.GetExports(), Formatting.Indented));
+    return;
+}
+
+if (mode == "items")
+{
+    // Name and category for every item, joined here because both tables are open and
+    // neither is useful alone: the data table says Stone is a MaterialStone, the English
+    // text table says the player calls it "Stone", and the ingest needs both to decide
+    // what belongs in the resource enum and what to print on a card.
+    var data = provider.LoadPackage("Pal/Content/Pal/DataTable/Item/DT_ItemDataTable_Common");
+    var text = provider.LoadPackage("Pal/Content/L10N/en/Pal/DataTable/Text/DT_ItemNameText_Common");
+
+    var rows = Newtonsoft.Json.Linq.JObject.Parse(
+        JsonConvert.SerializeObject(data.GetExports().First()))["Rows"]
+        as Newtonsoft.Json.Linq.JObject ?? new Newtonsoft.Json.Linq.JObject();
+    var names = Newtonsoft.Json.Linq.JObject.Parse(
+        JsonConvert.SerializeObject(text.GetExports().First()))["Rows"]
+        as Newtonsoft.Json.Linq.JObject ?? new Newtonsoft.Json.Linq.JObject();
+
+    var items = new Dictionary<string, object>(StringComparer.Ordinal);
+    foreach (var row in rows)
+    {
+        var localised = names[$"ITEM_NAME_{row.Key}"]?["TextData"]?["LocalizedString"]
+                        ?.ToString();
+        // "en Text" is the game's own untranslated-row placeholder, and "None" is an
+        // empty row. Neither is a name, and letting either through would put a matchable
+        // entity called "en Text" in the lexicon.
+        if (localised is null or "None" or "en Text" or "") localised = null;
+        items[row.Key] = new
+        {
+            name = localised,
+            type_a = row.Value?["TypeA"]?.ToString()?.Split("::").Last(),
+            type_b = row.Value?["TypeB"]?.ToString()?.Split("::").Last(),
+            rank = row.Value?["Rank"]?.ToObject<int?>(),
+        };
+    }
+
+    var itemsOut = Path.Combine(outDir, "items.json");
+    File.WriteAllText(itemsOut, JsonConvert.SerializeObject(items, Formatting.None));
+    Console.WriteLine($"{items.Count:N0} items -> {itemsOut}");
+    return;
+}
+
+if (mode == "drops")
+{
+    // Which resource a BP_PalMapObjectSpawner_* yields is four hops away from the actor,
+    // and every hop is in the data:
+    //
+    //   spawner CDO  ->  MapObjectId ("DamagableRock0002")
+    //   master table ->  BlueprintClassSoft (the map object that gets mined)
+    //   map object   ->  PalMapObjectDropItemParameterComponent
+    //   component    ->  DropItems[].StaticItemId ("CopperOre")
+    //
+    // MaterialSubType on the master row is NOT the answer - it is the tool category, and
+    // it lumps coal, sulfur and quartz together as "Copper". It is carried anyway because
+    // it distinguishes what a node is mined WITH, which the drop id does not.
+    var masters = new Dictionary<string, Newtonsoft.Json.Linq.JObject>(StringComparer.Ordinal);
+    foreach (var table in new[] { "DT_MapObjectMasterDataTable_Common",
+                                  "DT_MapObjectMasterDataTable_EnemyCamp" })
+    {
+        var pkg = provider.LoadPackage($"Pal/Content/Pal/DataTable/MapObject/{table}");
+        var json = Newtonsoft.Json.Linq.JObject.Parse(
+            JsonConvert.SerializeObject(pkg.GetExports().First()));
+        foreach (var row in (Newtonsoft.Json.Linq.JObject?)json["Rows"]
+                            ?? new Newtonsoft.Json.Linq.JObject())
+            masters[row.Key] = (Newtonsoft.Json.Linq.JObject)row.Value!;
+    }
+    Console.WriteLine($"master rows: {masters.Count:N0}");
+
+    Newtonsoft.Json.Linq.JToken? DropsOf(string assetPath)
+    {
+        // "/Game/Pal/Blueprint/.../BP_X.BP_X_C" -> "Pal/Content/Pal/Blueprint/.../BP_X"
+        if (string.IsNullOrEmpty(assetPath) || assetPath == "None") return null;
+        var path = assetPath.Replace("/Game/", "Pal/Content/", StringComparison.Ordinal);
+        var dot = path.LastIndexOf('.');
+        if (dot >= 0) path = path[..dot];
+
+        // Two component classes, because a node you mine and an item you walk over are
+        // different objects in the game's model. They carry the same DropItems shape, so
+        // the distinction is only in where to look: a rock uses DropItemParameter, a log
+        // or a berry uses PickupItemParameter. Matching only the first silently dropped
+        // the two largest classes in the world (4,654 logs and 4,286 small stones).
+        var pkg = provider.LoadPackage(path);
+        foreach (var exp in pkg.GetExports())
+        {
+            var component = exp.Class?.Name.ToString();
+            if (component != "PalMapObjectDropItemParameterComponent"
+                && component != "PalMapObjectPickupItemParameterComponent")
+                continue;
+            var json = Newtonsoft.Json.Linq.JObject.Parse(JsonConvert.SerializeObject(exp));
+            var drops = json["Properties"]?["DropItems"];
+            if (drops is not null && drops.HasValues) return drops;
+        }
+        return null;
+    }
+
+    var spawnerPaths = provider.Files.Keys
+        .Where(p => p.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase)
+                    && Path.GetFileName(p).StartsWith("BP_PalMapObjectSpawner",
+                                                      StringComparison.Ordinal))
+        .OrderBy(p => p).ToList();
+    Console.WriteLine($"reading {spawnerPaths.Count:N0} map-object spawners\n");
+
+    var out_ = new List<object>();
+    int noId = 0, noMaster = 0, noDrops = 0, failed = 0;
+    foreach (var p in spawnerPaths)
+    {
+        var cls = Path.GetFileNameWithoutExtension(p) + "_C";
+        try
+        {
+            var pkg = provider.LoadPackage(p[..p.LastIndexOf('.')]);
+            var cdo = pkg.GetExports().FirstOrDefault(
+                e => e.Name.StartsWith("Default__", StringComparison.Ordinal));
+            if (cdo is null) { noId++; continue; }
+
+            var json = Newtonsoft.Json.Linq.JObject.Parse(JsonConvert.SerializeObject(cdo));
+            var objectId = json["Properties"]?["MapObjectId"]?["Key"]?.ToString();
+            if (string.IsNullOrEmpty(objectId) || objectId == "None") { noId++; continue; }
+            if (!masters.TryGetValue(objectId, out var master)) { noMaster++; continue; }
+
+            var drops = DropsOf(master["BlueprintClassSoft"]?["AssetPathName"]?.ToString() ?? "");
+            if (drops is null) noDrops++;
+
+            out_.Add(new
+            {
+                cls,
+                map_object_id = objectId,
+                material_type = master["MaterialType"]?.ToString(),
+                material_sub_type = master["MaterialSubType"]?.ToString(),
+                hp = master["Hp"]?.ToObject<int>(),
+                drops,
+            });
+        }
+        catch (Exception e) { failed++; Console.WriteLine($"  FAILED {cls}: {e.Message}"); }
+    }
+
+    Console.WriteLine($"\n  spawners resolved   : {out_.Count:N0}");
+    Console.WriteLine($"  no MapObjectId      : {noId:N0}");
+    Console.WriteLine($"  id not in master    : {noMaster:N0}");
+    Console.WriteLine($"  resolved, no drops  : {noDrops:N0}");
+    Console.WriteLine($"  failed to load      : {failed:N0}");
+
+    var dropsOut = Path.Combine(outDir, "node_drops.json");
+    File.WriteAllText(dropsOut, JsonConvert.SerializeObject(out_, Formatting.None));
+    Console.WriteLine($"\n-> {dropsOut}");
     return;
 }
 
