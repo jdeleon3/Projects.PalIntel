@@ -344,6 +344,13 @@ def recent_card(log, limit: int = 12) -> Card:
 
 
 
+# How many things to name when saying what we can answer. Four fitted comfortably; the
+# eighteen that Phase 2 derived do not, and a card that answers "I didn't catch that"
+# with a wall of nouns has stopped being an answer. The caller orders the list by how
+# much data backs each, so the truncation keeps what a player is most likely to want.
+MAX_NAMED_OPTIONS = 6
+
+
 def decline_card(decline: Decline) -> Card:
     lines = ["I didn't catch that."]
     if decline.unrecognized:
@@ -351,7 +358,10 @@ def decline_card(decline: Decline) -> Card:
         # visible half of never silently coercing a low-confidence match.
         lines.append(f"I couldn't match: **{decline.unrecognized}**")
     if decline.known_options:
-        opts = ", ".join(o.replace("_", " ") for o in decline.known_options)
-        lines.append(f"I can currently find: **{opts}**")
+        shown = decline.known_options[:MAX_NAMED_OPTIONS]
+        rest = len(decline.known_options) - len(shown)
+        opts = ", ".join(o.replace("_", " ") for o in shown)
+        more = f" _and {rest} more_" if rest > 0 else ""
+        lines.append(f"I can currently find: **{opts}**{more}")
     lines.append(f"_{decline.reason}_")
     return Card(title="Didn't understand", lines=lines, colour=TIER_DECLINE)

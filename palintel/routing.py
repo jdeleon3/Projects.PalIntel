@@ -290,8 +290,14 @@ class StubRouter:
         # Recognised and locatable are different sets. Crude oil is recognised - the
         # player can name it and deserves a real answer - but has no map locations, so
         # offering it as something we can "find" would be misleading.
+        #
+        # ORDER is preserved rather than sorted, because the caller knows which resources
+        # matter and this class does not. With four resources alphabetical was fine; with
+        # eighteen it opened every decline card with "ancient bark, ancient bone, ancient
+        # lava" - three resources of seven clusters each that nobody has ever asked for.
         self._resources = set(lexicon.resources())
-        self._locatable = locatable if locatable is not None else self._resources
+        self._locatable = list(locatable) if locatable is not None \
+            else sorted(self._resources)
         if cues not in _CUE_SETS:
             raise ValueError(f"unknown cue set {cues!r}, expected one of "
                              f"{sorted(_CUE_SETS)}")
@@ -325,7 +331,7 @@ class StubRouter:
             return Decline(
                 reason="no location intent recognised",
                 unrecognized=None,
-                known_options=sorted(self._locatable))
+                known_options=list(self._locatable))
 
         # The corrector deliberately ranks without a threshold, leaving the confidence
         # judgement to the router (ADR-0016). That assumes a router that can reason.
@@ -364,7 +370,7 @@ class StubRouter:
             return Decline(
                 reason=f"that looks like a question about {top.canonical}, "
                        f"and I can only find resources so far",
-                known_options=sorted(self._locatable))
+                known_options=list(self._locatable))
 
         resource = next((c for c in candidates
                          if c.kind == "resource" and c.canonical in self._resources
@@ -376,7 +382,7 @@ class StubRouter:
             # unknown word is usually an unrelated part of the sentence. Naming what we
             # can answer is both honest and actionable.
             return Decline(reason="no resource identified",
-                           known_options=sorted(self._locatable))
+                           known_options=list(self._locatable))
 
         args: dict[str, object] = {"resource": resource.canonical}
         if (m := _LEVEL.search(utterance)):

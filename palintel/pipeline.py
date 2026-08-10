@@ -110,7 +110,15 @@ def build_router(kb: KnowledgeBase, prefer: str = "auto",
                           StubRouter)
 
     cfg = router_config or RouterConfig()
-    locatable = {n.resource for n in kb.nodes}
+
+    # Ordered by how much of the map backs each one, because this list is what a decline
+    # card offers the player as "what I can find". Alphabetical put Ancient Bark, Ancient
+    # Bone and Ancient Lava first - seven clusters each, on Feybreak, nobody's question -
+    # and buried stone, wood and ore below them.
+    by_count: dict[str, int] = {}
+    for n in kb.nodes:
+        by_count[n.resource] = by_count.get(n.resource, 0) + 1
+    locatable = sorted(by_count, key=lambda r: (-by_count[r], r))
 
     # Two stubs, and the asymmetry is the whole point.
     #

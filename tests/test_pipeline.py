@@ -44,9 +44,15 @@ def test_no_cluster_is_implausibly_dense(kb: KnowledgeBase):
     onto world origin and produced a 171-deposit phantom "hotspot" at (-344, 271) -
     a real-looking map position with nothing there. The builder now fails closed on
     this; asserting it at load time too keeps a bad dataset from being served.
+
+    Density alone stopped being the test when the resource set widened past rock. Berries
+    grow in real thickets - the largest is 61 bushes at 61 distinct coordinates, median
+    7.8 map units out - so a bare count rejected genuine patches while calling them
+    collapsed coordinates. Collapse is density with NO spread; both have to hold.
     """
     for n in kb.nodes:
-        assert n.node_count <= 50, f"{n.node_id} has {n.node_count} deposits"
+        assert not (n.node_count > 50 and n.spread < 2.0), (
+            f"{n.node_id} has {n.node_count} deposits at spread {n.spread}")
 
 
 def test_placement_volume_children_are_resolved_not_dropped(kb: KnowledgeBase):
@@ -128,11 +134,21 @@ def test_sorts_by_size_without_position(kb: KnowledgeBase):
     assert counts == sorted(counts, reverse=True)
 
 
-def test_unpopulated_level_data_does_not_silently_empty_results(kb: KnowledgeBase):
-    """min_player_level is not yet derived; gating must not hide everything."""
+def test_ungated_nodes_survive_a_level_filter(kb: KnowledgeBase):
+    """A node with no derived level must not be hidden by gating.
+
+    `min_player_level` is derived now, but not for every node: 326 clusters have no wild
+    spawn area within the local radius and carry None. Dropping those would quietly
+    shrink the answer set for a reason the player cannot see, so they pass the filter and
+    the result reports that gating was only partial.
+    """
+    ungated = [n for n in kb.nodes if n.min_player_level is None]
+    assert ungated, "expected some nodes with no local spawn data"
+
     r = find_resource_nodes(kb, "coal", max_player_level=5, limit=3)
     assert r.nodes, "ungated nodes should still be returned"
-    assert r.level_filtered is False
+    assert r.level_filtered is True, "coal has derived levels, so gating applied"
+    assert any(n.min_player_level is None or n.min_player_level <= 5 for n in r.nodes)
 
 
 def test_limit_is_respected(kb: KnowledgeBase):
