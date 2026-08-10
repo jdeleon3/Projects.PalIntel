@@ -1271,6 +1271,144 @@ grinding out fourteen more resource queries against a build that is about to cha
 **Exit:** ≥ 90% intent accuracy across both classes; ≥ 95% entity extraction; follow-up
 resolution correct on a 20-case eval set.
 
+### Phase 2 progress — the spawn dataset, and the source that disagreed with itself (2026-08-10)
+
+**The data gate is open.** Q1's placements already carried 13,895 `pal_spawn` actors, but
+nothing anywhere said which Pal `BP_PalSpawner_Sheets_green_K_C` rolls — that lives in the
+sheet blueprint's own `SpawnGroupList`, a different asset tree the cell scan never touches.
+A second `PakExtract` mode reads all 468 of them: species, level range, weight, and
+day/night per group. **All 411 placed classes resolve**, none needed the inheritance
+fallback the extractor carries, and of 372 distinct spawn ids exactly one — a human NPC —
+fails to map to the lexicon.
+
+| | |
+|---|---|
+| Spawn areas | **19,272** across **271** Pals (19,118 normal · 123 alpha · 31 predator) |
+| No overworld spawn | 42 Pals, listed explicitly |
+| Cluster radius | 25 map units (~115 m) |
+
+**The 42 are a feature, not a shortfall.** They are the tower pairs, the raid bosses, the
+Terraria collab, the dungeon-only bats and the Sakurajima variants — `Katress Ignis`
+appears only in `dungeon_Sakurajima` sheets, `Mau` only in `dungeon_grass`. Shipping the
+list is what lets the answer be *"Jetragon does not spawn in the overworld"* rather than
+*"not found"*, which are different claims and only one of them is true. A test asserts the
+two sets partition the Paldeck, so there is no third state to fall into.
+
+**Two sources for alphas, and neither contained the other.** The sheet actors and
+`DT_BossSpawnerLoactionData` were expected to agree; checking rather than assuming found
+that the table knows 16 species the actors do not (Penking, Wixen, Blazehowl…) and the
+actors know 3 the table does not (Necromus, Broncherry Aqua, Ribbuny Botan). Where they
+overlap on 74 shared spawners they agree to a **median of 0.0 map units, p90 0.1** — which
+is what makes merging safe: at a 25-unit radius a duplicate collapses into one area and a
+genuine second location survives. Two do survive and should: Caprity Noct and Foxparks
+Cryst each have a low-level main-island alpha in the table and a separate level-50s one on
+Feybreak in the sheets, 1,400 units apart. Both transforms cancel out of that comparison,
+so what it actually validates is the actor extraction and its owner-chain composition.
+
+**PvP arena sheets are excluded, and that is a judgement rather than a cleanup.** They are
+placed 1,113 times across the whole map carrying the common early species — 83% of every
+Rushoar spawn point, 73% of every Chikipi — so leaving them in flattens the density signal
+that makes "nearest" mean anything, for exactly the Pals a new player asks about. It costs
+no coverage: **no Pal reaches the dataset through a PvP sheet alone.** Whether they are
+live during normal play is *not* established here; `--include-pvp` restores them, and it
+is a validation item, not a settled question.
+
+**Two anomalies worth naming.** The shipped game data has two entries with `Level` above
+`Level_Max` (a Pengullet typo in two snow sheets); the ingest sorts the pair and reports it
+rather than emitting a record whose minimum exceeds its own maximum. And `Mimog` holds
+10,116 spawn points because the mimic sits at weight 2–4 in 139 different sheets — density
+alone would call it the commonest Pal on the map, which is why `encounter_share` ships
+beside the point count and reports it at ~1%.
+
+**One assertion was wrong before the data was.** The first build aborted on 735 areas
+"exceeding the cluster radius". Leader clustering bounds members to the radius from the
+*seed*, but the reported coordinate is the member nearest the *centroid*, so the real
+bound is the diameter. The check now asserts what the algorithm actually guarantees.
+
+**Still to do in this phase:** none of this has been checked in-game. The resource ingest
+had ~20 nodes read off a real map before it was trusted and this has had one — the desert
+Anubis alpha, at (-134, -94), which a test now pins.
+
+### Phase 2 progress — two tools, and the imprecision the Pal guard was hiding (2026-08-10)
+
+`find_pal_spawns` is registered, dispatched and rendered. One registry serves all three
+backends (`routing_anthropic.registry`), so the tool cannot be live for one router and not
+another — which would make their measurements incomparable while still looking like a fair
+test. The A5 harness stopped injecting its own copy at the same time.
+
+**Encounter kind and time of day are read off the utterance, not asked of the model.**
+Strict tool use expresses an optional parameter as a nullable type that is still
+`required`, which has no clean form for an enum and would need validating against both
+hosted APIs; and `StubRouter` already lifts "level 30" out of the utterance with a regex,
+so deriving them in the dispatcher means the fast path and the model path agree by
+construction rather than by luck. The tool's parameter list is therefore exactly what the
+A5 runs measured. `boss` is deliberately *not* a trigger word: players call tower bosses,
+raid bosses and field alphas all "boss", and only the last is in this dataset, so matching
+it would answer "where's the Zoe boss" with a field location for a tower fight.
+
+**Re-measuring the fast path was the point of the phase, and it found something.** Scored
+over all 240 A5 transcripts at zero API cost (`tools/eval/score_fast_path.py`), with the
+second tool live:
+
+| cue set | Q1 right | Q2 right | claimed outside both classes |
+|---|---|---|---|
+| standard | 10/18 | 23/49 | 0 |
+| proximity | 12/18 | 23/49 | 0 |
+| wide | 14/18 | 23/49 | **9** |
+
+Phase 1 recorded "nothing stolen at any width" and named `wide` as the entry most likely
+to move once there was another tool to claim for. It moved, on exactly that entry: all
+nine thefts were the intent guesses — `any`, `i need`, `can i get` — firing on a Pal name.
+*"Is Pierdon any good for logging"* and *"do I need a better spear for Mereth"* became
+spawn cards. **The imprecision was always there; the Pal guard was absorbing it**, because
+a confidently-matched Pal used to decline unconditionally, and registering the tool turned
+those declines into confident answers.
+
+The fix is not to drop `wide`. Each of its entries was earned by reading a real *resource*
+query off `/palintel recent`, and none was ever justified for Pals. Gating the Pal branch
+on the narrower `proximity` set keeps `wide`'s 14/18 on Q1 and takes theft from 9 to **0**.
+Stepping back to `proximity` wholesale would have cost two Q1 answers to fix a Q2 problem.
+
+**The Pal floor needed to be higher than the resource floor, and the data said where.**
+Four resources against 313 Pals: the ranker's top candidate for a mangled Pal name is a
+much weaker signal, the same asymmetry the STT hotword work found (19/19 resource clips
+clearing the bar against 42/60 Pal ones). Swept at `proximity`:
+
+| pal floor | Q2 right | wrong | Q1 wrong |
+|---|---|---|---|
+| 0.78 | 24 | **2** | **1** |
+| **0.85** | **23** | **0** | **0** |
+| 0.90 | 17 | 0 | 0 |
+| 0.95 | 14 | 0 | 0 |
+
+`PAL_CONFIDENT = 0.85` costs exactly one Q2 answer and removes every wrong card; above it
+coverage collapses for no correctness gain. Chosen by where wrong answers begin, the same
+rule as `BACKSTOP_CONFIDENT`. The answer it costs is not lost, only slower — it goes to the
+model, which has the sentence context the ranker lacks ([ADR-0016](adr/0016-entity-resolution-in-router.md)).
+At 0.78 the stub answered *"where can I find Banner and Cryst"* with Rayhound Cryst.
+
+**A measurement error worth recording, because it flattered nothing and still mattered.**
+The first scoring run classified query class with a regex over the *transcript* — which
+scores STT's own mangling — and labelled "can I get coal at this level" as out-of-class,
+counting its correct answer as theft. That phrasing is one Phase 1 deliberately added to
+the cue list after reading it in a real session. Classification now comes from the
+generator's clean text, and the resource side needs no allowlist at all: of the 19
+resource-entity prompts, 18 ask where to get the stuff in eighteen different phrasings,
+and the one exception is the inventory query Phase 1 had already named ("do I have enough
+sulfur for this"). Enumerating the other eighteen would have been fitting the labels to
+the router.
+
+**One design tension left open.** A query naming a Pal with an element variant renders two
+cards — Chillet *and* Chillet Ignis — per the variant-family design in `pipeline.MAX_CARDS`
+and `Lexicon.same_family`. That reads as over-answering next to `ROUTING_POLICY`'s "never
+list variants, alternatives, or runners-up". The two are arguably about different actors
+(the policy stops the *model* hedging; this is a co-named entity STT cannot separate), and
+about 17% of Pals are in a two-member family, so it is not rare. Left as documented rather
+than reversed unilaterally, and worth settling in a play session.
+
+**Still not measured:** the STT hotword re-check, end-to-end latency on a two-class mix,
+and everything downstream of them. All three want a real session, not a harness.
+
 ---
 
 ## Phase 3 — Graph search and scoring: Q3 + Q5 (target: 3 weeks)
