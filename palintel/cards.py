@@ -132,7 +132,7 @@ def plain(text: str) -> str:
 
 
 def status_card(log, *, voice: str, save: str = "not configured",
-                window_label: str = "last hour") -> Card:
+                router: str = "", window_label: str = "last hour") -> Card:
     """Report what the pipeline has actually seen, stage by stage.
 
     The breakdown is the whole point. ADR-0004 flags wake-word false negatives as silent
@@ -151,6 +151,11 @@ def status_card(log, *, voice: str, save: str = "not configured",
              # "nearest" silently falls back to ranking by cluster size and still returns
              # a confident-looking coordinate.
              f"**Save:** {plain(save)}",
+             # The router's full name carries the cue width and the backstop floor, so
+             # this line answers "is the change I just made actually running" - which a
+             # long-lived process and a fast edit loop otherwise make unanswerable from
+             # the one screen the player is looking at.
+             *([f"**Router:** {plain(router)}"] if router else []),
              f"**Up:** {duration(log.uptime())}",
              "",
              f"__In the {window_label}__",

@@ -189,3 +189,14 @@ def test_model_name_survives_discord_markdown():
     log.timed("voice", 1200.0)
     text = status_card(log, voice="Microphone (Arctis) - hey_pal @ 0.1").to_text()
     assert r"hey\_pal" in text
+
+
+def test_status_card_names_the_running_router():
+    """Long-lived process, fast edit loop: "is my change actually running" has to be
+    answerable from Discord. The router name carries the cue width and backstop floor."""
+    log = ActivityLog()
+    text = status_card(log, voice="x",
+                       router="stub:wide->gemini:gemini-3.6-flash+stub:wide@0.68").to_text()
+    assert "stub:wide@0.68" in text
+    # Omitted rather than shown blank when the caller has nothing to report.
+    assert "Router:" not in status_card(log, voice="x").to_text()

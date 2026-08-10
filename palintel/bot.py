@@ -225,7 +225,8 @@ def run() -> None:
             await message.channel.send(embed=to_embed(status_card(
                 activity,
                 voice=_voice_status(cfg, listener["mic"]),
-                save=watcher.describe() if watcher else "not configured")))
+                save=watcher.describe() if watcher else "not configured",
+                router=pipe.router.name)))
             return
         if text.lower() in ("/palintel recent", "palintel recent"):
             await message.channel.send(embed=to_embed(recent_card(activity)))
