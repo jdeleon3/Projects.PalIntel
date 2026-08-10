@@ -1409,6 +1409,69 @@ than reversed unilaterally, and worth settling in a play session.
 **Still not measured:** the STT hotword re-check, end-to-end latency on a two-class mix,
 and everything downstream of them. All three want a real session, not a harness.
 
+### Phase 2 progress — all resource types, and what hand-mapping had got wrong (2026-08-10)
+
+Q1 went from 4 resources to 18, and the interesting part is that the expansion was not the
+point — deriving the mapping was, and it found a defect in shipped Phase 1 data.
+
+**`CLASS_TO_RESOURCE` was six entries chosen by reading blueprint names, and two of the
+six were wrong.** `BP_PalMapObjectSpawner_SkyIslandOre_C` yields **Soralite** and
+`_WorldTreeOre_C` yields **Paloxite**; both shipped as `ore` for the whole of Phase 1, so
+306 clusters told a player they had found ore when they had not. `_RockIron_C` would have
+been guessed as iron — it yields Pure Quartz. `_RockStone18_C` yields **Chromite**, which
+nobody would have guessed from the name at all.
+
+The mapping is now derived, and the chain is entirely in the data:
+`spawner CDO → MapObjectId → master table → map object → DropItems[].StaticItemId`. What
+counts as a locatable resource is the game's own item category rather than an opinion —
+`MaterialOre`, `MaterialStone`, `MaterialWood`, `FoodVegetable` — which admits the mined
+and gathered materials and excludes the stat lotuses, Dog Coins and Kinship Peaches. The
+derivation is shared with the lexicon build (`tools/ingest/_resources.py`), because the
+two cannot read each other's output and a resource in one and not the other is either a
+query resolving to an entity with no data or a node nobody can name. A test asserts they
+agree, with `crude_oil` as the single deliberate exception.
+
+| | before | after |
+|---|---|---|
+| Resources | 4 | **18** (+ crude oil, recognised but unplaced) |
+| Clusters | 2,696 | **10,119** |
+| Deposits | 4,635 | 28,933 |
+
+**`min_player_level` and `danger` are populated**, closing the Phase 1 known gap — the
+spawn ingest is what unblocked them. The rule is [03-data-ingestion.md](03-data-ingestion.md)
+§5's, published on the dataset as `local-wild-pal-level-v1` so an answer stays traceable
+to the rule that produced it.
+
+**One departure from the written rule, forced by the data.** §5 says
+`max_local_wild_pal_level`, and the literal maximum does not survive contact: in the level
+1–7 starting area a Mammorest spawns on a **1% roll** at level 33–35, so the max makes the
+beginner zone a level-35 region. It rated 65% of the map "high" danger with a median
+gating level of 44. Weighting each nearby area by its expected encounter rate and reading
+p90 — the hardest *common* encounter, not the rarest one — fixes it:
+
+| zone | max | p90 |
+|---|---|---|
+| starter | 35 | **7** |
+| desert alpha | 53 | 42 |
+| volcano | 56 | 56 |
+| Feybreak | 72 | 68 |
+
+The rule is **uncalibrated**: §5 asks for ~20 nodes of known difficulty read in-game, and
+that has not been done. It is checked for self-consistency and against those four
+reference zones, which is not the same thing, and it is recorded as a known gap.
+
+**A fail-closed check had to be corrected rather than satisfied.** The build aborted on
+two red-berry clusters "exceeding 50 deposits — coordinates collapsing to a point". They
+were not: 61 bushes at 61 distinct coordinates, median 7.8 map units from the centre — a
+real thicket. The threshold was calibrated on rock and the check was testing count when it
+means to test collapse. It now requires density *and* near-zero spread, which is the
+actual signature.
+
+**Eighteen resources broke a card that four had not.** A decline says "I can currently
+find: …", and alphabetically that opened with Ancient Bark, Ancient Bone and Ancient Lava
+— seven clusters each, on Feybreak, nobody's question. The list is now ordered by how much
+data backs each resource and capped at six with "and N more".
+
 ---
 
 ## Phase 3 — Graph search and scoring: Q3 + Q5 (target: 3 weeks)

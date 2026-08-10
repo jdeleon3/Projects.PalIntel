@@ -188,7 +188,7 @@ uniformly, because results are gated on them.
 Gates every Q1 result — it determines whether the system sends the player somewhere they
 will die.
 
-Proposed rule, calibrated in Phase 0:
+Proposed rule:
 
 ```
 min_player_level = ceil(max_local_wild_pal_level * 0.8)
@@ -196,13 +196,54 @@ min_player_level = ceil(max_local_wild_pal_level * 0.8)
   +5 if danger == HIGH
 ```
 
-Calibrate against ~20 nodes of known difficulty. Record the final rule **and its version**
-in the published data so an answer is traceable to the rule that produced it.
+**Implemented in Phase 2 as `local-wild-pal-level-v1`**, with two departures from the
+proposal, both recorded in `difficulty_inputs` on the published dataset:
+
+- **`local_wild_level` is a weighted 90th percentile, not the maximum.** The literal
+  maximum does not survive contact with the data. In the level 1–7 starting area a
+  Mammorest spawns on a 1% roll at level 33–35; taking the max makes the beginner zone a
+  level-35 region, and it rated 65% of every node on the map "high" danger with a median
+  gating level of 44. Each nearby spawn area is weighted by its expected encounter rate
+  (spawn points × the share of rolls producing that species), and the level is read at
+  p90 — the hardest *common* encounter, which is what sets the danger of a place. Checked
+  against four zones of known difficulty: starter 35→7, desert 53→42, volcano 56→56,
+  Feybreak 72→68.
+- **The raid-territory term is not applied.** Raid territory is not in any extracted
+  table, and a proxy would make the rule untraceable to its inputs.
+
+"Local" is 50 map units (~230 m) — spawn areas cluster at 25, so this is the Pals you meet
+walking in. Field alphas are excluded: a level 55 boss beside a starter-zone node would
+gate it at 44 and hide a place low-level players actually farm.
+
+**Still uncalibrated.** This section asks for ~20 nodes of known difficulty read in-game
+and that has not been done, so the rule is checked for self-consistency and against four
+reference zones rather than validated. Recorded as a known gap on the dataset.
 
 ### `ResourceNode.danger`
 
-From local Pal levels and proximity to hostile camps. Three buckets — resist adding
-precision the underlying data cannot support.
+From local Pal levels. Three buckets — resist adding precision the underlying data cannot
+support: `low` ≤ 20, `moderate` 21–40, `high` > 40, at the boundaries where the game's own
+progression gates sit. Proximity to hostile camps is *not* an input; camp placements have
+not been extracted.
+
+### `ResourceNode.resource`
+
+**Derived, not hand-mapped**, since Phase 2. The chain is entirely in the game data:
+
+```
+spawner CDO -> MapObjectId -> map object master table -> DropItems[].StaticItemId
+```
+
+A node with several drops is named by its largest. What counts as a locatable resource is
+the game's own item category — `MaterialOre`, `MaterialStone`, `MaterialWood`,
+`FoodVegetable` — which admits the mined and gathered materials and excludes the stat
+lotuses, Dog Coins and Kinship Peaches.
+
+This replaced a six-entry hand-written map, and **reading blueprint names had got two of
+the six wrong**: `SkyIslandOre` yields Soralite and `WorldTreeOre` yields Paloxite,
+neither of which is Ore, and both shipped as `ore` through the whole of Phase 1 — 306
+clusters telling a player they had found ore. `RockIron` would have been guessed as iron;
+it yields Pure Quartz.
 
 ### `BaseSite.flatness_score`
 
