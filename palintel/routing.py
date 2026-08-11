@@ -249,10 +249,20 @@ _DROP_CUES = re.compile(r"\b(drop|drops|dropped|yield|yields|get from|give|gives
 # because this branch decides a TIER, not just a tool. A location question answered as
 # a drop question is the wrong fact; a location question answered as a counter plan is
 # a fact request answered with advice, which ADR-0010 separates on purpose.
+#
+# **Only phrasings that put the named entity in the TARGET position.** "What's good
+# against Anubis" and "is Prixter any good against the first tower" share the cue
+# `good against` and mean opposite things - the first names the boss, the second names
+# the Pal you would bring, against a boss it never names. The stub has no way to tell
+# them apart, and measured over the A5 transcripts it claimed three of the second kind
+# and would have produced a plan for fighting Prixter.
+#
+# So `good against`, `strong against` and `use against` are OUT, despite reading like
+# the most natural counter phrasings, and the model keeps them. What is left are verbs
+# that take the boss as their object: you beat Anubis, you do not beat with Anubis.
 _COUNTER_CUES = re.compile(
     r"\b(counter|counters|beat|defeat|kill|fight|fighting|"
-    r"weak(?:ness)? (?:to|against)|strong against|"
-    r"bring (?:to|against|for)|take on|use against|good against)\b", re.I)
+    r"weak(?:ness)? (?:to|against)|take on)\b", re.I)
 
 _LOCATION_CUES = re.compile(rf"\b({_CUE_SETS[DEFAULT_CUES]})\b", re.I)
 _LEVEL = re.compile(r"\b(?:level|lvl)\s*(\d{1,2})\b", re.I)
@@ -452,36 +462,43 @@ class StubRouter:
     def _counter_call(self, utterance: str, candidates: list) -> "ToolCall | None":
         """`plan_counters` when the utterance clearly asks how to FIGHT a named Pal.
 
-        **This branch abstains far more readily than the others, and the asymmetry is
-        deliberate.** The drops branch and the location branch disagree about which
-        *fact* to return; this one disagrees about whether the player asked for a fact
-        at all. "Where can I find Anubis" and "how do I beat Anubis" resolve to the same
-        lexicon entity, so the cue carries the whole distinction between a Tier 1 card
-        and a Tier 2 one - and a fact request answered with advice is a worse failure
-        than a fact request answered with the wrong fact.
+        "Where can I find Anubis" and "how do I beat Anubis" resolve to the same lexicon
+        entity, so the cue carries the whole distinction between a Tier 1 card and a
+        Tier 2 one. Choosing wrongly does not return the wrong fact - it answers a fact
+        request with advice, which is the worse of the two failures.
 
-        So it claims only when a counter cue is present **and no location cue is**. An
-        utterance carrying both is genuinely ambiguous and goes to the model, which has
-        sentence context this does not. Abstaining costs one query's latency; claiming
-        wrongly costs the tier.
+        **When both cue families fire, that is not ambiguity to resolve - it is two
+        questions.** "Where can I find something to beat Anubis" wants a counter plan
+        *and* a location, and picking one is a coin flip on the tier. So the spawn call
+        is chained behind the counter call and both are answered. That is faster than
+        deferring to the model and it cannot be wrong about the tier, because it does
+        not choose one.
+
+        It still abstains where abstaining is right: a Pal with no boss form cannot be
+        fought as one, and deferring there rather than declining lets the model treat it
+        as the different question it probably is.
         """
         if not (self._counters and candidates):
             return None
         if not _COUNTER_CUES.search(utterance):
             return None
-        # The abstention. `self._cues` is the *wide* set on purpose - the point is to
-        # notice any hint of a location question, not to match the narrow one.
-        if self._cues.search(utterance):
-            return None
         top = candidates[0]
         if top.kind != "pal" or top.score < self._pal_floor:
             return None
-        # A Pal with no boss form cannot be fought as one. Deferring rather than
-        # declining, because the model may know it is a different question entirely.
         if top.canonical.lower() not in self._counterable:
             return None
+
+        # `self._cues` is the *wide* set on purpose: the question is whether any hint of
+        # a location question is present, not whether the narrow gate would have claimed
+        # it. Chained only when the spawn tool is actually registered - otherwise this
+        # would name a tool the dispatcher does not have.
+        also_a_location = bool(self._cues.search(utterance)) and self._pal_spawns
+        chained = (ToolCall(name="find_pal_spawns", args={"pal": top.canonical},
+                            rationale="location cue alongside a counter cue")
+                   if also_a_location else None)
         return ToolCall(name="plan_counters", args={"boss": top.canonical},
-                        rationale=f"counter cue + boss-capable pal {top}")
+                        rationale=f"counter cue + boss-capable pal {top}",
+                        then=chained)
 
     def _drops_call(self, utterance: str, candidates: list) -> "ToolCall | None":
         """`find_pal_drops` when the utterance clearly asks what a Pal yields.

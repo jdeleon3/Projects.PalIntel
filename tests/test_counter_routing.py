@@ -39,11 +39,18 @@ def test_a_location_question_is_not_claimed_as_a_counter(router):
     assert getattr(c, "name", None) == "find_pal_spawns"
 
 
-def test_both_cue_families_present_abstains_to_the_model(router):
-    """The tier is ambiguous, so the fast path declines to decide it. Abstaining costs
-    one query's latency; claiming wrongly costs the tier."""
+def test_both_cue_families_present_answers_both(router):
+    """Not ambiguity to resolve - two questions. Picking one is a coin flip on the
+    tier, so the spawn call is chained behind the counter call."""
     c = call(router, "where can I find something to beat Anubis")
-    assert getattr(c, "name", None) != "plan_counters"
+    assert c.name == "plan_counters" and c.args["boss"] == "Anubis"
+    assert c.then is not None
+    assert c.then.name == "find_pal_spawns" and c.then.args["pal"] == "Anubis"
+
+
+def test_a_pure_counter_question_chains_nothing(router):
+    """The second card is for questions that asked two things, not a default."""
+    assert call(router, "how do I beat Anubis").then is None
 
 
 def test_a_pal_with_no_boss_form_is_not_claimed(router):
@@ -62,3 +69,74 @@ def test_the_branch_is_off_by_default(kb):
 def test_a_drop_question_is_still_a_drop_question(router):
     c = call(router, "what does Chillet drop")
     assert getattr(c, "name", None) == "find_pal_drops"
+
+
+# --- chained dispatch --------------------------------------------------------
+
+from palintel.knowledge import KnowledgeBase as _KB  # noqa: E402
+from palintel.pipeline import MAX_CARDS, Outcome, Pipeline  # noqa: E402
+from palintel.tools import Decline, ToolCall  # noqa: E402
+
+
+class _FixedRouter:
+    name = "fixed"
+
+    def __init__(self, call):
+        self._call = call
+
+    def route(self, utterance, candidates, context=None):
+        return self._call
+
+
+@pytest.fixture(scope="module")
+def pipe(kb):
+    return Pipeline(kb, _FixedRouter(None))
+
+
+def _run(kb, call, who="t"):
+    return Pipeline(kb, _FixedRouter(call)).handle("where can I find Lamball", who=who)
+
+
+def test_a_chained_call_renders_both_answers(kb):
+    out = _run(kb, ToolCall("find_pal_drops", {"pal": "Lamball"},
+                            then=ToolCall("find_pal_spawns", {"pal": "Lamball"})))
+    assert len(out.cards) == 2
+    assert out.cards[0].title != out.cards[1].title
+
+
+def test_the_chain_does_not_exceed_the_card_cap(kb):
+    """Past MAX_CARDS a second answer stops being a second opinion and becomes a wall.
+    The primary wins, because it is the branch the cue led with."""
+    out = _run(kb, ToolCall("find_pal_spawns", {"pal": "Chillet"},
+                            then=ToolCall("find_pal_drops", {"pal": "Chillet"})))
+    assert len(out.cards) <= MAX_CARDS
+
+
+def test_a_declining_second_call_is_dropped_not_shown(kb):
+    """A decline card beside a good answer reads as though part of the question failed,
+    when the part worth answering was answered."""
+    out = _run(kb, ToolCall("find_pal_drops", {"pal": "Lamball"},
+                            then=ToolCall("find_pal_spawns", {})))
+    assert len(out.cards) == 1
+    assert not isinstance(out.call, Decline)
+
+
+def test_memory_records_only_the_primary_call(kb):
+    """One referent per turn. Storing both leaves "what about the alpha?" resolving
+    against whichever ran last rather than what the player led with."""
+    p = Pipeline(kb, _FixedRouter(
+        ToolCall("find_pal_drops", {"pal": "Lamball"},
+                 then=ToolCall("find_pal_spawns", {"pal": "Lamball"}))))
+    p.handle("what does Lamball drop", who="u")
+    turns = p.memory.recent("u")
+    assert [t.tool for t in turns] == ["find_pal_drops"]
+
+
+def test_the_attacker_position_is_not_claimed(router):
+    """"Is Prixter any good against the first tower" names the Pal you would BRING,
+    against a boss it never names. Measured on the A5 transcripts: this phrasing was
+    claimed three times and would have produced a plan for fighting Prixter."""
+    for text in ("is Prixter any good against the first tower",
+                 "is Anubis any good against the first tower",
+                 "is Anubis strong against the tower boss"):
+        assert getattr(call(router, text), "name", None) != "plan_counters", text

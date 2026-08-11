@@ -16,6 +16,15 @@ class ToolCall:
     args: dict[str, Any] = field(default_factory=dict)
     # Why the router chose this. Surfaced in logs and `/palintel status`, never on cards.
     rationale: str = ""
+    # A second call to answer alongside this one, for questions with two right answers
+    # in two different tools. "Where can I find something to beat Anubis" is a location
+    # question and a counter question at once, and picking one is a coin flip on which
+    # TIER the player gets - so both are answered instead.
+    #
+    # Optional and defaulted, so every router that cannot produce one is unaffected:
+    # only the deterministic fast path sets it, because only it can see that two cue
+    # families fired. A model that wants two answers should be asked twice.
+    then: "ToolCall | None" = None
 
 
 @dataclass(frozen=True)

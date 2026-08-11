@@ -233,8 +233,54 @@ class Pipeline:
         if isinstance(call, Decline):
             return self._decline(call, candidates)
 
-        # 3. Dispatch. Player state is injected here, never parsed from the utterance -
-        #    "nearest" must resolve against where the player actually is.
+        # 3. Dispatch, once or twice. A chained call answers a question that is genuinely
+        #    two questions - "where can I find something to beat Anubis" is a location
+        #    question and a counter question, and choosing one gambles the TIER rather
+        #    than the fact.
+        outcome = self._dispatch(call, utterance, state, who, candidates)
+        if call.then is None or isinstance(outcome.call, Decline):
+            return outcome
+
+        second = self._dispatch(call.then, utterance, state, who, candidates,
+                                remember=False)
+        return self._merge(outcome, second)
+
+    def _merge(self, primary: Outcome, secondary: Outcome) -> Outcome:
+        """Two answers on one message, or the primary alone.
+
+        The secondary is dropped rather than shown whenever it did not answer: a
+        decline card sitting beside a good answer reads as though part of the question
+        failed, when in fact the part worth answering was answered. The cap is honoured
+        too - past MAX_CARDS the extra answer stops being a second opinion and becomes
+        a wall - and the primary wins, because it is the branch the cue actually led with.
+        """
+        if isinstance(secondary.call, Decline) or not secondary.cards:
+            return primary
+        if len(primary.cards) + len(secondary.cards) > MAX_CARDS:
+            return primary
+
+        draws = [o.illustrate for o in (primary, secondary) if o.illustrate is not None]
+
+        def draw_all() -> None:
+            for one in draws:
+                one()
+
+        return Outcome(primary.cards + secondary.cards, primary.call,
+                       primary.candidates,
+                       illustrate=draw_all if draws else None)
+
+    def _dispatch(self, call: ToolCall, utterance: str, state: PlayerState,
+                  who: str, candidates: list[Candidate],
+                  remember: bool = True) -> Outcome:
+        """Run one tool. Player state is injected here, never parsed from the utterance -
+        "nearest" must resolve against where the player actually is.
+
+        `remember` is off for a chained second call. Conversation memory holds one
+        referent per turn, so storing both would make "what about the alpha?" ambiguous
+        in exactly the way [ADR-0013](../Docs/adr/0013-conversation-memory.md) exists to
+        prevent - the follow-up would resolve against whichever call happened to be
+        stored last rather than against the question the player led with.
+        """
         if call.name == "find_resource_nodes":
             args = dict(call.args)
             # The model can name a registered tool and still omit a required argument -
@@ -257,7 +303,8 @@ class Pipeline:
             log.info("find_resource_nodes(%s) -> %d/%d",
                      args, len(result.nodes), result.total_available)
             self._remember(who, call, {"resource": result.resource},
-                           f"{len(result.nodes)} of {result.total_available} clusters")
+                           f"{len(result.nodes)} of {result.total_available} clusters",
+                           enabled=remember)
             card = cards.resource_card(result)
             draw = (self.artwork.illustrate_resource(card, result)
                     if self.artwork is not None else None)
@@ -301,7 +348,7 @@ class Pipeline:
             # as though the speaker had named both would let "what about the alpha" pick
             # the wrong one of the two.
             self._remember(who, call, {"pal": pal},
-                           f"{kind or 'normal'} spawns")
+                           f"{kind or 'normal'} spawns", enabled=remember)
             built = self._cards_for(self.kb.lexicon.family(pal), render)
 
             def draw_all() -> None:
@@ -335,7 +382,7 @@ class Pipeline:
             named = call.args.get("pals") or []
             subjects = named if len(named) > 1 else self.kb.lexicon.family(pal)
 
-            self._remember(who, call, {"pal": pal}, "drops")
+            self._remember(who, call, {"pal": pal}, "drops", enabled=remember)
             return Outcome(self._cards_for(subjects, render_drops), call, candidates)
 
         if call.name == "find_item_source":
@@ -345,7 +392,8 @@ class Pipeline:
                 return self._decline(Decline(reason="no item identified"), candidates)
             result = execution.find_item_source(self.kb, item)
             log.info("find_item_source(%s) -> %d sources", item, result.total)
-            self._remember(who, call, {"item": item}, f"{result.total} sources")
+            self._remember(who, call, {"item": item}, f"{result.total} sources",
+                           enabled=remember)
             return Outcome([cards.item_source_card(result)], call, candidates)
 
         # A tool the router knows about but the dispatcher does not is a wiring bug.
@@ -353,14 +401,20 @@ class Pipeline:
         raise RuntimeError(f"router produced unregistered tool: {call.name!r}")
 
     def _remember(self, who: str, call: ToolCall, entities: dict[str, str],
-                  summary: str) -> None:
+                  summary: str, enabled: bool = True) -> None:
         """Record an ANSWERED turn. Declines are deliberately not stored.
 
         A decline resolved nothing, so it has no referent to offer a follow-up - and
         storing its best-guess candidate would manufacture one, which is precisely the
         failure ADR-0013 warns about. After a decline, "what about the alpha" correctly
         reaches back past it to the last real answer, or asks for restatement.
+
+        `enabled` is False for the second half of a chained call. Memory holds one
+        referent per turn, so storing both would leave "what about the alpha?" resolving
+        against whichever ran last rather than against what the player led with.
         """
+        if not enabled:
+            return
         self.memory.remember(Turn(who=who, tool=call.name, entities=entities,
                                   summary=summary))
 
