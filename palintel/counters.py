@@ -99,11 +99,31 @@ def load(version: str = "1.0.2") -> tuple[dict, dict, dict]:
     # Character ids win on collision - they are unique by construction, while a display
     # name can repeat across tiers of the same fight.
     by_boss: dict[str, dict] = {}
+    by_cid = {b["character_id"]: b for b in bosses["entries"]}
     for b in bosses["entries"]:
         if b.get("name"):
             by_boss.setdefault(b["name"].lower(), b)
     for b in bosses["entries"]:
         by_boss[b["character_id"].lower()] = b
+
+    # The eight tower leaders, LAST and unconditionally, so they win over anything above.
+    # They cannot collide with a Pal name - no species is called Victor - but the order
+    # matters for a reason worth stating: each one points at a **character id**, not at
+    # the Pal's display name. Going through the name would resolve "Victor" to
+    # `BOSS_BlackGriffon`, the field alpha, because the display-name index above takes
+    # the first entry in (kind, character_id) order and `alpha` sorts before `tower`.
+    # That is the same creature and a completely different fight.
+    for lead in bosses.get("leaders", []):
+        row = by_cid.get(lead["character_id"])
+        if row is None:
+            continue
+        by_boss[lead["leader"].lower()] = row
+        # And the game's own name for the fight, "Victor & Shadowbeak". That string is a
+        # Pal in the lexicon - `pal_names_flat.json` lists it under PAL_NAME_SnowBoss -
+        # so it is in the routers' Pal enum and a model can pick it. Without this key it
+        # would resolve to nothing and decline, which is the one answer it should never
+        # give for the most explicit way of naming a tower there is.
+        by_boss[lead["display"].lower()] = row
     return elements["matrix"], typing, by_boss
 
 
@@ -156,6 +176,19 @@ class CounterResult:
     candidates: list[Matchup]
     owned_considered: int
     counter_elements: tuple[str, ...]   # what WOULD work, owned or not
+    # The human who owns this tower, when it is one of the eight. None for every raid
+    # boss, every field alpha, and for Astralym's tower, which has no leader in the text
+    # table. Carried so the card can name the fight the way the player does - a player
+    # who asked about Victor should not be answered about Shadowbeak alone.
+    leader: str | None = None
+    # True when reaching this row from the leader went through the derived display name.
+    # Separate from `name_derived`, which is about the Pal's name - though today they
+    # coincide, because that derived name is exactly the step this describes.
+    leader_derived: bool = False
+    # True when BOTH tables name this pair. False means only `pal_names_flat.json` has
+    # it, which today is Zenara & Astralym alone. Carried because a single-sourced fact
+    # is a weaker claim than a double-sourced one and the card is where that shows.
+    leader_corroborated: bool = True
     # False when the roster was never read. "You own nothing that works" and "I have not
     # looked at what you own" are different answers, and collapsing them would publish a
     # confident claim about a set nobody inspected.
@@ -190,7 +223,13 @@ def plan(boss_id: str, owned: frozenset[str] | None, limit: int = 5,
         raise CounterError(f"not a known boss: {boss_id!r}")
     elements = tuple(boss["elements"])
     if not elements:
-        raise CounterError(f"{boss_id} has no element; it cannot be countered by type")
+        # Named the way the player named it, not by whatever key they happened to use.
+        # `plan("zenara")` reporting "zenara has no element" reads as nonsense - Zenara
+        # is a person - when the fact is about Astralym, the Pal she fights with.
+        what = boss.get("name") or boss["character_id"]
+        if boss.get("leader"):
+            what = f"{boss['leader']}'s tower boss {what}"
+        raise CounterError(f"{what} has no element; it cannot be countered by type")
     candidates = candidate_set(boss_id, owned, version) if owned is not None else []
     considered = sum(1 for c in (owned or ())
                      if c in typing and not c.startswith(BOSS_PREFIXES))
@@ -205,6 +244,9 @@ def plan(boss_id: str, owned: frozenset[str] | None, limit: int = 5,
         owned_considered=considered,
         counter_elements=counter_elements(elements, matrix),
         roster_known=owned is not None,
+        leader=boss.get("leader"),
+        leader_derived=bool(boss.get("leader_derived")),
+        leader_corroborated=bool(boss.get("leader_corroborated", True)),
     )
 
 

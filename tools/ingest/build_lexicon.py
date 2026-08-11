@@ -21,6 +21,7 @@ import re
 import sys
 from pathlib import Path
 
+import _leaders
 from _resources import UNPLACED_RESOURCES, derive
 
 REPO = Path(__file__).resolve().parents[2]
@@ -240,6 +241,41 @@ def build(version: str) -> dict:
             "phonetic": metaphone_key(name),
         })
 
+    # The nine tower leaders, as a THIRD entity kind rather than as aliases of the Pals
+    # they fight with. Aliasing was the shorter route and it destroys the thing the
+    # feature is for: "Victor" would collapse to "Shadowbeak" during ranking, and by the
+    # time the counter branch saw it there would be no way to tell the tower fight from
+    # the field alpha of the same species - which is a different creature at a different
+    # level. `Candidate.kind` already carries "pal" and "resource"; a third value is
+    # inert everywhere that checks for those two and visible where it is asked for.
+    #
+    # Note the pairs are ALREADY in `pals` above, as "Victor & Shadowbeak" - that is a
+    # PAL_NAME_ row and this function does not filter it out. The leader entry is what
+    # makes the human half addressable on its own, which is how players actually speak.
+    #
+    # No seeded manglings. Every alias in this file above was harvested from a recording
+    # of this speaker; none of these names has ever been recorded, and inventing what
+    # STT might do to "Bjorn" would put a guess in the same list as nine measured facts.
+    # They grow from observed failures like everything else here.
+    #
+    # `safe_aliases`' four-character floor is deliberately NOT applied. It exists to stop
+    # short homophone guesses ("or" for "ore") matching half the corpus, and "Zoe" is not
+    # a guess - it is the game's spelling of a proper noun. Measured before adding:
+    # across the 271 A5 transcripts the highest score any of them reaches against an
+    # unrelated fragment is 0.667 ("one" -> zoe, "wally" -> lily, "magics" -> marcus),
+    # well under both MIN_CONFIDENT (0.78) and PAL_CONFIDENT (0.85). None of them can
+    # claim a query on that corpus.
+    leaders = [{
+        "canonical": lead.leader,
+        # Which tower Pal this human fights alongside. Carried for readability and for
+        # the boss join to be checkable by eye; the authoritative link to a character id
+        # is made in build_bosses.py, which is where the derivation is declared.
+        "pal": lead.pal,
+        "region": lead.region,
+        "aliases": sorted(set(variants(lead.leader))),
+        "phonetic": metaphone_key(lead.leader),
+    } for lead in _leaders.parse(RAW)]
+
     _, display = derive()
     resource_names = {**display, **UNPLACED_RESOURCES}
     resources = [{
@@ -261,17 +297,29 @@ def build(version: str) -> dict:
             "Matches below the confidence threshold are never silently coerced - "
             "the card names the unrecognized token instead."
         ),
+        "leaders_note": (
+            "The nine tower leaders. STATED by pal_names_flat.json, whose PAL_NAME_"
+            "<Region>Boss rows read 'Victor & Shadowbeak' in one string, and "
+            "independently confirmed by DT_UniqueNPCText's BOSSNAME_DEMO_<REGION>_"
+            "LEADER / _LEADER_PAL pairs; the two agree on all eight they share and "
+            "build_bosses.py fails if they stop. A THIRD entity kind, not aliases of "
+            "the Pals they fight with: collapsing Victor into Shadowbeak during ranking "
+            "would lose the difference between the tower fight and the field alpha of "
+            "the same species. See tools/ingest/_leaders.py."
+        ),
         "stats": {
             "pals": len(pals),
             "pals_in_paldeck": sum(1 for p in pals if p["in_paldeck"]),
             "internal_ids_mapped": sum(len(p["internal_ids"]) for p in pals),
             "resources": len(resources),
+            "leaders": len(leaders),
             "dropped_placeholder_rows": len(dropped),
             "seeded_alias_entries": sum(1 for p in pals if p["canonical"] in SEED_ALIASES),
         },
         "dropped_keys": sorted(dropped),
         "pals": sorted(pals, key=lambda p: p["canonical"]),
         "resources": resources,
+        "leaders": sorted(leaders, key=lambda l: l["canonical"]),
     }
 
 
@@ -289,6 +337,9 @@ def main() -> None:
     print(f"lexicon -> {dest}")
     print(f"  pals              {s['pals']}")
     print(f"  resources         {s['resources']}")
+    print(f"  tower leaders     {s['leaders']}"
+          + (f"  ({', '.join(l['canonical'] + ' & ' + l['pal'] for l in lex['leaders'])})"
+             if lex["leaders"] else "  - DT_UniqueNPCText not extracted"))
     print(f"  seeded aliases    {s['seeded_alias_entries']}")
     print(f"  dropped rows      {s['dropped_placeholder_rows']}")
     if lex["dropped_keys"]:
