@@ -17,7 +17,7 @@ number was arrived at.
 | 1 — Q1 resource lookup | **Closed 2026-08-10.** Latency accepted at measured behaviour, carried forward |
 | 2 — Q2 Pal spawns + memory | **Closed 2026-08-10** |
 | Card artwork + drops | **Shipped.** [ADR-0017](Docs/adr/0017-card-artwork-from-game-assets.md) Accepted |
-| 3 — Q3 breeding + Q5 counters | **Started 2026-08-11, order swapped.** Q5 is building; **Q3 is blocked** — the ADR-0008 gate needs in-game breeding, which is not unlocked yet |
+| 3 — Q3 breeding + Q5 counters | **Order swapped 2026-08-11. Q5 built end to end, unplayed.** Data, candidate set, Tier 2 guard, card, fast path and model path all land; nothing has answered a counter question in real play. **Q3 is blocked** — the ADR-0008 gate needs in-game breeding, not yet unlocked |
 | 4 — Q6 tech + Q4 base siting + Q7 corpus | Not started |
 
 ## What answers a question today
@@ -28,9 +28,10 @@ number was arrived at.
 | Pal location | *"where can I find Chillet"* | + map crop, + icon, + "Ranch:" |
 | Pal drops | *"what does Vanwyrm drop"* | split ordinary / alpha-only / level-banded |
 | Item source | *"who drops Flame Organ"* | 151 items, enum-only (not in the lexicon) |
+| Boss counters | *"how do I beat Anubis"* | **Tier 2 — computed advice, amber card.** Filtered to Pals you own when the roster has been read; says so plainly when it has not |
 
 Voice in via the local microphone, text in via the channel, cards out to Discord.
-One consolidated `answer_query` tool routes all four.
+One consolidated `answer_query` tool routes all five.
 
 ---
 
@@ -88,8 +89,20 @@ markers on each card were walked too, outside the base, with deposits standing t
    play test.
 2. ~~Dungeon spike~~ — **done.** The link exists, but the feature shrank on contact with
    play; see the backlog.
-3. **Phase 3** — Q3 breeding and Q5 counters, **and now the next thing to actually do.**
-   Gated on A3, which is de-risked but unbuilt.
+3. ~~Phase 3 groundwork~~ — **Q5 is built end to end** (2026-08-11): element matrix, boss
+   dataset, owned roster, candidate set, Tier 2 guard, counter card, fast path with
+   chained dispatch, and the model path. Q3 is blocked on the ADR-0008 gate, which needs
+   breeding unlocked in game.
+4. **Play Q5, with capture on.** Nothing has answered a counter question in real play,
+   and the 58 new aliases were measured on the same recordings that produced them — real
+   play is the independent check for both. Set `[capture] enabled` and `feedback` true;
+   clips and a log land in `data/sessions/<timestamp>/`, and the three buttons under each
+   card are what promotes a label past `auto`. Press them in the same session, since the
+   view does not survive a restart.
+5. **Then write the analysis half.** Rephrase-pair detection and failure-run grouping are
+   designed and unbuilt, and `harvest_aliases.py` still reads `data/stt_eval/` rather than
+   `data/sessions/`. Deliberately in this order: capture is the irreversible part, and the
+   analysis can be written any time against clips already collected.
 
 ## Decisions waiting on you
 
@@ -136,8 +149,13 @@ markers on each card were walked too, outside the base, with deposits standing t
   Candidate fix — **a Pal-kind near-miss below the floor should defer rather than
   claim** — but note the 2026-08-11 branch batch says the wider problem is entity
   resolution at 68% accuracy, so tightening this guard treats one symptom of it.
-- **Capture gameplay audio as a self-labelling testbed** — designed 2026-08-11, not
-  built. The eval corpus is prompts read aloud from a list, and **read speech is
+- **Capture gameplay audio as a self-labelling testbed** — **capture and feedback built
+  2026-08-11, both off by default; the analysis half is not.** `[capture] enabled` keeps
+  the clip and a log line, `[capture] feedback` puts three labelling buttons under each
+  card. **Still unbuilt:** rephrase-pair detection, failure-run grouping, and any path
+  from `data/sessions/` into `harvest_aliases.py`, which still reads `data/stt_eval/`
+  only. So a session collects well and does not yet feed back. The design below is kept
+  because it is what the analysis half has to implement. The eval corpus is prompts read aloud from a list, and **read speech is
   hyperarticulated**: the 68% entity accuracy may therefore be *optimistic*, and every
   alias harvested so far comes from the clearest speech this speaker produces. Real play
   is the only source of natural phrasing, game audio bleed, and the truncated utterances
