@@ -136,6 +136,53 @@ markers on each card were walked too, outside the base, with deposits standing t
   Candidate fix — **a Pal-kind near-miss below the floor should defer rather than
   claim** — but note the 2026-08-11 branch batch says the wider problem is entity
   resolution at 68% accuracy, so tightening this guard treats one symptom of it.
+- **Capture gameplay audio as a self-labelling testbed** — designed 2026-08-11, not
+  built. The eval corpus is prompts read aloud from a list, and **read speech is
+  hyperarticulated**: the 68% entity accuracy may therefore be *optimistic*, and every
+  alias harvested so far comes from the clearest speech this speaker produces. Real play
+  is the only source of natural phrasing, game audio bleed, and the truncated utterances
+  already seen twice.
+
+  *Cost is nil.* `bot.py` already writes a scratch WAV per utterance because
+  faster-whisper reads a file, then deletes it — capturing means **not deleting**. No
+  extra write, no added latency, already off the audio thread. 16 kHz mono 16-bit is
+  32 KB/s, so a heavy session is ~10 MB. **Keep the audio, not only the transcript**: a
+  transcript is re-derivable from audio and audio is not re-derivable from a transcript,
+  and every experiment run on 2026-08-11 re-transcribed.
+
+  *Labelling, which is the hard part, mostly costs nothing:*
+  - The router's own choice is a free provisional label on every clip — recorded as
+    `label: "auto"`, meaning *the system believes this*, never *this is true*.
+  - **A rephrase is a free negative label.** A failed query followed within ~60s by a
+    similar one that succeeds gives `(bad audio → correct entity)` — exactly an alias
+    candidate, with no interaction at all.
+  - A **failure run** — several similar attempts, none answered — must emit
+    `expected: null` rather than guess. It is worth *more* than a single miss, being
+    several pronunciations of one hard name, and one label should cover the group.
+    Count the group once so a stubborn query cannot skew the corpus.
+  - Human correction via **Discord message components (buttons)**, not reactions: buttons
+    ride in the same `send()` payload at zero extra API calls, where six reactions are six
+    REST calls and would have to be deferred like `art_post`. Pre-populate only on
+    *marginal* cards — declines, near-floor matches, model-path answers the fast path
+    abstained on — so the ~80% that are fine stay clean. Card density is already an open
+    decision below; this belongs to it.
+  - **Intent labels are a correction, not a primary label.** The router already logs the
+    class it chose; what is unknown is when that was wrong.
+  - **The Discord message id is the join key.** It makes feedback retroactive and precise
+    — `/palintel wrong` could only mean "the last utterance", which breaks the moment two
+    more questions follow — and it survives the `art_post` edit, since editing does not
+    change a snowflake.
+
+  *Two config flags, both default off*, because capture and feedback are separable
+  features and STATUS already records the lesson: "`maps` and `icons` are one flag pair
+  but two features."
+
+  *Guard against the loop:* labels derived from the router's behaviour are
+  self-confirming, so a consistent bug would be quietly ratified by the corpus it
+  produces. The human-correction channel is what breaks that, and organic data must carry
+  `source: "gameplay"` so it stays measurable apart from the scripted set. Nothing should
+  be promoted into `prompts.json` without a human pass — the scripted corpus's whole value
+  is that its expectations are known-correct.
 - **Harvest STT manglings into lexicon aliases** — the measured next move, and **not** a
   threshold change. The 2026-08-11 branch batch's spoken misses are mostly the lexicon
   finding the right Pal *first* and the router refusing it just under the 0.85 floor:
