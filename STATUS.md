@@ -115,6 +115,29 @@ markers on each card were walked too, outside the base, with deposits standing t
 
 ## Backlog
 
+- **Pal search by attribute** — *"give me an electric Pal that is level 60"*. **The first
+  genuinely new query class since the roadmap was written**, and a gap in the class
+  inventory rather than a bug: every shipped class takes a NAMED entity and returns facts
+  about it, while this one describes an entity and asks which Pals match. Q1-Q7 are all
+  "I know what I want, tell me about it" and never "tell me what I want."
+
+  Verified declining on 2026-08-11, both phrasings. Worth noting how narrowly: on *"what
+  electric pals are around level 60"* the top candidate was **Rayhound at 0.71**, matched
+  off "electric pals" and nothing to do with the question. The 0.85 floor is the only
+  thing that stopped a confident *"where can I find Rayhound"*.
+
+  **Cheap now in a way it was not a week ago.** `elements.json` carries typing for 739
+  Pals and `pal_spawns.json` carries level ranges per area, so this is a filter over two
+  tables - Tier 1, selecting rows rather than generating anything - reusing the counter
+  card's element machinery almost directly.
+
+  **The phrasing rule, from the player rather than inferred:** *"that is level 60"* means
+  the PAL's level; *"at level 60"* means the PLAYER's. Two different answers, two
+  different slots - `max_player_level` already exists for the second and the first needs
+  a new one. **Where it does not extend:** *"where can I find Anubis at level 60"* is
+  genuinely ambiguous between a spawn-level filter and a player-level one, and the rule
+  above does not settle it. Measure the preposition rule before trusting it; a derived
+  rule is a claim, and this one is derived from two examples.
 - **Find dungeons near me** — spiked, viable, and **thinner than it looked**. The 18
   permanent "Sealed Realm" arenas are already marked on the in-game map; the 13 random
   sites hold a dungeon only ~67% of the time. Does not recover the lost cave coal.
