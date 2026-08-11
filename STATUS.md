@@ -126,18 +126,22 @@ markers on each card were walked too, outside the base, with deposits standing t
   `ToolCall` and these are two different tools, so it needs multi-call dispatch rather
   than a cue change. That case abstains to the model today — correct, but it costs a
   model round trip on exactly the phrasings a fast path would most like to claim.
-- **The drop fast path's second-entity guard depends on STT** — deferred 2026-08-11, not
-  resolved. `routing.py:457` defers a two-Pal drop question to the model only when the
-  *second* Pal clears the lexicon floor, so when speech damages that name the guard does
-  not fire and the fast path answers a two-answer question from its single slot. Observed:
-  typed *"Astralym and Mycora"* → model, 1.7s; spoken *"Astralym in Makora"* → **0.1s
-  fast**, twice. The mechanism is confirmed in the code; **what was never checked is
-  whether those runs produced one card or two**, and one card is the whole finding. Cheap
-  to settle — ask it once with the second name mangled and count the cards. Do that before
-  proposing a threshold change, since the fix shape ("a Pal-kind near-miss below floor
-  defers rather than claims") is a guess until the card count exists.
-- **STT accuracy on this speaker's actual speech** — the largest untouched lever. Play on
-  2026-08-11 produced `Vanworm`, `man worm`, `Makora`, `Pantlion`, `Disneyland Ball Drop`
+- **The drop fast path's second-entity guard depends on STT** — **measured 2026-08-11, no
+  longer a hypothesis.** `routing.py:457` defers a two-Pal drop question to the model only
+  when the *second* Pal clears the lexicon floor, so when speech damages that name the
+  guard does not fire and the fast path answers a two-answer question from its single
+  slot. Reproduced on a recorded transcript: *"what do I get from Astralym and Micora"*
+  → `find_pal_drops`, single slot, from a prompt written to provoke it. The earlier
+  entry asked for a card count before proposing a fix; that evidence now exists.
+  Candidate fix — **a Pal-kind near-miss below the floor should defer rather than
+  claim** — but note the 2026-08-11 branch batch says the wider problem is entity
+  resolution at 68% accuracy, so tightening this guard treats one symptom of it.
+- **STT accuracy on this speaker's actual speech** — the largest untouched lever, and
+  **now the measured blocker on Q5 rather than a suspicion**. The 2026-08-11 branch batch
+  scores entity accuracy at **68.0% against a 95% bar**, and 6 of its 8 spoken failures
+  are a destroyed Pal name with the cue arriving perfectly intact. Tuning routing further
+  is work aimed at the wrong layer. Play the same day produced
+  `Vanworm`, `man worm`, `Makora`, `Pantlion`, `Disneyland Ball Drop`
   (Lamball) and `Wooddrop Spones`, and the damage is not only cosmetic: it decides the
   routing path, it is correlated with the worst latencies (the two most mangled
   transcripts were the two slowest, 3.7s and 4.3s), and a *slightly* wrong token is worse

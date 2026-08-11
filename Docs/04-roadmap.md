@@ -2273,6 +2273,72 @@ assumption about a data shape, and none of them was visible without running it.
 
 ---
 
+## The branch batch — the cues survive speech, the names do not (2026-08-11)
+
+31 prompts recorded for `counters` and `item_source`, the two classes no transcript
+covered. Every prompt in the 240-transcript set predates both, so scoring counters over
+them claimed nothing and changed nothing - a perfect score that proved only the branch
+does no harm. This is the first measurement of whether it *works*.
+
+**Scored twice, against the written prompt and against the transcript**, because that
+split separates two failures that are otherwise indistinguishable from outside.
+
+| | hit | deferred to the model, as designed | miss |
+|---|---|---|---|
+| written | 16 | 15 | **0** |
+| spoken | 9 | 14 | **8** |
+
+### The result is that routing is fine and entity resolution is not
+
+Six of the eight spoken misses are a destroyed **name**, not a destroyed cue:
+`Vanwyrm` → "fan worm", `Orserk` → "Ozurk", `Jetragon` → "Jit Dragon", `Mycora` → "my
+Kora", `Lamball` → "Landball", `Necromus` → "Necromis". In every one the counter cue
+arrived intact - *beats*, *defeat*, *counter* - and the query declined anyway because the
+Pal could not be resolved. Only two failed on the cue: *"counters"* → "count is" and
+*"weak to"* → "Week 2".
+
+**So the branch design is not the bottleneck and tuning it further would be work aimed at
+the wrong thing.** The same run scores entity accuracy at **68.0% against a 95% bar -
+FAIL**, which is the STT backlog item, and these classes are simply the first to be
+measured while standing on it. A counter question needs its Pal name at least as much as
+a location question does, and it now has a measurement saying so.
+
+### The second-entity guard defect, reproduced under measurement
+
+*"What do I get from Astralym and Micora?"* routed to `find_pal_drops`. "Micora" failed
+to rank, so the guard at `routing.py:457` never fired, and a two-answer question was
+claimed into a single slot. Backlogged on 2026-08-11 as *"the mechanism is confirmed in
+the code; whether those runs produced one card or two was never checked"* - it is now
+measured rather than inferred, on a transcript, from a prompt written to provoke exactly
+this.
+
+### Two smaller things the run found
+
+**`\bbeat\b` does not match "beats".** The branch missed *"what beats Vanwyrm"* - a
+plainer counter question than several it did claim - and on *"where's the nearest Pal
+that beats Frostallion"* it answered the location half and silently dropped the counter.
+Found by the written pass, fixed, and re-checked against the 480 older cases at 0 claimed
+and 0 changed, so widening the cue cost nothing.
+
+**"Paldium fragment" spuriously matches Paladius.** The item/Pal collision
+[ADR-0016](adr/0016-entity-resolution-in-router.md) accepted knowingly, appearing in the
+wild for the first time.
+
+### A note on the scorer, because it was wrong before the router was
+
+The first run reported 17 misses of 31 and only one was real. Eleven were `item_source`
+prompts, which the fast path cannot claim by design; three were counter phrasings
+deliberately left to the model an hour earlier because they put the named Pal in the
+attacker position; one was a two-Pal drops question that defers by the guard. Scoring
+those as fast-path misses measured the wrong thing.
+
+Prompts now carry `expect_path`, and *"deferred to the model"* is a distinct outcome from
+both *hit* and *miss*. Worth recording as its own lesson: **an evaluation harness can be
+confidently wrong in exactly the way the system it measures can**, and a 55% failure rate
+that turns out to be 3% is the same class of error as a card that looks reasonable.
+
+---
+
 ## Phase 3 — Graph search and scoring: Q3 + Q5 (target: 3 weeks)
 
 Pairs the hardest Tier 1 class with the cleanest Tier 2 class.
