@@ -237,6 +237,15 @@ _CUE_SETS = {
             r"|place|farm|mine|can i get|is there",
 }
 DEFAULT_CUES = "wide"
+# "What does X drop" is as templated as "where can I find X", and the fast path not
+# claiming it is why the latency bar fails: p95 is the 95th percentile, so the 2.5s budget
+# needs under 5% of queries reaching the model, and every unclaimed class puts the tail
+# there by construction.
+#
+# Deliberately narrow, and deliberately disjoint from the location cues - none of these
+# words appears in _CUE_SETS, so the two branches cannot fight over one utterance.
+_DROP_CUES = re.compile(r"\b(drop|drops|dropped|yield|yields|get from|give|gives)\b", re.I)
+
 _LOCATION_CUES = re.compile(rf"\b({_CUE_SETS[DEFAULT_CUES]})\b", re.I)
 _LEVEL = re.compile(r"\b(?:level|lvl)\s*(\d{1,2})\b", re.I)
 _LEVEL_WORDS = {
@@ -350,7 +359,8 @@ class StubRouter:
 
     def __init__(self, lexicon: Lexicon, locatable: set[str] | None = None,
                  cues: str = DEFAULT_CUES, resource_floor: float = MIN_CONFIDENT,
-                 pal_spawns: bool = True, pal_floor: float = PAL_CONFIDENT):
+                 pal_spawns: bool = True, pal_floor: float = PAL_CONFIDENT,
+                 pal_drops: bool = True):
         """`resource_floor` is how well a resource must match to be answered on.
 
         Separate from the Pal guard, which stays at MIN_CONFIDENT, because one constant
@@ -377,6 +387,10 @@ class StubRouter:
         # eighteen it opened every decline card with "ancient bark, ancient bone, ancient
         # lava" - three resources of seven clusters each that nobody has ever asked for.
         self._resources = set(lexicon.resources())
+        # Kept whole, not just its resource names: the drops branch has to ask whether a
+        # second confident candidate is a different Pal or the same one's variant, and
+        # "Incineram Noct" ranks "Incineram" beside it at an identical score.
+        self._lexicon = lexicon
         self._locatable = list(locatable) if locatable is not None \
             else sorted(self._resources)
         if cues not in _CUE_SETS:
@@ -395,6 +409,7 @@ class StubRouter:
         self._pal_cues = re.compile(rf"\b({_CUE_SETS[pal_cues]})\b", re.I)
         self._floor = resource_floor
         self._pal_spawns = pal_spawns
+        self._pal_drops = pal_drops
         self._pal_floor = pal_floor
         # Width, floor and registered classes are all in the name so they reach
         # `/palintel status` and every routing log line. A fast path that quietly widened,
@@ -418,6 +433,33 @@ class StubRouter:
             if c.kind == "pal" and self._pal_spawns and c.score >= self._pal_floor:
                 return "find_pal_spawns", "pal", c.canonical
         return None
+
+    def _drops_call(self, utterance: str, candidates: list) -> "ToolCall | None":
+        """`find_pal_drops` when the utterance clearly asks what a Pal yields.
+
+        Gated the same way the spawn branch is - a confident Pal plus a cue - because the
+        fast path preempts the model and anything it claims wrongly is a wrong card the
+        model never got to prevent.
+
+        The second-entity guard defers to the model when the utterance names two
+        DIFFERENT Pals, since this tool has one slot and "what do I get from Astralym and
+        Mycora" is two answers. A variant of the same Pal is not a second entity:
+        "Incineram Noct" ranks Incineram alongside it at the same score, and the
+        dispatcher renders the family anyway.
+        """
+        if not (self._pal_drops and candidates):
+            return None
+        top = candidates[0]
+        if top.kind != "pal" or top.score < self._pal_floor:
+            return None
+        if not _DROP_CUES.search(utterance):
+            return None
+        second = candidates[1] if len(candidates) > 1 else None
+        if (second and second.kind == "pal" and second.score >= self._pal_floor
+                and not self._lexicon.same_family(top.canonical, second.canonical)):
+            return None
+        return ToolCall(name="find_pal_drops", args={"pal": top.canonical},
+                        rationale=f"drop cue + pal candidate {top}")
 
     def _names_an_entity(self, candidates: list[Candidate]) -> bool:
         return self._subject(candidates) is not None
@@ -492,6 +534,14 @@ class StubRouter:
             # It names something but there is no verb and no history - "and coal?" out of
             # nowhere. Not a restatement problem; fall through to the ordinary path.
 
+        # Drops are checked BEFORE the location gate below, because a drop question has
+        # no location cue by construction - "what does Vanwyrm drop" contains none of
+        # `where|nearest|find|...`, so the gate declined it before this branch could see
+        # it. Measured: the branch claimed exactly nothing until it moved up here.
+        drops = self._drops_call(utterance, candidates)
+        if drops is not None:
+            return drops
+
         if not self._cues.search(utterance):
             # Name what we *can* answer here too. The other two branches always did, and
             # the difference only became visible once this decline could reach a player
@@ -510,6 +560,7 @@ class StubRouter:
         # backstop does. A permissive backstop should answer weaker RESOURCE matches, not
         # become quicker to call something a Pal question and give up.
         top = candidates[0] if candidates else None
+
         if top is not None and top.kind == "pal" and top.score >= MIN_CONFIDENT:
             # A confidently-matched Pal means the query is about a Pal. Through Phase 1
             # that was the end of it - no Pal tool existed, so the honest move was to say

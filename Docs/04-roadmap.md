@@ -1791,6 +1791,64 @@ locatable resources; widening it to all 151 droppable items for the query classe
 table's casing disagrees with the name table's (`Gorilla_ground` vs `Gorilla_Ground`),
 which silently cost five real droppers until the join was made case-insensitive.
 
+### Play session findings, and the two changes they forced
+
+The session that graded latency also produced judgements a harness cannot, and two of them
+changed shipped behaviour.
+
+**The node data is now validated at a scale it never was.** 2-3 nodes checked per mineable
+type, ~15-20 in total, **all accurate**. A4 was fitted on 11 boss landmarks and validated
+on 7, and until now **no resource node had ever been stood on**. The one apparent miss was
+the dungeon-filter bug, not the transform.
+
+**Accepted as they are:** maps read as useful in play, and the lag was fine despite the
+p95 failure - which is worth recording as a tension between the bar and the product rather
+than resolving one against the other. The "Also drops from" and "Ranch:" lines earn their
+space.
+
+**Pal locations were hit or miss, and the ordering was why.** Asked for Cattiva from
+(-342, -250), sorting by distance returned a **1-point** area 191 units away and never
+mentioned the **60-point** one - technically nearest, and a place you can stand and see
+nothing.
+
+Raw spawn count is not the fix either. Two of Cattiva's biggest areas carry a **3%**
+encounter share, so 27 spawners mostly roll something else - exactly what `encounter_share`
+exists to warn about. Points times share is expected encounters, which is the question
+being asked, so ordering is now **density, then distance**.
+
+That also removed an inconsistency nobody had noticed: the no-position branch already
+ranked by density, so "best" silently meant two different things depending on whether the
+save could be read.
+
+**`pal_drops` moved to the fast path**, measured offline against all 240 transcripts
+because the stub is deterministic and the check therefore costs nothing:
+
+| | |
+|---|---|
+| newly claimed | 8 |
+| exactly right | **7** |
+| taken from another branch | **0** |
+| wrong entity | **0** |
+
+The eighth is *"what do I get from Sigmyth and Pufflot"*, answered about Puffolt alone.
+Sekhmet is absent from the candidate list entirely - a corrector recall failure - and
+**the model declined that prompt in both registries**, so the fast path gives half an
+answer where the model gave none, under a card titled "Puffolt drops" that does not claim
+otherwise.
+
+Two bugs found while building it, both invisible from the outside. The branch claimed
+**nothing at all** until it moved above the location-cue gate: a drop question contains
+none of `where|nearest|find|...` by construction, so the gate declined it first. And the
+second-entity guard, which defers two-Pal questions to the model, had to become
+family-aware - "Incineram Noct" ranks Incineram beside it at an identical score, and
+treating that as two entities would have deferred every variant query for no reason.
+
+**This does not fix the latency bar on its own, and the arithmetic says so.** p95 needs
+under 5% of queries reaching the model. Drops were roughly 10-15% of a realistic mix, so
+this moves the tail substantially - but `item_source` cannot be fast-pathed while items
+stay out of the lexicon, and fast-path phrasing misses remain. Expect improvement, not a
+pass.
+
 ### The latency criterion, finally measured — and it is a coverage problem
 
 Carried forward through the Phase 1 and Phase 2 exits as "accepted at measured behaviour"

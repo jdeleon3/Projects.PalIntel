@@ -38,10 +38,33 @@ def test_returns_only_the_requested_pal(kb: KnowledgeBase):
     assert r.areas and all(a.pal == "Chillet" for a in r.areas)
 
 
-def test_sorts_by_distance_when_position_known(kb: KnowledgeBase):
+def test_ranks_by_likelihood_first_even_when_position_is_known(kb: KnowledgeBase):
+    """Distance decides ties, not the answer. Changed after real play.
+
+    Sorting by distance alone returned a 1-point Cattiva area 191 units away and never
+    mentioned the 60-point one - technically the nearest, and a place you can stand and
+    see nothing. Position now breaks ties between spots of equal expected yield rather
+    than defining which spot is best, which also makes the ranking mean the same thing
+    whether or not the save could be read.
+    """
     r = find_pal_spawns(kb, "Chillet", near=(0.0, 0.0), limit=5)
-    d = [a.distance_to(0.0, 0.0) for a in r.areas]
-    assert d == sorted(d)
+    density = [a.density for a in r.areas]
+    assert density == sorted(density, reverse=True)
+
+
+def test_distance_breaks_ties_between_equal_spots(kb: KnowledgeBase):
+    """Among areas of the same expected yield, the near one still comes first."""
+    from palintel.knowledge import SpawnArea
+
+    def area(area_id, x, points, share):
+        return SpawnArea(area_id=area_id, pal="T", kind="normal", map_x=x, map_y=0.0,
+                         spawn_points=points, spread=0.0, level_min=1, level_max=1,
+                         night_only=False, encounter_share=share)
+
+    kb2 = KnowledgeBase(game_version="t", lexicon=kb.lexicon,
+                        spawns=[area("far", 500.0, 10, 0.5), area("near", 10.0, 10, 0.5)])
+    r = find_pal_spawns(kb2, "T", near=(0.0, 0.0), limit=2)
+    assert [a.area_id for a in r.areas] == ["near", "far"]
 
 
 def test_sorts_by_likelihood_not_raw_points(kb: KnowledgeBase):

@@ -267,3 +267,70 @@ def test_the_line_names_each_pal_once(kb: KnowledgeBase):
                  and not chunk.startswith(" (")]
         pals = [n for i, n in enumerate(named) if i % 2 == 0][1:]
         assert len(pals) == len(set(pals)), f"{resource}: repeated Pal in {line}"
+
+
+# ------------------------------------------------------------------- the fast path
+
+def test_the_stub_answers_a_plain_drop_question(kb: KnowledgeBase):
+    """The latency bar needs under 5% of queries reaching the model, so every shipped
+    class needs a deterministic path. "What does X drop" is as templated as "where can I
+    find X"."""
+    from palintel.routing import StubRouter
+    from palintel.tools import ToolCall
+
+    stub = StubRouter(kb.lexicon, {n.resource for n in kb.nodes}, cues="wide")
+    text = "hey pal what does Vanwyrms drop"
+    call = stub.route(text, kb.lexicon.rank(text))
+    assert isinstance(call, ToolCall)
+    assert (call.name, call.args) == ("find_pal_drops", {"pal": "Vanwyrm"})
+
+
+def test_the_drop_branch_runs_before_the_location_gate(kb: KnowledgeBase):
+    """A drop question has no location cue by construction.
+
+    The branch claimed exactly nothing until it moved above that gate - `where|nearest|
+    find|...` matches none of "what does Vanwyrm drop", so the decline fired first.
+    """
+    from palintel.routing import _CUE_SETS, _DROP_CUES
+    import re
+
+    text = "what does Vanwyrm drop"
+    assert _DROP_CUES.search(text)
+    for name, pattern in _CUE_SETS.items():
+        assert not re.search(rf"\b({pattern})\b", text, re.I), (
+            f"the {name} location cues now overlap drop phrasing; the two branches "
+            f"would fight over the same utterance")
+
+
+def test_two_different_pals_go_to_the_model(kb: KnowledgeBase):
+    """One slot, two answers. Deferring is right; answering half of it silently is not."""
+    from palintel.routing import StubRouter
+    from palintel.tools import Decline
+
+    stub = StubRouter(kb.lexicon, {n.resource for n in kb.nodes}, cues="wide")
+    text = "what do I get from Astralym and Mycora"
+    assert isinstance(stub.route(text, kb.lexicon.rank(text)), Decline)
+
+
+def test_a_variant_is_not_a_second_pal(kb: KnowledgeBase):
+    """"Incineram Noct" ranks Incineram beside it at the same score.
+
+    Treating that as two entities would defer every variant query to the model for no
+    reason - the dispatcher renders the family anyway.
+    """
+    from palintel.routing import StubRouter
+    from palintel.tools import ToolCall
+
+    stub = StubRouter(kb.lexicon, {n.resource for n in kb.nodes}, cues="wide")
+    text = "what does Incineroom Noct drop"
+    call = stub.route(text, kb.lexicon.rank(text))
+    assert isinstance(call, ToolCall) and call.name == "find_pal_drops"
+
+
+def test_the_stub_still_declines_a_drop_question_with_no_pal(kb: KnowledgeBase):
+    from palintel.routing import StubRouter
+    from palintel.tools import Decline
+
+    stub = StubRouter(kb.lexicon, {n.resource for n in kb.nodes}, cues="wide")
+    text = "what drops flame organs"
+    assert isinstance(stub.route(text, kb.lexicon.rank(text)), Decline)

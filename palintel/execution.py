@@ -135,13 +135,23 @@ def find_pal_spawns(
 
     total = len(matches)
 
+    # Density first, distance second - and knowing where the player is changes the
+    # tiebreak, not the definition of a good spot.
+    #
+    # Sorting by distance alone shipped through Phase 2 and was wrong in play. Asked for
+    # Cattiva it returned a 1-point area 191 units away and never mentioned the 60-point
+    # one; the reported nearest spots were places you could stand and see nothing. Raw
+    # spawn count is not the fix either: two of Cattiva's biggest areas carry a 3%
+    # encounter share, so 27 spawners mostly roll something else - the exact thing
+    # `encounter_share` exists to warn about. Points times share is expected encounters,
+    # which is the question being asked.
+    #
+    # This also removes an inconsistency worth naming: the no-position branch already
+    # ranked by density, so "best" silently meant two different things depending on
+    # whether the save could be read.
     if near is not None:
-        matches.sort(key=lambda a: a.distance_to(*near))
+        matches.sort(key=lambda a: (-a.density, a.distance_to(*near), a.area_id))
     else:
-        # Without a reference point, the best spot is where you are most likely to meet
-        # one: points times the chance each rolls this species. Sorting by raw point
-        # count instead would rank Mimog's 139 sheets of 2%-weight filler above a
-        # dedicated spawner, which is exactly backwards.
         matches.sort(key=lambda a: (-a.density, a.area_id))
 
     return SpawnResult(
