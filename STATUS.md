@@ -55,12 +55,19 @@ at all.
 | Gap | Why it is stuck |
 |---|---|
 | ~~`art_post` p95~~ | **Measured**: 531ms p50, 1,157ms p95 over 70 attachments. Edit-in delivery holds. |
-| **Do markers land on the actual rock?** | The transform was validated to ±3 map units against 7 landmarks, **none of them a node or spawn area**. |
-| **Does `item_source` work?** | All 240 eval recordings predate the class. No API spend measures it. |
+| ~~**Do markers land on the actual rock?**~~ | **Closed 2026-08-11.** Ore, stone, wood, paldium walked against the regenerated table — nearest *and* further markers on each card, inside and outside the base — plus quartz at (-53,-960) and (-52,12), ~551 and ~573 units out on different bearings. Near-field and far-field, five resources, separate clusters. |
+| **Does `item_source` work?** | All 240 eval recordings predate the class. Ten queries were *asked* on 2026-08-11 and all routed to the model as designed — but **only Chillet's card was read back**, so routing is confirmed and correctness is not. |
 | ~~The Phase 1 latency criterion~~ | **Measured 2026-08-10 and FAILED**: voice p95 4.2s / 2.5s, text 2.0s / 1.5s. Not a tuning problem — p95 sits in the model population whenever a shipped class has no fast path. See the roadmap. |
 
-All four are in [`Docs/play-session-protocol.md`](Docs/play-session-protocol.md).
-**That session is the single biggest unblocker in the project.**
+All four are in [`Docs/play-session-protocol.md`](Docs/play-session-protocol.md); three
+were closed by the 2026-08-10 and 2026-08-11 sessions. **`item_source` is the last, and
+what it needs now is reading, not asking** — the cards from block 6 either name the right
+Pals or they do not, and nobody has looked.
+
+One note on how the walk was done: the four nearest nodes sit inside a base whose Pals keep
+them mined out, so some were confirmed by position rather than by a deposit being present —
+a property of this base's placement, not something the project models against. The further
+markers on each card were walked too, outside the base, with deposits standing there.
 
 ### Known-uncalibrated
 
@@ -72,13 +79,17 @@ All four are in [`Docs/play-session-protocol.md`](Docs/play-session-protocol.md)
 
 ## Next
 
-1. **Play session.** The only outstanding *phase* criterion, plus three unmeasured
-   artwork/drop items and seven judgement calls. One session closes all of it — but only
-   if block 9 (32 typed queries) is run, because the criterion needs 30 answered of each
-   kind and every previous session was voice-only.
+1. ~~Play session~~ — **the parts that needed playing are done.** The 2026-08-10 session
+   graded latency (87 answered, 30 of each kind) and measured `art_post`; the 2026-08-11
+   [§Short run](Docs/play-session-protocol.md#short-run--the-30-minute-version) closed the
+   marker walk and exercised the drop classes. What is left is **reading cards already in
+   the channel** — the six `item_source` answers, and block 7 on the artwork. Scrollback,
+   not a session. The seven judgement calls are editorial and can wait for Phase 3's first
+   play test.
 2. ~~Dungeon spike~~ — **done.** The link exists, but the feature shrank on contact with
    play; see the backlog.
-3. **Phase 3** — Q3 breeding and Q5 counters, the next real capability.
+3. **Phase 3** — Q3 breeding and Q5 counters, **and now the next thing to actually do.**
+   Gated on A3, which is de-risked but unbuilt.
 
 ## Decisions waiting on you
 
@@ -94,6 +105,27 @@ All four are in [`Docs/play-session-protocol.md`](Docs/play-session-protocol.md)
 - **Find dungeons near me** — spiked, viable, and **thinner than it looked**. The 18
   permanent "Sealed Realm" arenas are already marked on the in-game map; the 13 random
   sites hold a dungeon only ~67% of the time. Does not recover the lost cave coal.
+- **The drop fast path's second-entity guard depends on STT** — deferred 2026-08-11, not
+  resolved. `routing.py:457` defers a two-Pal drop question to the model only when the
+  *second* Pal clears the lexicon floor, so when speech damages that name the guard does
+  not fire and the fast path answers a two-answer question from its single slot. Observed:
+  typed *"Astralym and Mycora"* → model, 1.7s; spoken *"Astralym in Makora"* → **0.1s
+  fast**, twice. The mechanism is confirmed in the code; **what was never checked is
+  whether those runs produced one card or two**, and one card is the whole finding. Cheap
+  to settle — ask it once with the second name mangled and count the cards. Do that before
+  proposing a threshold change, since the fix shape ("a Pal-kind near-miss below floor
+  defers rather than claims") is a guess until the card count exists.
+- **STT accuracy on this speaker's actual speech** — the largest untouched lever. Play on
+  2026-08-11 produced `Vanworm`, `man worm`, `Makora`, `Pantlion`, `Disneyland Ball Drop`
+  (Lamball) and `Wooddrop Spones`, and the damage is not only cosmetic: it decides the
+  routing path, it is correlated with the worst latencies (the two most mangled
+  transcripts were the two slowest, 3.7s and 4.3s), and a *slightly* wrong token is worse
+  than a badly wrong one — the fast path claims it instead of deferring. Unexplored
+  options, cheapest first: hotword/`initial_prompt` biasing beyond the five hoisted
+  resources, a larger Whisper model now that STT is local and free
+  ([ADR-0015](Docs/adr/0015-local-gpu-stt.md) removed the per-second billing that argued
+  against it), and speaker-specific tuning. **Measure against the 236 recorded utterances
+  before and after** — this is exactly the kind of change that feels better and is not.
 - **Discord voice receive** — upstream-blocked on DAVE; party members cannot ask by voice
 - **Authoritative ranch source** — currently the only community-sourced dataset in the
   project ([ADR-0014](Docs/adr/0014-game-files-as-source.md) amendment)

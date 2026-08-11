@@ -1,18 +1,20 @@
 # Play session protocol
 
 *Revised 2026-08-10 for card artwork, the drop classes and the overworld-only node fix.
-The Phase 2 blocks below are unchanged and still need running; blocks 6-8 and the ground
-truth are new.*
+Amended 2026-08-11: the 2026-08-10 session closed the latency criterion and `art_post`,
+so **the full script below is no longer the default** — see [§Short run](#short-run--the-30-minute-version)
+first. The full blocks are kept because they are what a re-grade would need.*
 
 A scripted session, because several things are open that only real play can close: the
-end-to-end latency criterion (unmeasured across three phases), the datasets' correctness
-against an actual map, and design calls a harness cannot judge.
+datasets' correctness against an actual map, and design calls a harness cannot judge.
 
-**Three of them cannot be closed any other way, and two have been open all along:**
+**What is left that cannot be closed any other way** — two of the original four were
+closed on 2026-08-10 and are struck through:
 
 | Open question | Why no amount of offline work settles it |
 |---|---|
-| `art_post` p95 | The Discord upload round trip. Every render number is local. |
+| ~~`art_post` p95~~ | **Closed**: 531ms p50, 1,157ms p95 over 70 attachments. |
+| ~~The latency criterion~~ | **Closed**: 87 answered queries, 30 of each kind, graded and failed. Not a sampling problem — see the roadmap. |
 | Do markers land on the actual rock? | The transform was validated to ±3 map units against 7 landmarks, none of them a node or spawn area. |
 | Does `item_source` work? | All 240 eval recordings predate the class, so no run measures it. Verified by hand only. |
 
@@ -20,6 +22,87 @@ against an actual map, and design calls a harness cannot judge.
 reading verbatim transcripts of queries nobody would have thought to write down. Run the
 script, then keep playing and ask whatever you actually want — `/palintel recent` is what
 makes the unscripted half diagnosable.
+
+---
+
+## Short run — the 30-minute version
+
+**Run this one unless you are deliberately re-grading latency.** The 2026-08-10 session
+answered 87 queries and cleared 30 of each kind, so blocks 1-3, 5, 8 and 9 have all been
+exercised and the latency criterion is measured. It failed, but the roadmap's arithmetic
+says that is a **coverage requirement, not a thin sample**: p95 needs under 5% of queries
+reaching the model, and `item_source` cannot be fast-pathed while items stay out of the
+lexicon. Running block 9 again reproduces a number that is already written down.
+
+Do [§Before you start](#before-you-start) as written — the `voice.speaker` and
+`maps+icons` checks still gate everything below.
+
+### S1 — Block 6, standing at spawn (10 spoken)
+
+Say queries **42-51** exactly as written in [§Block 6](#block-6--drops-both-directions-10).
+Ask them from the save position so S2's cards are already in the channel before you move.
+
+This is still the only test `item_source` has anywhere. The watch-fors in block 6 are
+unchanged and are the point of the exercise: 46-51 name **ordinary English words** that
+are in the tool enum but deliberately not in the lexicon.
+
+### S2 — `/palintel recent`, immediately after (no queries)
+
+`pal_drops` gained a fast path **after** the session that measured latency, so it has never
+been seen in speech.
+
+| Look for | Meaning |
+|---|---|
+| 42-45 at `~0.1s fast` | The drop fast path fires on real STT output, not just transcripts |
+| 42-45 at seconds | The cue-word gate or the lexicon match is missing what speech actually produces |
+| 46-51 at seconds | **Expected.** `item_source` stays on the model by design |
+
+### ~~S3 — the ground-truth walk~~ — **done 2026-08-11, and it passed**
+
+Kept as the record of what was walked, not as work outstanding.
+
+| Asked | Card said | |
+|---|---|---|
+| where can I find ore | (227, -481), 1 deposit, lvl 6+ | ✅ |
+| where's the nearest stone | (224, -483), 31 deposits | ✅ |
+| where can I find wood | (237, -484), 18 deposits | ✅ |
+| where's the nearest paldium | (228, -490), 9 deposits | ✅ |
+| show me quartz near my base | (-53, -960) | ✅ **~551 units out** |
+| " | (-52, 12) | ✅ **~573 units, different bearing** |
+
+The further markers on each of the four near cards were walked as well, so this is
+multiple clusters per resource rather than one point each. **The transform and the
+clustering are now verified rather than assumed** — near-field and far-field, five
+resources, deposits physically present outside the base.
+
+Two caveats survive: the four *nearest* nodes sit inside a base whose Pals keep them mined
+out, so those were confirmed by position rather than by a deposit being there (a fact about
+this base's placement, not something the project models against); and **nothing here stood
+on a Tree-region node**, so that transform is still MainMap-fitted and unvalidated.
+
+### S4 — Block 7, read off the cards you now have (no queries)
+
+Run [§Block 7](#block-7--the-pictures-no-new-queries) against S1 and S3's cards. **The one
+that decides the feature** is unchanged: text first, picture a moment later — responsive,
+or jank?
+
+### S5 — Block 4 (2 spoken)
+
+Queries **40-41**. Cheap, and worth keeping now rather than later: Phase 3 makes breeding
+verbs live, so "how about breeding Anubis" stops being a pure trap and starts being a
+question the system will soon answer for real. Knowing how it behaves *before* that lands
+is the useful baseline.
+
+### Afterwards
+
+`/palintel status` and `/palintel recent`, per [§Afterwards](#afterwards) — but the graded
+p50/p95 is **not** the output of this run and a short sample cannot grade it. What this run
+produces is: did the markers land, did `item_source` answer, did the drop fast path fire,
+and does the artwork read as responsive.
+
+The seven [§Judgements](#judgements-only-you-can-make) are deliberately **not** in the
+short run. They are editorial, they block nothing, and they get better material once Phase
+3 cards exist to judge alongside.
 
 ---
 
