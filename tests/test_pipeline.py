@@ -58,7 +58,7 @@ def test_no_cluster_is_implausibly_dense(kb: KnowledgeBase):
 
 
 def test_only_overworld_coal_is_published(kb: KnowledgeBase):
-    """326 of the 998 extracted coal spawners are overworld; the rest are cave coal.
+    """497 of the 998 extracted coal spawners are overworld; the rest are cave coal.
 
     This test used to assert 998 - every extracted spawner - on the reasoning that a
     stopgap origin filter had once cost 152 real deposits, so none should be dropped.
@@ -67,13 +67,16 @@ def test_only_overworld_coal_is_published(kb: KnowledgeBase):
     coordinates are not overworld positions at all. Published, they put coal markers in
     open water. See tests/test_node_scope.py.
 
-    The placement-volume finding that motivated the old assertion needs the same
-    correction: all 633 owner-chain resolutions were in dungeon cells, and **zero**
-    overworld placements needed one. Composing those parent transforms made the
-    coordinates internally consistent without making them positions on the map.
+    The number moved twice. It was 998 - every extracted spawner - until 672 turned out
+    to be in `L15_X0_Y0`, the cell holding dungeon contents. Then that filter proved too
+    blunt: 633 actors in that cell carry an Owner, and composing it recovers a real world
+    position. Excluding them cost 171 coal deposits and was caught by standing on one.
+
+    So the Phase 1 placement-volume fix was not moot after all. Every owner-chain
+    resolution is in that cell, and those are exactly the actors worth keeping.
     """
     coal = sum(n.node_count for n in kb.nodes if n.resource == "coal")
-    assert coal == 326, f"expected the 326 overworld coal deposits, got {coal}"
+    assert coal == 497, f"expected the 497 overworld coal deposits, got {coal}"
 
 
 def test_no_node_sits_at_the_world_origin(kb: KnowledgeBase):

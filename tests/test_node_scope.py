@@ -32,27 +32,42 @@ ASSETS = DATA / "assets"
 
 # --------------------------------------------------------------------------- the rule
 
+def _at(cell: str, hops: int = 0) -> dict:
+    return {"cell": cell, "owner_hops": hops}
+
+
 def test_spatially_partitioned_cells_are_overworld():
-    assert is_overworld("MainGrid_L0_X-1_Y-1_DLA2255F0E")
-    assert is_overworld("MainGrid_L0_X0_Y0_DL0")
-    assert is_overworld("CloseRange_L0_X12_Y-3_DL0")
+    assert is_overworld(_at("MainGrid_L0_X-1_Y-1_DLA2255F0E"))
+    assert is_overworld(_at("MainGrid_L0_X0_Y0_DL0"))
+    assert is_overworld(_at("CloseRange_L0_X12_Y-3_DL0"))
 
 
-def test_the_dungeon_cell_is_not():
-    """Every one of the 6,719 instanced placements sits in this one cell."""
-    assert not is_overworld("MainGrid_L15_X0_Y0_DL199241D7")
-    assert not is_overworld("MainGrid_L15_X0_Y0_DLED2A0377")
+def test_the_dungeon_cell_is_not_when_nothing_resolved_it():
+    """`L15_X0_Y0` holds contents authored in their own space, unless an Owner says
+    otherwise. Unresolved, the coordinate is dungeon-local and means nothing on the map."""
+    assert not is_overworld(_at("MainGrid_L15_X0_Y0_DL199241D7"))
+    assert not is_overworld(_at("MainGrid_L15_X0_Y0_DLED2A0377"))
+
+
+def test_an_owner_resolved_placement_is_a_world_position():
+    """633 actors in that cell carry an Owner, and composing it puts them back in world
+    space - 76.5% land on terrain against 79.4% for L0 and 46.3% for the unresolved ones.
+
+    Excluding them was a real miss, found by standing on one: a card said the nearest coal
+    was (198, -231) with coal actually at (230, -218), which is this cell's placement
+    (230.7, -217.0) at owner_hops=1. It cost 171 coal deposits.
+    """
+    assert is_overworld(_at("MainGrid_L15_X0_Y0_DLA2255F0E", hops=1))
 
 
 def test_an_unreadable_cell_name_is_excluded():
-    """Excluded rather than assumed overworld.
+    """Excluded rather than assumed overworld, whatever its owner chain says.
 
     If World Partition naming changes upstream, the failure should cost coverage - a
-    visible drop in node counts - rather than silently readmitting dungeon coordinates,
-    which is the failure that was already shipped once.
+    visible drop in node counts - rather than silently readmitting dungeon coordinates.
     """
-    assert not is_overworld("")
-    assert not is_overworld("SomeFutureNamingScheme_Cell_42")
+    assert not is_overworld(_at(""))
+    assert not is_overworld(_at("SomeFutureNamingScheme_Cell_42", hops=1))
 
 
 # ---------------------------------------------------------------------------- the data

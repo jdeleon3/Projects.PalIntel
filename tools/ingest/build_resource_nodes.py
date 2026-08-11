@@ -50,11 +50,35 @@ RAW = REPO / "data" / "raw"
 CELL_GRID = re.compile(r"_L(\d+)_X(-?\d+)_Y(-?\d+)")
 
 
-def is_overworld(cell: str) -> bool:
-    match = CELL_GRID.search(cell)
+def is_overworld(placement: dict) -> bool:
+    """Whether a placement's coordinate is a place on the overworld map.
+
+    The cell level is most of the answer but not all of it. `L15_X0_Y0` holds dungeon
+    contents whose RelativeLocation is authored in their own space - but **633 of its
+    actors carry an Owner**, and composing that parent transform puts them back in world
+    space. Measured against the basemap they land on terrain 76.5% of the time, against
+    48,144 L0 placements at 79.4% and the 6,086 unresolved L15 ones at 46.3%. They are
+    ordinary overworld nodes that happen to be authored inside a placement volume.
+
+    Excluding them wholesale was a real miss, caught by standing on one: a card said the
+    nearest coal was at (198, -231) and there was coal at (230, -218), which is
+    `MainGrid_L15_X0_Y0` placement (230.7, -217.0) with `owner_hops=1`.
+
+    This is the second time this project has over-corrected in the same direction. Phase 1
+    dropped every deposit within 2,000 world units of the origin and cost 152 real coal
+    deposits; the fix was to compose owner chains, which is precisely what rescued these
+    633 - and then this filter discarded them again.
+    """
+    match = CELL_GRID.search(placement["cell"])
     # An unparseable cell name is excluded rather than assumed overworld: a naming change
     # upstream should cost coverage loudly, not silently readmit dungeon coordinates.
-    return bool(match) and match.group(1) == "0"
+    if not match:
+        return False
+    if match.group(1) == "0":
+        return True
+    # Non-L0 and owner-resolved: the parent transform is a world transform, so this is a
+    # world position. Unresolved, it is a dungeon-local coordinate and meaningless here.
+    return placement.get("owner_hops", 0) > 0
 
 # Region hints. These two used to carry the whole distinction, because both classes were
 # mapped to `ore` and the hint was the only thing saying which one you had found. They
@@ -194,7 +218,7 @@ def main() -> None:
 
     placements = json.loads((RAW / "placements.json").read_text(encoding="utf-8"))
     matched = [p for p in placements if p["cls"] in class_to_res]
-    nodes = [p for p in matched if is_overworld(p["cell"])]
+    nodes = [p for p in matched if is_overworld(p)]
     instanced = len(matched) - len(nodes)
     print(f"placements: {len(placements):,}  -> resource nodes: {len(nodes):,} "
           f"across {len(display)} resources")
@@ -202,7 +226,7 @@ def main() -> None:
         # Reported, not silently dropped. A sixth of the dataset disappearing should be
         # a number someone can check against the next extraction, not a quiet diff.
         print(f"  excluded {instanced:,} deposits in non-overworld cells "
-              f"({instanced / len(matched):.1%}) - dungeon interiors, see is_overworld")
+              f"({instanced / len(matched):.1%}) - dungeon-local, see is_overworld")
     if not nodes:
         raise SystemExit(
             "ABORT: every deposit was excluded as non-overworld. The cell naming "

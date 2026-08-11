@@ -74,11 +74,25 @@ Hazards:
   where the grid position is where the cell sits in the world, while cave and dungeon
   contents live in `L15_X0_Y0` — a single cell at the grid origin, because they are
   authored in their own local space rather than placed on the map. Run through the
-  overworld transform those coordinates are meaningless. **6,718 of 40,968 deposits
-  (16.4%)** were published as overworld positions, including **672 of 998 coal**, and the
-  dataset's own `scope` field claimed "overworld only" the whole time. Now filtered by
-  `is_overworld` in `build_resource_nodes.py`, with a regression guard in
-  `tests/test_node_scope.py`. Pal spawn areas were unaffected — exactly 1 of 13,895.
+  overworld transform those coordinates are meaningless. Now filtered by `is_overworld` in
+  `build_resource_nodes.py`, with a regression guard in `tests/test_node_scope.py`. Pal
+  spawn areas were unaffected — exactly 1 of 13,895.
+
+  **The cell level is most of the rule but not all of it, and the first version got that
+  wrong.** 633 actors in `L15_X0_Y0` carry an `Owner`, and composing that parent transform
+  puts them back in world space: measured against the basemap they land on terrain **76.5%**
+  of the time, against **79.4%** for the 48,144 L0 placements and **46.3%** for the 6,086
+  unresolved ones. They are ordinary overworld nodes that happen to be authored inside a
+  placement volume. Excluding them wholesale cost **171 coal deposits** and was caught by
+  standing on one — a card named (198, −231) as the nearest coal while there was coal at
+  (230, −218), which is that cell's placement (230.7, −217.0) at `owner_hops=1`.
+
+  Net: **4,772 of 28,933 deposits (16.5%) excluded**, coal 998 → **497**.
+
+  This is the second over-correction in the same direction. Phase 1 dropped everything
+  within 2,000 world units of the origin and cost 152 real coal deposits; the fix was to
+  compose owner chains — which is exactly what rescued these 633, before this filter
+  discarded them again.
 - **`min_player_level` does not exist upstream.** It is derived (§5).
 
 #### 3.1.1 Deriving the coordinate transform

@@ -819,16 +819,14 @@ Node actors are `BP_PalMapObjectSpawner_*_C`; Pal spawn zones are `BP_PalSpawner
    stays — it fails the build if any cluster exceeds 50 deposits within its ~110 m span,
    and it is what caught this in the first place.
 
-   **Amended 2026-08-10: this diagnosis was half right, and the half it missed was the
-   important one.** The actors really do store `RelativeLocation`, and composing the owner
-   chain really does make their coordinates internally consistent. But **all 633 owner-
-   chain resolutions were in `L15_X0_Y0`** — the World Partition cell holding dungeon
-   interiors — and **zero overworld placements needed one**. Those actors are not on the
-   map at any transform; composing their parents produced coordinates that were consistent
-   and still not positions. So the "152 recovered coal deposits" were cave coal, and the
-   fix's real effect was to scatter the phantom hotspot into 672 individually plausible
-   wrong answers instead of one obviously wrong one — which is why the density guard
-   stopped firing and nothing else noticed. Overworld coal is **326 deposits, not 998**.
+   **Amended twice on 2026-08-10, and the second amendment reverses the first.** All 633
+   owner-chain resolutions are in `L15_X0_Y0`, the cell holding dungeon contents, which
+   first read as evidence that the fix had operated entirely on actors that are not on the
+   map. That was wrong. Composing the owner chain puts those actors **back in world
+   space**: they land on terrain 76.5% of the time against 79.4% for ordinary L0
+   placements and 46.3% for the unresolved contents of the same cell. They are overworld
+   nodes authored inside a placement volume, and the Phase 1 fix is exactly what makes
+   them usable. Overworld coal is **497 deposits, not 998 and not 326**.
    See the card-artwork spike below for how it surfaced, and §3.1 of
    [03-data-ingestion.md](03-data-ingestion.md) for the rule.
 
@@ -1741,8 +1739,8 @@ First real query on the flag — *"can I get coal at this level?"* — drew all 
 in open ocean. The renderer was correct: both projections agree to the pixel, and the
 player marker landed on land in the same crop.
 
-**16.4% of the resource-node dataset was dungeon interiors published as overworld
-coordinates**, including 672 of 998 coal deposits, and it had shipped since Phase 1. The
+**16.5% of the resource-node dataset is dungeon-local coordinates published as overworld
+positions**, and it had shipped since Phase 1. The
 text card said *"(224, -600) | 1 deposit | 114 units away"* — indistinguishable from a
 real answer. Nothing in the pipeline could have caught it: the coordinates are
 well-formed, inside map bounds, and correctly transformed from what the extractor found.
