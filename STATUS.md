@@ -17,7 +17,7 @@ number was arrived at.
 | 1 — Q1 resource lookup | **Closed 2026-08-10.** Latency accepted at measured behaviour, carried forward |
 | 2 — Q2 Pal spawns + memory | **Closed 2026-08-10** |
 | Card artwork + drops | **Shipped.** [ADR-0017](Docs/adr/0017-card-artwork-from-game-assets.md) Accepted |
-| 3 — Q3 breeding + Q5 counters | Not started. Gated on A3, which is de-risked but unbuilt |
+| 3 — Q3 breeding + Q5 counters | **Started 2026-08-11, order swapped.** Q5 is building; **Q3 is blocked** — the ADR-0008 gate needs in-game breeding, which is not unlocked yet |
 | 4 — Q6 tech + Q4 base siting + Q7 corpus | Not started |
 
 ## What answers a question today
