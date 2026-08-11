@@ -136,11 +136,20 @@ markers on each card were walked too, outside the base, with deposits standing t
   Candidate fix — **a Pal-kind near-miss below the floor should defer rather than
   claim** — but note the 2026-08-11 branch batch says the wider problem is entity
   resolution at 68% accuracy, so tightening this guard treats one symptom of it.
-- **STT accuracy on this speaker's actual speech** — the largest untouched lever, and
-  **now the measured blocker on Q5 rather than a suspicion**. The 2026-08-11 branch batch
-  scores entity accuracy at **68.0% against a 95% bar**, and 6 of its 8 spoken failures
-  are a destroyed Pal name with the cue arriving perfectly intact. Tuning routing further
-  is work aimed at the wrong layer. Play the same day produced
+- **Harvest STT manglings into lexicon aliases** — the measured next move, and **not** a
+  threshold change. The 2026-08-11 branch batch's spoken misses are mostly the lexicon
+  finding the right Pal *first* and the router refusing it just under the 0.85 floor:
+  Vanwyrm 0.71 from "fan worm", Jetragon 0.82 from "jit dragon", Lamball 0.80 from
+  "landball", Mycora 0.83 from "my kora". Sweeping the floor buys 1 hit for 2 wrong
+  entities on the 240 and 4 hits for 3, so it stays where it is — a wrong card is the
+  trade this project refuses. An **alias is surgical where the floor is global**: it
+  raises one true match to 1.0 and loosens nothing else. `score_stt.py` already ends by
+  listing the misses as alias candidates, so the first pass costs no recording at all.
+  Measure before/after on both sets, and note the aliases are one speaker's manglings.
+- **STT accuracy on this speaker's actual speech** — still the widest lever, but read the
+  entry above first: raw transcript accuracy is a lower bound, not the pipeline's, and
+  `stt.py` records that `large-v3` was *less* accurate than `medium.en` (80% vs 88%) and
+  that `initial_prompt` actively hurt. Play on 2026-08-11 produced
   `Vanworm`, `man worm`, `Makora`, `Pantlion`, `Disneyland Ball Drop`
   (Lamball) and `Wooddrop Spones`, and the damage is not only cosmetic: it decides the
   routing path, it is correlated with the worst latencies (the two most mangled

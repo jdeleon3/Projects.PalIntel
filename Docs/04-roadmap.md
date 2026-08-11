@@ -2288,20 +2288,54 @@ split separates two failures that are otherwise indistinguishable from outside.
 | written | 16 | 15 | **0** |
 | spoken | 9 | 14 | **8** |
 
-### The result is that routing is fine and entity resolution is not
+### The result is not what it first looked like, and the first reading was published
 
-Six of the eight spoken misses are a destroyed **name**, not a destroyed cue:
-`Vanwyrm` → "fan worm", `Orserk` → "Ozurk", `Jetragon` → "Jit Dragon", `Mycora` → "my
-Kora", `Lamball` → "Landball", `Necromus` → "Necromis". In every one the counter cue
-arrived intact - *beats*, *defeat*, *counter* - and the query declined anyway because the
-Pal could not be resolved. Only two failed on the cue: *"counters"* → "count is" and
-*"weak to"* → "Week 2".
+**Corrected the same day.** This section first said six of the eight spoken misses were a
+destroyed *name*. That is wrong, and it was wrong in the way this project keeps being
+wrong: plausible, consistent with the transcripts, and not checked against what the
+lexicon actually did with them.
 
-**So the branch design is not the bottleneck and tuning it further would be work aimed at
-the wrong thing.** The same run scores entity accuracy at **68.0% against a 95% bar -
-FAIL**, which is the STT backlog item, and these classes are simply the first to be
-measured while standing on it. A counter question needs its Pal name at least as much as
-a location question does, and it now has a measurement saying so.
+The lexicon recovered almost all of those names. Ranking the transcripts directly:
+
+| | heard as | lexicon result | router floor |
+|---|---|---|---|
+| B09 | "fan worm" | Vanwyrm **0.71**, ranked 1st | 0.85 |
+| B15 | "jit dragon" | Jetragon **0.82**, ranked 1st | 0.85 |
+| B29 | "landball" | Lamball **0.80**, ranked 1st | 0.85 |
+| B30 | "my kora" | Mycora **0.83**, ranked 1st | 0.85 |
+
+Four of five "unresolved names" were resolved correctly and **first**, then refused for
+sitting 0.02-0.05 under the confidence floor. Only two misses were genuine speech
+failures, and in both the *cue* died while the entity survived perfectly - *"counters"* →
+"count is" with Bellanoir at 1.00, *"weak to"* → "Week 2" with Necromus at 0.95.
+
+So the bottleneck is **the acceptance threshold, not transcription**, and the 68% headline
+is a lower bound rather than the pipeline's accuracy - `stt.py` says so outright and this
+run demonstrates it: *"do not read a raw transcript as the pipeline's accuracy."*
+
+One more thing visible only at this level: on B12 the cue word *"defeat"* itself ranked as
+**Felbat at 0.67**, above the real answer. Cue vocabulary and Pal names share a space.
+
+### Lowering the floor is not free, and that is what argues for aliases
+
+Swept against both sets at once, because a knob moved on one is a knob moved for the
+wrong reason:
+
+| floor | new-batch hits | wrong entity on the 240 |
+|---|---|---|
+| **0.85** (shipping) | 9 | **0** |
+| 0.83 | 10 | 2 |
+| 0.80 | 12 | 2 |
+| 0.71 | 13 | 3 |
+
+One extra hit costs two wrong entities immediately. This project trades declines for
+correctness in that direction and never the reverse, so the floor stays.
+
+**The conclusion is that the fix has to be surgical rather than global.** An alias raises
+one true match to 1.0 without loosening the bar for everything else; the floor cannot do
+that by construction. That is the case for harvesting the mangled forms this eval already
+enumerates - `score_stt.py` ends by calling them "alias candidates" - rather than for
+turning a knob.
 
 ### The second-entity guard defect, reproduced under measurement
 
