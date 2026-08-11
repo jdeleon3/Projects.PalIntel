@@ -10,7 +10,7 @@ Output: data/<version>/bosses.json
 
 | kind | how many | where the facts come from |
 |---|---|---|
-| tower | 31 `GYM_*` | element from the Pal row; **no table names or levels these** |
+| tower | 31 `GYM_*` | element from the Pal row; the human/Pal pair from `DT_UniqueNPCText` (see `gap_note`); **still no level** |
 | raid | 17 `RAID_*` | `DT_PalRaidBoss_Common` - authoritative PalId, Level, element overrides |
 | alpha | 323 `BOSS_*` | element from the Pal row; locations already in `pal_spawns.json` |
 
@@ -153,11 +153,16 @@ def build(version: str) -> dict:
                      "stripping the prefix and joining the remainder to the base tribe, "
                      "and every row carries name_derived so a card can decline to assert "
                      "one. This is the inference CLAUDE.md flags by name.",
-        "gap_note": "Tower bosses have no level and no tower name in any of the 530 data "
-                    "tables; DT_UniqueNPC covers ordinary NPCs and DT_PalBossNPCIcon "
-                    "covers human boss types (Hunter, Believer, Police), neither links a "
-                    "GYM_ Pal to its tower. So 'what beats Zoe and Grizzbolt' cannot be "
-                    "answered by tower name yet - only by Pal.",
+        "gap_note": "CORRECTED 2026-08-11. This previously said no table links a GYM_ "
+                    "Pal to its tower. It does: DT_UniqueNPCText carries BOSSNAME_DEMO_"
+                    "<REGION>_LEADER and _LEADER_PAL pairs - ZOE/GRIZZBOLT, VICTOR/"
+                    "SHADOWBEAK, and six more. The earlier claim came from searching "
+                    "DT_UniqueNPC, the NPC definitions, and never DT_UniqueNPCText, the "
+                    "text. Pairing the two keys by their shared region prefix is an "
+                    "INFERENCE, of the same class as BOSS_ meaning 'the alpha of' - "
+                    "strong (8 pairs, no orphans) but derived. Still genuinely absent: "
+                    "tower ORDINALS (nothing says Victor's is the 5th), faction names "
+                    "like 'PAL Genetic Research Unit', and any tower boss level.",
         "casing_note": "Boss_Anubis is the single row of 323 not spelled BOSS_. Prefix "
                        "matching is case-insensitive because a case-sensitive filter "
                        "drops exactly one Pal, and it is one the play protocol asks for.",

@@ -115,7 +115,23 @@ markers on each card were walked too, outside the base, with deposits standing t
 
 ## Backlog
 
-- **Pal search by attribute** — *"give me an electric Pal that is level 60"*. **The first
+- **Resolve a boss by its human name** — *"how do I beat Victor?"*. **A correction as much
+  as a feature.** `build_bosses.py`, the roadmap and this file all stated that no table
+  links a `GYM_` Pal to its tower. **It does.** `DT_UniqueNPCText` carries
+  `BOSSNAME_DEMO_<REGION>_LEADER` and `_LEADER_PAL` pairs: ZOE/GRIZZBOLT, LILY/LYLEEN,
+  AXEL/ORSERK, MARCUS/FALERIS, VICTOR/SHADOWBEAK, SAYA/SELYNE, BJORN/BASTIGOR,
+  AURI/SHAOLONG. The wrong claim came from searching `DT_UniqueNPC` (the NPC definitions)
+  and never `DT_UniqueNPCText` (the text). Pairing the two keys on their shared region
+  prefix is an **inference** — same class as `BOSS_` meaning "the alpha of", strong at 8
+  pairs with no orphans, and it must be declared where published. Once ingested, *"how do
+  I beat Victor"* reuses the counter machinery entirely. **Still absent:** tower ordinals
+  (nothing says Victor's is the 5th), faction names like "PAL Genetic Research Unit", and
+  tower boss levels.
+- **Pal search by attribute** — *"give me an electric Pal that is level 60"*,
+  *"I need a new mining Pal"*. **One shape, not several features**, and the largest
+  functional gap in the product: every shipped class takes a NAMED entity and returns
+  facts about it, while these describe what is wanted and ask which Pals match. Q1-Q7
+  never included that shape. **The first
   genuinely new query class since the roadmap was written**, and a gap in the class
   inventory rather than a bug: every shipped class takes a NAMED entity and returns facts
   about it, while this one describes an entity and asks which Pals match. Q1-Q7 are all
@@ -126,10 +142,24 @@ markers on each card were walked too, outside the base, with deposits standing t
   off "electric pals" and nothing to do with the question. The 0.85 floor is the only
   thing that stopped a confident *"where can I find Rayhound"*.
 
-  **Cheap now in a way it was not a week ago.** `elements.json` carries typing for 739
-  Pals and `pal_spawns.json` carries level ranges per area, so this is a filter over two
-  tables - Tier 1, selecting rows rather than generating anything - reusing the counter
-  card's element machinery almost directly.
+  **All three filters have their data already.** `elements.json` carries typing for 739
+  Pals, `pal_spawns.json` carries level ranges per area, and `DT_PalMonsterParameter`
+  carries `WorkSuitability_*` for fourteen jobs — Mining, Watering, Handcraft, Deforest,
+  Transport and the rest — plus `BestWorkSuitability`. So this is a filter over tables
+  already extracted: Tier 1, selecting rows rather than generating anything, reusing the
+  counter card's element machinery.
+
+  **Four real questions, verified declining on 2026-08-11**, worth keeping verbatim
+  because they were asked rather than invented: *"give me an electric pal that is level
+  60"*, *"what electric pals are around level 60"*, *"I need a new mining pal"*, *"what
+  pal is best at mining"*.
+
+  **Every one of them was saved by the 0.85 floor, and the near-misses got closer each
+  time.** Rayhound 0.71 on "electric pals", Carnibora 0.71 on "beat the", and worst,
+  **Anubis at 0.77** on *"I need a new mining pal"* — Anubis being the game's best mining
+  Pal, so a location card for it would have read as very nearly a correct answer for
+  entirely the wrong reason. That is the strongest evidence yet for the alias work's
+  decision to fix entity resolution surgically instead of lowering the floor.
 
   **Decided 2026-08-11: "level" always means the PAL's level, never the player's.** One
   meaning, no preposition parsing, nothing derived. The deciding fact is that the cards
