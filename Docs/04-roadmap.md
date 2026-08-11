@@ -2226,6 +2226,53 @@ is entitled to make by itself.
 
 ---
 
+## Q5 groundwork — the owned roster, and a smaller question (2026-08-11)
+
+Q5's exit criterion is *"recommendations contain only owned Pals"*, and `saves.py` read
+position and unlocks only. So the roster was a gate in front of the phase, in the same
+shape A3 is in front of Q3.
+
+**It opened, and the reason is worth generalising: the question was too big.** Phase 0.3
+recorded per-Pal detail as living behind `RawData` decoders that are stale on 1.0.2, and
+filed fixing them as "bounded, well-understood work". But Q5 does not need per-Pal
+detail. It needs **which species you own**, which is one `NameProperty` per entry. Read
+with `PALWORLD_TYPE_HINTS` and *no* custom decoders at all, `Level.sav` parses and the
+field is right there in the undecoded blob: **192 distinct species across 554 of 555
+entries**, no decoder repaired. The one skip is the player's own character, which carries
+no `CharacterID`.
+
+Two corrections to the record, both found by trying it:
+
+- **At least five decoders are stale on build 24467282**, not two. `character`,
+  `map_model`, `foliage_model_instance`, `work` and `base_camp` all fail with "EOF not
+  reached", so dropping them one at a time never terminates. "Custom decoders disabled"
+  means passing `{}` for the whole set while keeping the type hints - dropping the hints
+  too makes the parser read a 1.95 GB ASCII string out of the middle of a struct.
+- **`CharacterSaveParameterMap` now holds 555 entries**, against 547 at Phase 0.3.
+
+**And one join hazard that would have been invisible.** The save writes `Sheepball`; the
+pak writes `SheepBall`. A case-sensitive join drops that Pal with no error of any kind -
+it is simply absent from the owned set, and a Q5 card quietly omits a Pal you own. The
+set is lower-cased at the boundary and a test pins the pair.
+
+**And the roster is not a list of Pals.** Captured humans share the map, so the set
+contains ids like `Believer_Crossbow`. Q5 has to intersect with the Pal roster rather
+than trust the ids, or it can offer a captured raider as a counter to a tower boss -
+a card that would be well-formed, confident, and absurd.
+
+**The parser reads the property rather than matching near it, and that was not
+fastidiousness.** The obvious regex - take the next identifier after `CharacterID` -
+returns the *type tag* `NameProperty`, for 554 of 555 entries. A uniform, plausible,
+total failure that reads like success in every summary statistic you would think to
+print. Same family as coal coordinates that are in-bounds and correctly transformed and
+not places.
+
+Getting here took six failed iterations, twice announced as a two-minute parse. Recorded
+because the estimate was wrong in a specific way: each failure was a different wrong
+assumption about a data shape, and none of them was visible without running it.
+
+---
+
 ## Phase 3 — Graph search and scoring: Q3 + Q5 (target: 3 weeks)
 
 Pairs the hardest Tier 1 class with the cleanest Tier 2 class.

@@ -20,6 +20,12 @@ unavailable" path is load-bearing, not decorative.
 1.0.2 (it fails with "EOF not reached"). So `PlayerState.player_level` stays None and
 level gating stays off; position, which is what "nearest" needs, comes from the player
 save alone and needs no blob decoding at all.
+
+**The owned-Pal roster is available, though, and it did not need those decoders fixed.**
+`owned_species` reads `Level.sav` with no custom decoders at all and reads `CharacterID`
+straight out of the undecoded blob, because the question Q5 asks - *which species do you
+have* - is far weaker than the level-and-traits detail the stale decoders exist to
+provide. Asking a smaller question turned a decoder-repair project into a property read.
 """
 from __future__ import annotations
 
@@ -163,6 +169,100 @@ def newest_player_save(save_dir: Path) -> Path | None:
     saves = sorted((save_dir / "Players").glob("*.sav"),
                    key=lambda p: p.stat().st_mtime, reverse=True)
     return saves[0] if saves else None
+
+
+def _blob(raw) -> bytes | None:
+    """Recover a RawData blob whatever shape the GVAS reader left it in.
+
+    With no custom decoder registered the reader hands back
+    `{"values": tuple_of_ints}` - a **tuple**, which an `isinstance(x, list)` check
+    misses silently and returns nothing for every entry.
+    """
+    if isinstance(raw, (bytes, bytearray)):
+        return bytes(raw)
+    if isinstance(raw, (list, tuple)) and raw and isinstance(raw[0], int):
+        return bytes(raw)
+    if isinstance(raw, dict):
+        for key in ("values", "value", "data", "bytes"):
+            if key in raw:
+                got = _blob(raw[key])
+                if got is not None:
+                    return got
+    return None
+
+
+def _character_id(blob: bytes) -> str | None:
+    """Read `CharacterID` out of an undecoded `PalIndividualCharacterSaveParam`.
+
+    A UE property is `<name><type><size:i64><has_guid:u8><value>`, and the value of a
+    NameProperty is a length-prefixed string. **This is parsed rather than pattern
+    matched**, because the obvious regex - take the next identifier after
+    `CharacterID` - returns the type tag `NameProperty` for every entry in the save.
+    That failure is uniform, plausible and total, which is exactly the shape this
+    project keeps being bitten by: 554 of 555 "matched" and every one was wrong.
+    """
+    i = blob.find(b"CharacterID\x00")
+    if i < 0:
+        return None
+    j = blob.find(b"NameProperty\x00", i)
+    # The type tag follows the name immediately; anything further away is a different
+    # property that merely happens to sit downstream.
+    if j < 0 or j - i > 32:
+        return None
+    p = j + len(b"NameProperty\x00") + 8 + 1
+    try:
+        (n,) = struct.unpack_from("<i", blob, p)
+    except struct.error:
+        return None
+    if not 0 < n < 128:
+        return None
+    return blob[p + 4:p + 4 + n - 1].decode("utf-8", "replace") or None
+
+
+def owned_species(level_save: Path) -> frozenset[str]:
+    """The set of Pal CharacterIDs the player owns, lower-cased.
+
+    Q5 needs to recommend only Pals you actually have, which needs far less than the
+    per-Pal detail behind the stale `RawData` decoders: **species, not level or
+    traits.** So this reads `Level.sav` with type hints and *no* custom decoders - the
+    configuration Phase 0.3 found parses cleanly - and reads the one field it needs
+    out of the raw blob.
+
+    Dropping decoders one at a time does not work: at least five are stale on build
+    24467282 (`character`, `map_model`, `foliage_model_instance`, `work`,
+    `base_camp`), where the roadmap recorded two.
+
+    **Lower-cased because the two sources disagree about capitalisation.** The save
+    writes `Sheepball`; the pak writes `SheepBall`. A case-sensitive join drops that
+    Pal with no error at all - it simply goes missing from the owned set, and a
+    recommendation quietly omits something you own.
+
+    **Not every entry is a Pal.** Captured humans are in the same map and come back as
+    ids like `Believer_Crossbow`, so this is the set of owned *characters*. Callers
+    that mean Pals must intersect with the Pal roster rather than trusting the ids -
+    otherwise Q5 can offer a captured raider as a counter to a boss.
+    """
+    from palworld_save_tools.gvas import GvasFile
+    from palworld_save_tools.paltypes import PALWORLD_TYPE_HINTS
+
+    gvas = GvasFile.read(decompress(level_save.read_bytes()),
+                         PALWORLD_TYPE_HINTS, {}, allow_nan=True)
+    entries = gvas.properties["worldSaveData"]["value"] \
+        .get("CharacterSaveParameterMap", {}).get("value", [])
+
+    out, skipped = set(), 0
+    for entry in entries:
+        blob = _blob(entry.get("value", {}).get("RawData", {}).get("value"))
+        name = _character_id(blob) if blob else None
+        if name:
+            out.add(name.lower())
+        else:
+            # The player's own character carries no CharacterID, so one skip is
+            # expected. A pile of them means the blob layout moved.
+            skipped += 1
+    log.info("owned species: %d distinct from %d entries (%d without a CharacterID)",
+             len(out), len(entries), skipped)
+    return frozenset(out)
 
 
 class SaveWatcher:
