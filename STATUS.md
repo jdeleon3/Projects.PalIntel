@@ -131,13 +131,32 @@ markers on each card were walked too, outside the base, with deposits standing t
   tables - Tier 1, selecting rows rather than generating anything - reusing the counter
   card's element machinery almost directly.
 
-  **The phrasing rule, from the player rather than inferred:** *"that is level 60"* means
-  the PAL's level; *"at level 60"* means the PLAYER's. Two different answers, two
-  different slots - `max_player_level` already exists for the second and the first needs
-  a new one. **Where it does not extend:** *"where can I find Anubis at level 60"* is
-  genuinely ambiguous between a spawn-level filter and a player-level one, and the rule
-  above does not settle it. Measure the preposition rule before trusting it; a derived
-  rule is a claim, and this one is derived from two examples.
+  **Decided 2026-08-11: "level" always means the PAL's level, never the player's.** One
+  meaning, no preposition parsing, nothing derived. The deciding fact is that the cards
+  already speak this way - a spawn card prints *"Anubis, lvl 68-72"*, which is the Pal -
+  so a query where "level 60" meant the player would make one word mean two things on the
+  same card. It also stays a **fact rather than a judgement**: Pal level comes straight
+  from `pal_spawns.json` level bands, while filtering by player level needs a "how far
+  above your level can you cope" constant, and this project already has one uncalibrated
+  difficulty rule it has not paid off (`min_player_level` / `danger`, below). Pal level is
+  also the primitive - *"what can I use at 60"* is expressible as *"Pals <= 60"*, while
+  the reverse makes the exact question unaskable.
+
+  *What that gives up, and it is real:* players do think in their own level, so
+  *"an electric Pal for level 60"* often means "something I can use", and this answers it
+  slightly obliquely. Recoverable later as a Tier 2 layer on top, once player level is
+  actually readable - it is permanently `None` today, living in the `Level.sav` blob
+  behind the stale decoders - and once the headroom constant has been calibrated from
+  play rather than guessed. Baking it in now would ship an uncalibrated judgement as a
+  fact.
+
+  *Note the product is already inconsistent here*: resource cards print `lvl 28+`, which
+  is a PLAYER requirement, from that same uncalibrated rule. So "level" does not have one
+  meaning today either, and this decision only settles the new class.
+
+  *Sorting: highest Pal level first*, with the caveat the counter card just had to learn -
+  highest is a proxy for strongest and nothing more, so the card must not imply a ranking
+  the data does not carry.
 - **Find dungeons near me** — spiked, viable, and **thinner than it looked**. The 18
   permanent "Sealed Realm" arenas are already marked on the in-game map; the 13 random
   sites hold a dungeon only ~67% of the time. Does not recover the lost cave coal.
