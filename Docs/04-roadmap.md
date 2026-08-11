@@ -1793,6 +1793,38 @@ locatable resources; widening it to all 151 droppable items for the query classe
 table's casing disagrees with the name table's (`Gorilla_ground` vs `Gorilla_Ground`),
 which silently cost five real droppers until the join was made case-insensitive.
 
+### The shipping configuration, measured
+
+Four classes in the consolidated tool - `resource_location`, `pal_location`, `pal_drops`,
+`item_source` - which is what production runs. Decided against a rule written before the
+run, so the numbers could not be read backwards into a verdict.
+
+| | per-class + `pal_drops` | **unified, 4 classes** |
+|---|---|---|
+| exact | 89.7% (208) | **88.8%** (206) |
+| **wrong entity** | 3.0% (7) | **3.9%** (9) |
+| declined | 20.3% | 19.0% |
+| latency median / p95 | 1,983 / 6,031 ms | 2,089 / 5,878 ms |
+| cost / request | $0.0058 | **$0.0036** |
+
+Paired: 5 losses, 3 gains, **McNemar exact p = 0.727** — indistinguishable. Zero transient
+failures. Pre-registered rule: revert above 5% wrong, investigate more than 5 points off
+baseline. **3.9% and 1.3 points: accepted.**
+
+Cheapest configuration measured, at $0.0036 a request. The schema is 2,975 tokens and
+cached; the cost is now 75% output tokens, which is thinking, and only 12% schema.
+
+**A 60-prompt stratified pre-check at $0.22 preceded it**, and changed the recommendation
+rather than rubber-stamping it. It found no gross break and no spurious item entities —
+and surfaced that **the prompt set contains no item-source utterances at all.** Every one
+of the 240 recordings predates the class, so no amount of running this eval measures
+whether "who drops Flame Organ" works. Its three wrong answers were pre-existing acoustic
+failures already in the batch-5 notes (*Astrum* → `Astegon`, *Cinnamom* → `Cinnamoth`).
+
+**So one gap stays open and it cannot be closed by spending.** `item_source` is verified
+only by hand. Validating it needs new recordings, which is a session with a microphone,
+not an API call.
+
 ### `pal_drops` measured — free, and it found the case for consolidating
 
 The first item-drop class, measured against the same 232 prompts as the consolidation
