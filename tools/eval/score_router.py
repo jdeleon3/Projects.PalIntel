@@ -153,6 +153,12 @@ def main() -> None:
     ap.add_argument("--model", required=True,
                     help="claude-haiku-4-5 | gemini-3.6-flash | local:qwen3:8b | ...")
     ap.add_argument("--limit", type=int, default=0, help="score only the first N")
+    ap.add_argument("--sample", type=int, default=0,
+                    help="score a stratified slice of N, proportional across the "
+                         "difficulty bands. Unlike --limit, which takes the first N and "
+                         "is ordered by recording session rather than by anything "
+                         "meaningful - an 8-prompt --limit check passed a schema bug "
+                         "whose every failure was a tower question.")
     ap.add_argument("--think", action="store_true",
                     help="local models only: enable the model's own thinking mode. "
                          "Both hosted baselines thought, so this is the fair comparison; "
@@ -174,6 +180,21 @@ def main() -> None:
     # are the false-positive test. Naming any entity there is a hallucinated entity.
     if args.limit:
         rows = rows[:args.limit]
+    elif args.sample:
+        # Proportional by band, deterministic, and at least one from each so a band
+        # cannot vanish from a check that claims to cover them.
+        import random
+        from collections import defaultdict
+        bands = defaultdict(list)
+        for r in rows:
+            bands[r.get("difficulty") or r.get("group") or "?"].append(r)
+        picked, rng = [], random.Random(0)
+        for band, group in sorted(bands.items()):
+            take = max(1, round(args.sample * len(group) / len(rows)))
+            picked += rng.sample(group, min(take, len(group)))
+        rows = sorted(picked, key=lambda r: r["id"])
+        print(f"  stratified sample: {len(rows)} of "
+              f"{sum(len(g) for g in bands.values())} across {len(bands)} bands\n")
 
     kb = KnowledgeBase.load("1.0.2")
     entities = set(kb.lexicon.canonical_names)
