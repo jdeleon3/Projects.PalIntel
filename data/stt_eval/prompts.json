@@ -5,10 +5,361 @@
   "seed": 20260809,
   "batch_size": 40,
   "batches": 25,
-  "count": 1000,
+  "count": 1031,
   "utterances": 996,
   "scored_entities": 951,
   "prompts": [
+    {
+      "group": "utterance",
+      "text": "hey pal how do I beat Anubis",
+      "expect_entities": [
+        "Anubis"
+      ],
+      "expect_item": null,
+      "expect_branch": "counter",
+      "difficulty": "counter",
+      "id": "B01",
+      "batch": -1
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what counters Bellanoir",
+      "expect_entities": [
+        "Bellanoir"
+      ],
+      "expect_item": null,
+      "expect_branch": "counter",
+      "difficulty": "counter",
+      "id": "B02",
+      "batch": -1
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what should I bring to fight Grizzbolt",
+      "expect_entities": [
+        "Grizzbolt"
+      ],
+      "expect_item": null,
+      "expect_branch": "counter",
+      "difficulty": "counter",
+      "id": "B03",
+      "batch": -1
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what's good against Jetragon",
+      "expect_entities": [
+        "Jetragon"
+      ],
+      "expect_item": null,
+      "expect_branch": "counter",
+      "difficulty": "counter",
+      "id": "B04",
+      "batch": -1
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal how do I kill Frostallion",
+      "expect_entities": [
+        "Frostallion"
+      ],
+      "expect_item": null,
+      "expect_branch": "counter",
+      "difficulty": "counter",
+      "id": "B05",
+      "batch": -1
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what's Necromus weak to",
+      "expect_entities": [
+        "Necromus"
+      ],
+      "expect_item": null,
+      "expect_branch": "counter",
+      "difficulty": "counter",
+      "id": "B06",
+      "batch": -1
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what should I use against Paladius",
+      "expect_entities": [
+        "Paladius"
+      ],
+      "expect_item": null,
+      "expect_branch": "counter",
+      "difficulty": "counter",
+      "id": "B07",
+      "batch": -1
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal how do I beat the Chillet alpha",
+      "expect_entities": [
+        "Chillet"
+      ],
+      "expect_item": null,
+      "expect_branch": "counter",
+      "difficulty": "counter",
+      "id": "B08",
+      "batch": -1
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what beats Vanwyrm",
+      "expect_entities": [
+        "Vanwyrm"
+      ],
+      "expect_item": null,
+      "expect_branch": "counter",
+      "difficulty": "counter",
+      "id": "B09",
+      "batch": -1
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal how do I take on Blazamut",
+      "expect_entities": [
+        "Blazamut"
+      ],
+      "expect_item": null,
+      "expect_branch": "counter",
+      "difficulty": "counter",
+      "id": "B10",
+      "batch": -1
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what's strong against Lyleen",
+      "expect_entities": [
+        "Lyleen"
+      ],
+      "expect_item": null,
+      "expect_branch": "counter",
+      "difficulty": "counter",
+      "id": "B11",
+      "batch": -1
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal how do I defeat Orserk",
+      "expect_entities": [
+        "Orserk"
+      ],
+      "expect_item": null,
+      "expect_branch": "counter",
+      "difficulty": "counter",
+      "id": "B12",
+      "batch": -1
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where can I find something to beat Anubis",
+      "expect_entities": [
+        "Anubis"
+      ],
+      "expect_item": null,
+      "expect_branch": "ambiguous",
+      "difficulty": "tier_ambiguous",
+      "id": "B13",
+      "batch": -1
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where do I go to fight Bellanoir",
+      "expect_entities": [
+        "Bellanoir"
+      ],
+      "expect_item": null,
+      "expect_branch": "ambiguous",
+      "difficulty": "tier_ambiguous",
+      "id": "B14",
+      "batch": -1
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal find me a counter for Jetragon",
+      "expect_entities": [
+        "Jetragon"
+      ],
+      "expect_item": null,
+      "expect_branch": "ambiguous",
+      "difficulty": "tier_ambiguous",
+      "id": "B15",
+      "batch": -1
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where's the nearest Pal that beats Frostallion",
+      "expect_entities": [
+        "Frostallion"
+      ],
+      "expect_item": null,
+      "expect_branch": "ambiguous",
+      "difficulty": "tier_ambiguous",
+      "id": "B16",
+      "batch": -1
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal who drops flame organs",
+      "expect_entities": [],
+      "expect_item": "Flame Organ",
+      "expect_branch": "item_source",
+      "difficulty": "item_word",
+      "id": "B17",
+      "batch": -1
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what drops wool",
+      "expect_entities": [],
+      "expect_item": "Wool",
+      "expect_branch": "item_source",
+      "difficulty": "item_word",
+      "id": "B18",
+      "batch": -1
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where do I get leather",
+      "expect_entities": [],
+      "expect_item": "Leather",
+      "expect_branch": "item_source",
+      "difficulty": "item_word",
+      "id": "B19",
+      "batch": -1
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal who drops bone",
+      "expect_entities": [],
+      "expect_item": "Bone",
+      "expect_branch": "item_source",
+      "difficulty": "item_word",
+      "id": "B20",
+      "batch": -1
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what drops paldium fragment",
+      "expect_entities": [],
+      "expect_item": "Paldium Fragment",
+      "expect_branch": "item_source",
+      "difficulty": "item_word",
+      "id": "B21",
+      "batch": -1
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal who drops ancient civilization parts",
+      "expect_entities": [],
+      "expect_item": "Ancient Civilization Parts",
+      "expect_branch": "item_source",
+      "difficulty": "item_word",
+      "id": "B22",
+      "batch": -1
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where do I get high quality pal oil",
+      "expect_entities": [],
+      "expect_item": "High Quality Pal Oil",
+      "expect_branch": "item_source",
+      "difficulty": "item_word",
+      "id": "B23",
+      "batch": -1
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what drops ice organ",
+      "expect_entities": [],
+      "expect_item": "Ice Organ",
+      "expect_branch": "item_source",
+      "difficulty": "item_word",
+      "id": "B24",
+      "batch": -1
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal who drops venom gland",
+      "expect_entities": [],
+      "expect_item": "Venom Gland",
+      "expect_branch": "item_source",
+      "difficulty": "item_word",
+      "id": "B25",
+      "batch": -1
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what drops gold coin",
+      "expect_entities": [],
+      "expect_item": "Gold Coin",
+      "expect_branch": "item_source",
+      "difficulty": "item_word",
+      "id": "B26",
+      "batch": -1
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what does Vanwyrm drop",
+      "expect_entities": [
+        "Vanwyrm"
+      ],
+      "expect_item": null,
+      "expect_branch": "drops",
+      "difficulty": "known_mangled",
+      "id": "B27",
+      "batch": -1
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what do I get from Astralym and Mycora",
+      "expect_entities": [
+        "Astralym",
+        "Mycora"
+      ],
+      "expect_item": null,
+      "expect_branch": "drops",
+      "difficulty": "known_mangled",
+      "id": "B28",
+      "batch": -1
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what does Lamball drop",
+      "expect_entities": [
+        "Lamball"
+      ],
+      "expect_item": null,
+      "expect_branch": "drops",
+      "difficulty": "known_mangled",
+      "id": "B29",
+      "batch": -1
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal how do I beat Mycora",
+      "expect_entities": [
+        "Mycora"
+      ],
+      "expect_item": null,
+      "expect_branch": "counter",
+      "difficulty": "known_mangled",
+      "id": "B30",
+      "batch": -1
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what drops paldium fragments",
+      "expect_entities": [],
+      "expect_item": "Paldium Fragment",
+      "expect_branch": "item_source",
+      "difficulty": "known_mangled",
+      "id": "B31",
+      "batch": -1
+    },
     {
       "group": "control",
       "text": "Anubis",
@@ -9813,5 +10164,6 @@
       "batch": 24,
       "id": "P1000"
     }
-  ]
+  ],
+  "branch_batch_note": "Batch -1 covers counters and item_source, which no P## prompt does: the original set predates both classes. Numbered -1 so record_stt.py takes it first without renumbering anything already recorded."
 }
