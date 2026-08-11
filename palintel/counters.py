@@ -132,6 +132,55 @@ def candidate_set(boss_id: str, owned: frozenset[str],
     return sorted([m for m in out if m.effective], key=lambda m: m.sort_key)
 
 
+@dataclass(frozen=True)
+class CounterResult:
+    """Everything a counter card needs, and nothing a model contributed."""
+    boss_id: str
+    boss_name: str | None
+    name_derived: bool
+    kind: str                       # tower | raid | alpha
+    boss_elements: tuple[str, ...]
+    level: int | None
+    candidates: list[Matchup]
+    owned_considered: int
+    counter_elements: tuple[str, ...]   # what WOULD work, owned or not
+
+
+def counter_elements(boss_elements: tuple[str, ...],
+                     matrix: dict[str, dict]) -> tuple[str, ...]:
+    """Elements that are strong against this boss, whether the player owns one or not.
+
+    Worth computing separately from the candidate set: "nothing you own works" is a
+    much less useful answer than "nothing you own works, catch something Dragon", and
+    the second costs nothing extra to say.
+    """
+    return tuple(sorted(
+        e for e, row in matrix.items()
+        if effectiveness((e,), boss_elements, matrix) > NEUTRAL))
+
+
+def plan(boss_id: str, owned: frozenset[str], limit: int = 5,
+         version: str = "1.0.2") -> CounterResult:
+    """The whole Tier 2 answer, computed. No model is consulted at any point."""
+    matrix, typing, bosses = load(version)
+    boss = bosses[boss_id.lower()]
+    elements = tuple(boss["elements"])
+    candidates = candidate_set(boss_id, owned, version)
+    considered = sum(1 for c in owned
+                     if c in typing and not c.startswith(BOSS_PREFIXES))
+    return CounterResult(
+        boss_id=boss["character_id"],
+        boss_name=boss.get("name"),
+        name_derived=bool(boss.get("name_derived")),
+        kind=boss["kind"],
+        boss_elements=elements,
+        level=boss.get("level"),
+        candidates=candidates[:limit],
+        owned_considered=considered,
+        counter_elements=counter_elements(elements, matrix),
+    )
+
+
 def validate(named: list[str], candidates: list[Matchup]) -> tuple[list[Matchup], list[str]]:
     """Keep only what the computation produced. Returns (kept, discarded).
 

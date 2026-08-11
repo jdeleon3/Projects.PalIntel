@@ -120,3 +120,87 @@ def test_effective_means_better_than_neutral():
     assert m("a", "A", ["Fire"], STRONG).effective
     assert not m("b", "B", ["Fire"], NEUTRAL).effective
     assert not m("c", "C", ["Fire"], WEAK).effective
+
+
+# --- the card ----------------------------------------------------------------
+
+from palintel.cards import TIER_ADVICE, TIER_FACT, counter_card  # noqa: E402
+from palintel.counters import CounterResult  # noqa: E402
+
+
+def result(**kw) -> CounterResult:
+    base = dict(boss_id="RAID_NightLady", boss_name="Bellanoir", name_derived=True,
+                kind="raid", boss_elements=("Dark",), level=35,
+                candidates=[m("elphidran", "Elphidran", ["Dragon"], STRONG, WEAK)],
+                owned_considered=192, counter_elements=("Dragon",))
+    return CounterResult(**{**base, **kw})
+
+
+def test_a_counter_card_is_advice_not_fact():
+    """Amber, not green. Every other card reports extracted facts; this one reports a
+    computation over them, and a player who cannot tell will trust both equally."""
+    assert counter_card(result()).colour == TIER_ADVICE
+    assert TIER_ADVICE != TIER_FACT
+
+
+def test_the_card_says_when_the_boss_name_was_inferred():
+    """No table names a GYM_/RAID_/BOSS_ row, so asserting one silently would be the
+    derived-rule failure CLAUDE.md names."""
+    assert "inferred" in counter_card(result()).footer
+    assert "inferred" not in counter_card(result(name_derived=False)).footer
+
+
+def test_owning_nothing_effective_still_names_what_would_work():
+    """"No" and "not yet" are different answers and cost the same to compute."""
+    card = counter_card(result(candidates=[]))
+    text = card.to_text()
+    assert "Nothing you own" in text
+    assert "Dragon" in text
+
+
+def test_element_names_are_the_ones_the_player_sees():
+    """The pak says Leaf, Electricity, Earth; the game shows Grass, Electric, Ground.
+    A card printing the internal spelling is describing a table, not answering."""
+    card = counter_card(result(boss_elements=("Leaf",), counter_elements=("Fire",),
+                               candidates=[]))
+    assert "Grass" in card.to_text() and "Leaf" not in card.to_text()
+
+
+def test_neutral_defense_is_not_printed():
+    """"takes 1x" on every line hides the lines that matter."""
+    card = counter_card(result(
+        candidates=[m("a", "A", ["Dragon"], STRONG, NEUTRAL)]))
+    assert "takes" not in card.to_text()
+
+
+def test_a_punishing_matchup_is_flagged():
+    card = counter_card(result(
+        candidates=[m("a", "A", ["Dragon"], STRONG, STRONG)]))
+    assert "takes double" in card.to_text()
+
+
+def test_the_level_is_shown_when_known_and_omitted_when_not():
+    """Raid bosses have a level from the raid table; tower bosses have none in any of
+    the 530 data tables, and inventing one would be worse than omitting it."""
+    assert "level 35" in counter_card(result()).to_text()
+    assert "level" not in counter_card(result(level=None, kind="tower")).to_text()
+
+
+def test_an_all_tied_shortlist_says_the_order_is_arbitrary():
+    """Typing is the only thing scored, so against a single-element boss every counter
+    is 2x/0.5x and the order falls out alphabetically. Presenting that as a ranking
+    asserts something the data does not say."""
+    card = counter_card(result(candidates=[
+        m("a", "A", ["Dragon"], STRONG, WEAK), m("b", "B", ["Dragon"], STRONG, WEAK)]))
+    assert "order is arbitrary" in card.footer
+
+
+def test_a_differentiated_shortlist_does_not():
+    card = counter_card(result(candidates=[
+        m("a", "A", ["Dragon"], STRONG, WEAK), m("b", "B", ["Dragon"], STRONG, STRONG)]))
+    assert "arbitrary" not in card.footer
+
+
+def test_a_single_candidate_is_not_called_arbitrary():
+    card = counter_card(result(candidates=[m("a", "A", ["Dragon"], STRONG, WEAK)]))
+    assert "arbitrary" not in card.footer

@@ -603,3 +603,80 @@ def item_source_card(result: ItemSourceResult) -> Card:
     return Card(title=f"{result.item} comes from", lines=lines,
                 footer=f"{result.total} source{'s' if result.total != 1 else ''}",
                 colour=TIER_FACT)
+
+
+# Display names for the pak's element enum. `Electricity` and `Leaf` are the game's
+# internal spellings; the player sees Electric and Grass in game, and a card that says
+# "Leaf" is describing a table rather than answering a question.
+ELEMENT_DISPLAY = {"Electricity": "Electric", "Leaf": "Grass", "Earth": "Ground",
+                   "Normal": "Neutral"}
+
+
+def _element(name: str) -> str:
+    return ELEMENT_DISPLAY.get(name, name)
+
+
+def _elements(names) -> str:
+    return "/".join(_element(n) for n in names)
+
+
+def counter_card(result: "CounterResult") -> Card:
+    """The plan for fighting one boss. **The project's first Tier 2 card.**
+
+    Amber, not green, and the colour is the honest part: every other card in this file
+    reports facts extracted from the game, while this one reports a *computation over*
+    them. [ADR-0010](../Docs/adr/0010-three-tier-answer-model.md) separates the two, and
+    a player who cannot tell which they are looking at will trust both equally.
+
+    Two things are said out loud rather than assumed away:
+
+    * **The boss's name is inferred.** No table names a `GYM_`/`RAID_`/`BOSS_` row - it
+      comes from stripping the prefix and joining to the base tribe. Where that happened
+      the footer says so, because the alternative is a card asserting a name the game
+      never states.
+    * **Owning nothing effective is an answer.** It names the element that would work,
+      which costs nothing to compute and is the difference between "no" and "not yet".
+    """
+    name = result.boss_name or result.boss_id
+    kind = {"tower": "tower boss", "raid": "raid boss", "alpha": "field alpha"}.get(
+        result.kind, result.kind)
+
+    head = f"**{name}** is {_elements(result.boss_elements)}"
+    if result.level is not None:
+        head += f", level {result.level}"
+    lines = [f"{head} ({kind})."]
+
+    if not result.candidates:
+        # Not a decline: the question was understood and answered, and the answer is
+        # that the roster is missing something. Saying which something is the point.
+        lines.append("")
+        lines.append(f"**Nothing you own is strong against it.** "
+                     f"{_elements(result.counter_elements)} is what beats it - "
+                     f"catching one is the shortest route.")
+        return Card(title=f"How to fight {name}", lines=lines, colour=TIER_ADVICE,
+                    footer=f"checked {result.owned_considered} of your Pals")
+
+    lines.append("")
+    for m in result.candidates:
+        bits = [f"**{m.name or m.character_id}**", _elements(m.elements),
+                f"deals {m.offense:g}x"]
+        # Only worth a word when it is not 1x. "takes 1x" on every line is noise that
+        # makes the lines that matter harder to see.
+        if m.defense != 1.0:
+            bits.append("takes " + ("half" if m.defense < 1 else "double"))
+        lines.append(SEP.join(bits))
+
+    footer = (f"{len(result.candidates)} shown"
+              f"{SEP}checked {result.owned_considered} of your Pals")
+    # Typing is the ONLY thing scored, so candidates routinely tie exactly - against a
+    # single-element boss every counter is 2x/0.5x and the order is then alphabetical.
+    # Presenting that as a ranking would be the card asserting something the data does
+    # not say. Levels and stats would break the tie; calibrating that is a roadmap item
+    # and has not happened.
+    if len({(m.offense, m.defense) for m in result.candidates}) == 1 \
+            and len(result.candidates) > 1:
+        footer += f"{SEP}equally matched on type - order is arbitrary"
+    if result.name_derived:
+        footer += f"{SEP}name inferred from the character id"
+    return Card(title=f"How to fight {name}", lines=lines, colour=TIER_ADVICE,
+                footer=footer)
