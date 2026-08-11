@@ -26,18 +26,18 @@ Both rounding conventions agree here and no exception applies, so these are the 
 
 | Parent A | Parent B | Predicted child | Actual |
 |---|---|---|---|
-| Aegidron | Celesdir Noct | **Ophydia** |  |
 | Eidrolon Ignis | Jormuntide Ignis | **Ophydia** |  |
 | Jormuntide Ignis | Tetroise Primo | **Ophydia** |  |
 | Tetroise Primo | Knocklem Ignis | **Ophydia** |  |
 | Knocklem Ignis | Whalaska Ignis | **Renjishi** |  |
-| Ophydia | Moldron Cryst | **Eidrolon** |  |
+| Ophydia | Cryolinx Terra | **Flaracle** |  |
 | Dualith Noct | Flaracle | **Eidrolon** |  |
 | Knocklem | Blazamut | **Eidrolon** |  |
-| Celesdir Noct | Azurmane | **Eidrolon** |  |
 | Solenne | Starryon Primo | **Flaracle** |  |
 | Renjishi | Elgrove Cryst | **Flaracle** |  |
 | Eidrolon | Pierdon Cryst | **Flaracle** |  |
+| Whalaska Ignis | Cryolinx Terra | **Azurmane** |  |
+| Flaracle | Astegon | **Azurmane** |  |
 
 ## Block 2 — the rounding convention (highest value rows here)
 
@@ -56,39 +56,39 @@ In each row the average lands nearest the **skipped** Pal. The model says the eg
 
 | Parent A | Parent B | Nearest by rank (skipped) | Predicted child | Actual |
 |---|---|---|---|---|
-| Aegidron | Jormuntide Ignis | _Eidrolon Ignis_ | **Aegidron** |  |
-| Aegidron | Renjishi | _Jormuntide Ignis_ | **Ophydia** |  |
-| Aegidron | Whalaska Ignis | _Tetroise Primo_ | **Ophydia** |  |
-| Aegidron | Flaracle | _Knocklem Ignis_ | **Ophydia** |  |
-| Aegidron | Pierdon Cryst | _Dualith Noct_ | **Ophydia** |  |
-| Aegidron | Dualith | _Celesdir Noct_ | **Knocklem** |  |
-| Aegidron | Sibelyx Primo | _Whalaska Ignis_ | **Eidrolon** |  |
-| Aegidron | Gildane | _Moldron Cryst_ | **Flaracle** |  |
-| Aegidron | Wumpo | _Starryon Primo_ | **Azurmane** |  |
-| Aegidron | Prixter Lux | _Elgrove Cryst_ | **Azurmane** |  |
+| Eidrolon Ignis | Jormuntide Ignis | _Eidrolon Ignis_ | **Ophydia** |  |
+| Eidrolon Ignis | Tetroise Primo | _Jormuntide Ignis_ | **Ophydia** |  |
+| Eidrolon Ignis | Dualith Noct | _Tetroise Primo_ | **Ophydia** |  |
+| Eidrolon Ignis | Solenne | _Knocklem Ignis_ | **Ophydia** |  |
+| Eidrolon Ignis | Whalaska Ignis | _Dualith Noct_ | **Knocklem** |  |
+| Eidrolon Ignis | Blazamut | _Celesdir Noct_ | **Solenne** |  |
+| Eidrolon Ignis | Univolt Cryst | _Whalaska Ignis_ | **Eidrolon** |  |
+| Eidrolon Ignis | Warsect Terra | _Moldron Cryst_ | **Flaracle** |  |
+| Eidrolon Ignis | Gildane | _Starryon Primo_ | **Azurmane** |  |
+| Eidrolon Ignis | Suzaku Aqua | _Elgrove Cryst_ | **Azurmane** |  |
 
 ## Block 4 — the exception table
 
-258 rows override the rank rule, and **76** of them produce a child the rule would not. Those are the ones worth testing; a row the rule already agrees with proves nothing either way.
+258 rows override the rank rule, and **75** of them produce a child the rule would not. Those are the ones worth testing; a row the rule already agrees with proves nothing either way.
 
 | Parent A | Parent B | Predicted child | Actual |
 |---|---|---|---|
 | Kitsun | Nyafia | **Kitsun Noct** |  |
 | Kitsun Noct | Celesdir | **Celesdir Noct** |  |
 | Incineram | Maraith | **Incineram Noct** |  |
-| Mau | Pengullet | **Mau Cryst** |  |
 | Caprity | Tarantriss | **Caprity Noct** |  |
 | Vanwyrm | Foxcicle | **Vanwyrm Cryst** |  |
 | Smokie | Munchill | **Smokie Cryst** |  |
 | Azurobe | Frostplume | **Azurobe Cryst** |  |
 | Azurmane | Fenglope | **Fenglope Lux** |  |
 | Prunelia | Needoll | **Needoll Noct** |  |
+| Fuack | Flambelle | **Fuack Ignis** |  |
 
 ### Self-pairs — two claims in one
 
-_5 of the 258 exception rows are omitted here because at least one Pal on them has no English name: `DT_PalNameText_Common` ships the `en_text` placeholder for a few entries, `BeardedDragon` among them. A row naming something unsearchable is not a test, so they are dropped rather than printed as internal ids._
+_99 of the 258 exception rows are omitted, on two grounds. Some name a Pal with no English name at all — `DT_PalNameText_Common` ships the `en_text` placeholder for a few entries, `BeardedDragon` among them. The rest name a parent with no ordinary overworld spawn, which takes out the legendary self-pairs: *Necromus + Necromus* is a correct row and an impossible errand, and *Mau + Pengullet* goes with them because Mau is dungeon-only. So the claim 'legendaries breed true' is **left untested** — it was never testable, and saying so beats printing a row nobody can run._
 
-117 of the 258 rows pair a Pal with itself, and they encode two different things. Legendaries breed true because nothing else can make them; variants breed true so a line can be kept once you have one. Both should hold, and a failure in either is interesting.
+81 of the 258 rows pair a Pal with itself, and they encode two different things. Legendaries breed true because nothing else can make them; variants breed true so a line can be kept once you have one. Both should hold, and a failure in either is interesting.
 
 | Parent A | Parent B | Predicted child | Actual |
 |---|---|---|---|
@@ -97,9 +97,9 @@ _5 of the 258 exception rows are omitted here because at least one Pal on them h
 | Mau Cryst | Mau Cryst | **Mau Cryst** |  |
 | Caprity Noct | Caprity Noct | **Caprity Noct** |  |
 | Vanwyrm Cryst | Vanwyrm Cryst | **Vanwyrm Cryst** |  |
-| Necromus | Necromus | **Necromus** |  |
-| Dragostrophe | Dragostrophe | **Dragostrophe** |  |
 | Shadowbeak | Shadowbeak | **Shadowbeak** |  |
+| Smokie Cryst | Smokie Cryst | **Smokie Cryst** |  |
+| Azurobe Cryst | Azurobe Cryst | **Azurobe Cryst** |  |
 
 ---
 

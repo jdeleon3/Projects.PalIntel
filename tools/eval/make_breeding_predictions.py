@@ -87,12 +87,25 @@ def build(version: str) -> str:
     exc_pairs = {(e["parent_a"], e["parent_b"]) for e in exceptions}
     exc_pairs |= {(b, a) for a, b in exc_pairs}
 
+    # Parents have to be CAUGHT before they can be bred, so a row naming a Pal the
+    # tester cannot readily obtain is not a test. `kind == "normal"` rather than any
+    # spawn at all: Necromus is in the overworld, but only as a field alpha, and
+    # "catch two Necromus" is not a task anyone can run.
+    spawns = json.loads(
+        (REPO / "data" / version / "pal_spawns.json").read_text(encoding="utf-8"))
+    catchable = {a["pal"] for a in spawns["areas"] if a["kind"] == "normal"}
+
     def named(*ids: str) -> bool:
         """Every id on the row resolves to a name a tester can find in game."""
         return all(name.get(i) for i in ids)
 
+    def obtainable(*ids: str) -> bool:
+        """Every id names a Pal with an ordinary overworld spawn."""
+        return all(name.get(i) in catchable for i in ids)
+
     def usable(a: str, b: str) -> bool:
-        return a in rank and b in rank and (a, b) not in exc_pairs and named(a, b)
+        return (a in rank and b in rank and (a, b) not in exc_pairs
+                and named(a, b) and obtainable(a, b))
 
     # --- Block 1: agreement pairs. Both conventions agree, no exception applies.
     # If these fail, the model is wrong at the root and nothing after matters.
@@ -148,7 +161,11 @@ def build(version: str) -> str:
 
     # --- Block 4: exception rows, sampled across kinds.
     def row_named(e: dict) -> bool:
-        return named(e["parent_a"], e["parent_b"], e["child_character_id"])
+        # The child need only be nameable; the PARENTS must also be catchable, which
+        # is what removes the legendary self-pairs. "Breed two Necromus" is a correct
+        # row and an impossible errand.
+        return (named(e["parent_a"], e["parent_b"], e["child_character_id"])
+                and obtainable(e["parent_a"], e["parent_b"]))
 
     # Rows naming something with no English name are counted, then dropped. Most are
     # Yakushima and raid content whose names the table ships as placeholders.
@@ -258,11 +275,15 @@ def build(version: str) -> str:
     add("")
     add("### Self-pairs — two claims in one\n")
     if unnamed_rows:
-        add(f"_{unnamed_rows} of the {len(exceptions)} exception rows are omitted here "
-            "because at least one Pal on them has no English name: "
+        add(f"_{unnamed_rows} of the {len(exceptions)} exception rows are omitted, on two "
+            "grounds. Some name a Pal with no English name at all — "
             "`DT_PalNameText_Common` ships the `en_text` placeholder for a few entries, "
-            "`BeardedDragon` among them. A row naming something unsearchable is not a "
-            "test, so they are dropped rather than printed as internal ids._\n")
+            "`BeardedDragon` among them. The rest name a parent with no ordinary "
+            "overworld spawn, which takes out the legendary self-pairs: "
+            "*Necromus + Necromus* is a correct row and an impossible errand, and "
+            "*Mau + Pengullet* goes with them because Mau is dungeon-only. So the claim "
+            "'legendaries breed true' is **left untested** — it was never testable, and "
+            "saying so beats printing a row nobody can run._\n")
     add(f"{len(self_pairs)} of the {len(exceptions)} rows pair a Pal with itself, and they "
         "encode two different things. Legendaries breed true because nothing else can "
         "make them; variants breed true so a line can be kept once you have one. Both "
