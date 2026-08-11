@@ -345,16 +345,20 @@ def main() -> None:
 
     transient = [s for s in scored if s.get("transient")]
     if transient:
-        # Loud and unmissable. Four full runs in an hour exhausted the Gemini quota, and
-        # every 429 arrived as Decline(transient=True) which the summary counted as an
-        # honest miss - a 13-point "regression" that was entirely the rate limiter.
+        # Loud and unmissable. Five runs in an hour drained the Gemini key's prepaid
+        # balance, and every 429 arrived as Decline(transient=True) which the summary
+        # counted as an honest miss - a 13-point "regression" that was entirely billing.
+        # Worth reading the 429 body rather than assuming a rate limit: it names the
+        # cause, and a depleted balance does not come back on its own.
         print()
         print("=" * 68)
         print(f"  !! {len(transient)} of {len(scored)} prompts failed in TRANSPORT, not "
               f"routing (rate limit, timeout).")
         print(f"  !! Every one is scored as a decline, so the accuracy above is a FLOOR "
               f"on a broken run, not a measurement.")
-        print(f"  !! Re-run when the quota resets. Affected: "
+        print(f"  !! Check the cause before re-running - a 429 is a rate limit OR a "
+              f"depleted prepaid balance, and only one of those goes away on its own. "
+              f"Affected: "
               f"{', '.join(s['id'] for s in transient[:8])}"
               f"{' ...' if len(transient) > 8 else ''}")
         print("=" * 68)
