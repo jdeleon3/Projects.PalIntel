@@ -189,3 +189,36 @@ def test_an_ordinary_pal_is_counterable_because_it_has_an_alpha(kb):
 def test_a_missing_boss_argument_declines(kb):
     p = Pipeline(kb, _FixedRouter(ToolCall("plan_counters", {})))
     assert isinstance(p.handle("how do I beat it", PlayerState()).call, Decline)
+
+
+# --- the model path ----------------------------------------------------------
+
+from palintel.routing_unified import (CLASS_TO_TOOL, PRODUCTION_CLASSES,  # noqa: E402
+                                      unpack)
+
+
+def test_the_model_can_choose_the_counter_class():
+    """Until this shipped, only phrasings the regex caught were answered at all."""
+    assert "boss_counter" in PRODUCTION_CLASSES
+    assert CLASS_TO_TOOL["boss_counter"] == "plan_counters"
+
+
+def test_boss_counter_unpacks_the_pal_into_the_boss_slot():
+    """The boss arrives resolved through the `pals` enum. `unpack` never reads the
+    verbatim `target` slot, so wiring it there would have produced an empty call."""
+    name, args = unpack("answer_query", {"query_class": "boss_counter",
+                                         "pals": ["Anubis"], "resources": [],
+                                         "items_named": [], "target": "the first tower"})
+    assert name == "plan_counters"
+    assert args["boss"] == "Anubis"
+
+
+def test_a_counter_class_naming_no_pal_yields_no_boss_and_declines(kb):
+    """The model can name a class and omit its argument - observed on Gemini for the
+    resource tool. An honest decline, not a TypeError."""
+    _, args = unpack("answer_query", {"query_class": "boss_counter", "pals": [],
+                                      "resources": [], "items_named": [],
+                                      "target": None})
+    assert not args.get("boss")
+    p = Pipeline(kb, _FixedRouter(ToolCall("plan_counters", args)))
+    assert isinstance(p.handle("how do I beat it", PlayerState()).call, Decline)

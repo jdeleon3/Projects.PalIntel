@@ -45,7 +45,7 @@ CLASS_TO_TOOL: dict[str, str] = {
     "breeding_pair": "check_breeding_pair",
     "pal_info": "get_pal_info",
     "compare_pals": "compare_pals",
-    "boss_counter": "evaluate_counter",
+    "boss_counter": "plan_counters",
 }
 
 # What the per-tool descriptions used to say, compressed into one line each. This is the
@@ -63,8 +63,12 @@ CLASS_HELP: dict[str, str] = {
     "boss_counter": "which Pal to use against a boss or tower",
 }
 
+# What the dispatcher can actually answer. `boss_counter` joins on 2026-08-11: the
+# pipeline gained a plan_counters branch, so offering it to the model is no longer
+# offering a class the caller cannot dispatch - which is the mistake this function's
+# docstring warns about.
 PRODUCTION_CLASSES = ("resource_location", "pal_location", "pal_drops",
-                      "item_source")
+                      "item_source", "boss_counter")
 
 
 def unified_schema(resources: list[str], pals: list[str],
@@ -150,7 +154,11 @@ _ARGS: dict[str, tuple[str, ...]] = {
     "check_breeding_pair": ("parent_a", "parent_b"),
     "get_pal_info": ("pal",),
     "compare_pals": ("pal_a", "pal_b"),
-    "evaluate_counter": ("pal",),
+    # The boss arrives already resolved through the `pals` enum, not through the
+    # verbatim `target` slot - `unpack` never reads `target` at all. So the model names
+    # a Pal and the dispatcher resolves it to a boss row, which is also what lets an
+    # unnamed tower ("the first tower") decline honestly instead of being guessed at.
+    "plan_counters": ("boss",),
 }
 
 
