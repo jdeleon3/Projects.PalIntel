@@ -33,6 +33,7 @@ from tempfile import TemporaryDirectory
 
 from . import activation
 from .activity import ActivityLog
+from .capture import FEEDBACK_KINDS, SessionCapture, Utterance
 from .artwork import Artwork
 from .cards import TIER_DECLINE, Card, recent_card, status_card
 from .config import Config, ConfigError
@@ -138,9 +139,51 @@ def build_pipeline(cfg: Config) -> Pipeline:
     return Pipeline(kb, build_router(kb, router_config=cfg.router), artwork=artwork)
 
 
+class FeedbackView(discord.ui.View):
+    """Labelling buttons under an answer card.
+
+    **Components, not reactions.** A button row rides in the same `send()` payload at no
+    extra API cost, where six reactions are six REST calls that would have to be deferred
+    behind the answer like `art_post` is. The card is posted once, with its controls.
+
+    Three buttons, and no more, because each distinction routes to a different fix: a
+    mis-heard name is a lexicon problem, a wrong class is a routing problem, and a wrong
+    entity on a clean transcript is neither. A fourth nobody presses is clutter on every
+    card, and card density is already an open decision in STATUS.
+
+    `timeout=None` keeps them live for the session. They do NOT survive a bot restart -
+    persistent views need registering at startup, and this is a testbed control rather
+    than a promise to the player.
+    """
+
+    def __init__(self, capture: SessionCapture):
+        super().__init__(timeout=None)
+        for kind, (emoji, label) in FEEDBACK_KINDS.items():
+            self.add_item(_FeedbackButton(capture, kind, emoji, label))
+
+
+class _FeedbackButton(discord.ui.Button):
+    def __init__(self, capture: SessionCapture, kind: str, emoji: str, label: str):
+        super().__init__(style=discord.ButtonStyle.secondary, emoji=emoji, label=label)
+        self._capture, self._kind = capture, kind
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        # Keyed by the MESSAGE, not by "the last utterance" - which breaks the moment two
+        # more questions follow, and this is meant to be usable minutes later.
+        self._capture.record_feedback(
+            interaction.message.id, self._kind,
+            who=getattr(interaction.user, "display_name", None))
+        log.info("feedback %s on message %s", self._kind, interaction.message.id)
+        # Ephemeral: the acknowledgement is for the person who clicked, and a public
+        # "noted" under every corrected card is noise for everyone else.
+        await interaction.response.send_message("Noted - thanks.", ephemeral=True)
+
+
 async def _answer(channel, pipe: Pipeline, text: str, who: str,
                   activity: ActivityLog | None = None, watcher=None,
-                  started: float | None = None, channel_kind: str = "text") -> None:
+                  started: float | None = None, channel_kind: str = "text",
+                  capture: SessionCapture | None = None, uid: str | None = None,
+                  feedback: bool = False) -> None:
     """Route `text` and post the cards. Shared by the text and voice paths.
 
     Routing is a network call and transcription is GPU work, so both run in the default
@@ -183,6 +226,22 @@ async def _answer(channel, pipe: Pipeline, text: str, who: str,
     if activity is not None:
         activity.timed("route", route_ms, text[:60])
     kind = "decline" if declined else outcome.call.name
+    if capture is not None and uid:
+        # What the SYSTEM decided, written as label "auto". Never as truth: labels taken
+        # from the router's own behaviour are self-confirming, so a consistent bug would
+        # be ratified by the corpus it produces. Only a human or a successful rephrase
+        # promotes a label past auto.
+        top = outcome.candidates[0] if outcome.candidates else None
+        args = {} if declined else outcome.call.args
+        capture.record(Utterance(
+            uid=uid, wav=f"{uid}.wav", seconds=0.0, heard=text,
+            path=("decline" if declined
+                  else ("fast" if "cue" in (outcome.call.rationale or "") else "model")),
+            tool=None if declined else outcome.call.name,
+            entity=(args.get("pal") or args.get("boss") or args.get("resource")
+                    or args.get("item")),
+            score=round(top.score, 3) if top else None,
+            outcome="declined" if declined else "answered"))
     log.info("%s -> %s in %.0fms (%d card%s)", who, kind, route_ms, len(outcome.cards),
              "" if len(outcome.cards) == 1 else "s")
     # One message, several embeds. A query that resolves to a base Pal and its variant
@@ -195,9 +254,16 @@ async def _answer(channel, pipe: Pipeline, text: str, who: str,
         # and the upload happens after the clock has stopped. Sending them together would
         # charge every illustrated query the attachment's latency and move a bar that is
         # already unmet (Docs/00-overview.md §7).
+        # The controls ride in this same call when enabled, so they cost nothing on the
+        # graded path - unlike reactions, which would be one round trip each.
         message = await channel.send(
             embeds=[to_embed(c, i, with_art=False)
-                    for i, c in enumerate(outcome.cards)])
+                    for i, c in enumerate(outcome.cards)],
+            **({"view": FeedbackView(capture)} if (feedback and capture) else {}))
+        if capture is not None and uid:
+            # After the send, never before: the join key does not exist until Discord
+            # has assigned it, and nothing upstream waits for it.
+            capture.attach_message(uid, message.id)
     except Exception:
         # A card that was built and never delivered used to be counted as "answered",
         # because the count was written before the send. That made the one failure the
@@ -409,6 +475,12 @@ def run() -> None:
         transcriber = Transcriber(pipe.kb.lexicon)
         log.info("voice: STT on %s", transcriber.device)
 
+        # One session per bot run. Off by default; see CaptureConfig for why capture and
+        # feedback are two flags rather than one.
+        capture = SessionCapture() if cfg.capture.enabled else None
+        if capture is not None:
+            log.info("capture: session %s -> %s", capture.session, capture.dir)
+
         loop = asyncio.get_running_loop()
         tmp = TemporaryDirectory(prefix="palintel-voice-")
 
@@ -416,12 +488,17 @@ def run() -> None:
             # faster-whisper reads a file; the buffer is raw PCM. A scratch WAV is
             # cheaper and far less fragile than teaching the transcriber to take bytes,
             # and these are one-to-three second clips.
-            path = f"{tmp.name}/{id(utt)}.wav"
-            with wave.open(path, "wb") as w:
-                w.setnchannels(1)
-                w.setsampwidth(2)
-                w.setframerate(16_000)
-                w.writeframes(utt.pcm)
+            uid = f"{int(time.time() * 1000):x}"
+            # Captured or not, the WAV is written either way - faster-whisper reads a
+            # file, not a buffer. Capture only changes WHERE, and whether it survives.
+            path = (str(capture.write_wav(uid, utt.pcm) or f"{tmp.name}/{uid}.wav")
+                    if capture is not None else f"{tmp.name}/{uid}.wav")
+            if capture is None:
+                with wave.open(path, "wb") as w:
+                    w.setnchannels(1)
+                    w.setsampwidth(2)
+                    w.setframerate(16_000)
+                    w.writeframes(utt.pcm)
 
             t_stt = time.monotonic()
             text = await loop.run_in_executor(None, transcriber.transcribe, path)
@@ -467,7 +544,9 @@ def run() -> None:
             # person in a shared channel, and that is worse than not joining the two.
             await _answer(text_channel, pipe, text, cfg.voice.speaker or "voice",
                           activity, watcher,
-                          started=utt.ended_at, channel_kind="voice")
+                          started=utt.ended_at, channel_kind="voice",
+                          capture=capture, uid=uid,
+                          feedback=cfg.capture.feedback)
 
         def _report(fut) -> None:
             """Surface anything on_speech raised.

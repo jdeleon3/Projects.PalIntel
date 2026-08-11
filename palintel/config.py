@@ -125,11 +125,28 @@ class CardsConfig:
 
 
 @dataclass(frozen=True)
+class CaptureConfig:
+    """Gameplay capture and the feedback controls. **Two flags, not one.**
+
+    STATUS already records the lesson from `maps`/`icons`: one flag pair covering two
+    features with different risks. Saving audio and putting controls on every card are
+    separable, and someone may well want one without the other.
+
+    Both default off because capture records whatever is near the microphone - including
+    other people in the room - and that should be a decision rather than a surprise.
+    Everything stays local; `data/` is gitignored.
+    """
+    enabled: bool = False       # keep the WAV the pipeline already wrote, and a log line
+    feedback: bool = False      # show labelling buttons under answer cards
+
+
+@dataclass(frozen=True)
 class Config:
     discord: DiscordConfig
     voice: VoiceConfig = field(default_factory=VoiceConfig)
     router: RouterConfig = field(default_factory=RouterConfig)
     cards: CardsConfig = field(default_factory=CardsConfig)
+    capture: CaptureConfig = field(default_factory=CaptureConfig)
     data_version: str = "1.0.2"
     save_dir: Path | None = None
 
@@ -180,6 +197,7 @@ class Config:
                 f"router.cues must be standard|proximity|wide, got {cues!r}")
 
         c = raw.get("cards", {}) or {}
+        cap = raw.get("capture", {}) or {}
         save = (raw.get("game", {}) or {}).get("save_dir", "").strip()
         return cls(
             discord=DiscordConfig(token=token, channel_id=channel,
@@ -192,6 +210,8 @@ class Config:
                                 unified=bool(r.get("unified", True))),
             cards=CardsConfig(maps=bool(c.get("maps", False)),
                               icons=bool(c.get("icons", False))),
+            capture=CaptureConfig(enabled=bool(cap.get("enabled", False)),
+                                  feedback=bool(cap.get("feedback", False))),
             data_version=os.environ.get(
                 "PALINTEL_DATA_VERSION", (raw.get("data", {}) or {}).get("version", "1.0.2")),
             save_dir=Path(save) if save else None,
