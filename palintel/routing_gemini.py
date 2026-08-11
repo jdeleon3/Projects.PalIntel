@@ -242,15 +242,25 @@ class GeminiRouter:
         raising: caching is an optimisation, and a run that silently costs more is a far
         better outcome than a run that dies.
         """
-        # Gemini refuses to cache below 2048 tokens. Production Q1 registers one tool and
-        # comes to ~650, so caching is an eval-only win: the A5 harness registers all
-        # seven query classes at ~16.4k. Checking first avoids a guaranteed-400 API call
-        # and a misleading warning on every single startup.
+        # Gemini refuses to cache below 2048 tokens, and falling under that line is a
+        # silent 4x on input: no error, no failed call, just every request paying full
+        # rate. The consolidated registry sat 34 tokens short of it once and cost $1.10
+        # of uncached input across a 236-request run before anyone noticed.
+        #
+        # So this is a warning, not a debug line, and it also fires when the schema is
+        # merely CLOSE to the floor - clearing it today is incidental (the item enum is
+        # most of the margin), and trimming an enum or dropping a class would put it back
+        # under with nothing to say so.
         approx = (len(json.dumps(self._decls)) + len(SYSTEM)) // 4
         if approx < CACHE_MIN_TOKENS:
-            log.debug("schema ~%d tok is below Gemini's %d-token cache minimum; "
-                      "sending inline", approx, CACHE_MIN_TOKENS)
+            log.warning("schema ~%d tok is under Gemini's %d-token cache minimum, so "
+                        "every request pays full input rate (~4x). Registering another "
+                        "query class or enum would cross it.", approx, CACHE_MIN_TOKENS)
             return None
+        if approx < CACHE_MIN_TOKENS * 1.15:
+            log.warning("schema ~%d tok is only %d over Gemini's %d-token cache "
+                        "minimum - trimming an enum would silently cost 4x on input",
+                        approx, approx - CACHE_MIN_TOKENS, CACHE_MIN_TOKENS)
 
         body = {
             "model": f"models/{self._model}",
