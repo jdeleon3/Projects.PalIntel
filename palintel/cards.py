@@ -13,8 +13,8 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .execution import (DropsResult, ItemSourceResult, ResourceResult,
-                        SpawnResult)
+from .execution import (AttributeResult, DropsResult, ItemSourceResult,
+                        ResourceResult, SpawnResult)
 from .tools import Decline
 
 # Tier colours, so a reader can tell fact from recommendation from reference at a glance
@@ -620,6 +620,96 @@ def _elements(names) -> str:
     return "/".join(_element(n) for n in names)
 
 
+# How many matches to list. Five fits the glance a card gets mid-play, and the filters
+# routinely leave 40+ - "44 Fire Pals" is an index, not an answer. Same reasoning as
+# MAX_DROPPERS and MAX_NAMED_OPTIONS, and the footer always says how many were behind it.
+MAX_MATCHES = 5
+
+
+def attribute_card(result: AttributeResult) -> Card:
+    """Which Pals match a description. **Tier 1, and green, despite reading like advice.**
+
+    The colour is the honest call and it is worth stating why, because the counter card
+    next door is amber for what looks like the same shape. That one *computes* a
+    recommendation: it reasons about type effectiveness and produces something the game
+    never said. This one selects rows and orders them by an integer the game states -
+    Mining 6 is a column, not a conclusion - so it is the same kind of claim as a
+    coordinate.
+
+    What the card must therefore be careful about is the ORDER, not the values. Two
+    caveats earn their space:
+
+    * **Highest level first is not a ranking.** STATUS's decision, with its own caveat
+      attached: highest is a proxy for strongest and nothing more. The footer says so
+      rather than letting "1." imply the card knows which Pal is better.
+    * **A widened level filter is a different answer.** When nothing spawns at exactly
+      the level asked for, the nearest bands come back - and the card leads with the
+      fact, because "the closest thing to an electric Pal at 60" and "an electric Pal at
+      60" are not the same claim.
+    """
+    title = f"{_element(result.element)} Pals" if result.element else "Pals"
+    if result.work:
+        title += f" for {result.work_label or result.work}"
+    if result.level is not None:
+        # "at", not "around", even when the filter widened. The leading line below owns
+        # that caveat, and a title that hedges makes every card read as approximate.
+        title += f" at level {result.level}"
+
+    if not result.matches:
+        # Nothing matched every filter. Say which combination came up empty rather than
+        # a bare "no results", because dropping one of two filters is usually the fix and
+        # the player cannot guess which one was the problem.
+        return Card(title=f"No {title.lower()}",
+                    lines=["Nothing in my data matches all of that.",
+                           _filters_line(result)],
+                    colour=TIER_DECLINE)
+
+    lines = []
+    if result.level is not None and not result.level_exact:
+        # Leading, not a footnote. The player asked for 60 and is being shown 57.
+        lines.append(f"_Nothing spawns at exactly level {result.level} - "
+                     f"these are the closest._")
+
+    for i, m in enumerate(result.matches, 1):
+        bits = [f"**{i}. {m.pal}**", _elements(m.elements)]
+        if m.work_level is not None:
+            # The job that was asked about, and only that one. A Pal's best job is a
+            # different fact and printing it here answers a question nobody asked.
+            bits.append(f"{result.work_label or result.work} {m.work_level}")
+        bits.append(m.band_label())
+        lines.append(SEP.join(bits))
+
+    if result.without_a_band:
+        # Not "no match" - not considered. A tower boss has no wild level, so a level
+        # filter cannot rule it in or out, and silently dropping it would let the card
+        # imply a completeness it does not have.
+        lines += ["", f"_{result.without_a_band} more match but have no wild spawn, "
+                      f"so I can't check their level._"]
+
+    shown = len(result.matches)
+    footer = f"{shown} of {result.total_available} shown"
+    if result.work:
+        # The number is the game's own suitability column, not a rating this project
+        # invented - and not a claim about the Pal being good, which nothing here
+        # measures.
+        footer += f"{SEP}{result.work_label or result.work} level is the game's own"
+    elif result.level is None:
+        footer += f"{SEP}sorted by highest level, which is not a ranking"
+    return Card(title=title, lines=lines, footer=footer, colour=TIER_FACT)
+
+
+def _filters_line(result: AttributeResult) -> str:
+    """What was actually asked for, so an empty card is diagnosable."""
+    bits = []
+    if result.element:
+        bits.append(f"element **{_element(result.element)}**")
+    if result.work:
+        bits.append(f"job **{result.work_label or result.work}**")
+    if result.level is not None:
+        bits.append(f"level **{result.level}**")
+    return "_Looked for: " + ", ".join(bits) + "._" if bits else ""
+
+
 def counter_card(result: "CounterResult") -> Card:
     """The plan for fighting one boss. **The project's first Tier 2 card.**
 
@@ -636,10 +726,22 @@ def counter_card(result: "CounterResult") -> Card:
       never states.
     * **Owning nothing effective is an answer.** It names the element that would work,
       which costs nothing to compute and is the difference between "no" and "not yet".
+    * **A tower is named the way the player names it.** Asked about Victor, the card
+      titles itself "Victor & Shadowbeak" - which is the game's own name for the fight,
+      not a rendering this file invented - and says "Victor's tower", so the reader can
+      tell it apart from the field alpha of the same species. See `_leader_note` for why
+      that pairing is NOT footnoted as derived.
     """
     name = result.boss_name or result.boss_id
+    # The player asked about a human; answering about a Pal alone would read as a
+    # non-sequitur even though it is the same fight.
+    title_name = f"{result.leader} & {name}" if result.leader else name
     kind = {"tower": "tower boss", "raid": "raid boss", "alpha": "field alpha"}.get(
         result.kind, result.kind)
+    if result.leader:
+        # "Victor's tower" rather than "tower boss": there are nine towers and the
+        # generic label cannot tell the player which one this is.
+        kind = f"{result.leader}'s tower"
 
     head = f"**{name}** is {_elements(result.boss_elements)}"
     if result.level is not None:
@@ -654,9 +756,9 @@ def counter_card(result: "CounterResult") -> Card:
         # about the boss and is worth saying on its own.
         lines.append("")
         lines.append(f"**{_elements(result.counter_elements)}** is what beats it.")
-        return Card(title=f"How to fight {name}", lines=lines, colour=TIER_ADVICE,
+        return Card(title=f"How to fight {title_name}", lines=lines, colour=TIER_ADVICE,
                     footer="I haven't read your Pals, so this isn't filtered to what "
-                           "you own")
+                           "you own" + _leader_note(result))
 
     if not result.candidates:
         # Not a decline: the question was understood and answered, and the answer is
@@ -665,8 +767,9 @@ def counter_card(result: "CounterResult") -> Card:
         lines.append(f"**Nothing you own is strong against it.** "
                      f"{_elements(result.counter_elements)} is what beats it - "
                      f"catching one is the shortest route.")
-        return Card(title=f"How to fight {name}", lines=lines, colour=TIER_ADVICE,
-                    footer=f"checked {result.owned_considered} of your Pals")
+        return Card(title=f"How to fight {title_name}", lines=lines, colour=TIER_ADVICE,
+                    footer=f"checked {result.owned_considered} of your Pals"
+                           + _leader_note(result))
 
     lines.append("")
     for m in result.candidates:
@@ -690,5 +793,25 @@ def counter_card(result: "CounterResult") -> Card:
         footer += f"{SEP}equally matched on type - order is arbitrary"
     if result.name_derived:
         footer += f"{SEP}name inferred from the character id"
-    return Card(title=f"How to fight {name}", lines=lines, colour=TIER_ADVICE,
+    footer += _leader_note(result)
+    return Card(title=f"How to fight {title_name}", lines=lines, colour=TIER_ADVICE,
                 footer=footer)
+
+
+def _leader_note(result: "CounterResult") -> str:
+    """Caveat the human-to-Pal pairing only where it has a single source.
+
+    **This footnote used to fire on every leader and it was wrong to.** The pairing is
+    not inferred: `pal_names_flat.json` states it in one string - `PAL_NAME_SnowBoss` is
+    "Victor & Shadowbeak" - and `DT_UniqueNPCText` reaches the same answer independently,
+    with the build failing if they disagree. Caveating a double-sourced fact on every
+    card would spend the reader's attention on the wrong thing and make the caveat mean
+    nothing when it matters.
+
+    The one derived step that remains - reaching `GYM_BlackGriffon` from the name
+    "Shadowbeak" - is the prefix inference the `name_derived` footnote already names.
+    """
+    if not result.leader or result.leader_corroborated:
+        return ""
+    return (f"{SEP}the {result.leader}/{result.boss_name or result.boss_id} pairing has "
+            f"only one source in the game files")

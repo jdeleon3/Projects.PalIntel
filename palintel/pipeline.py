@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Callable
 
 from . import cards, execution
 from .cards import Card
-from .knowledge import Candidate, KnowledgeBase
+from .knowledge import REPO, Candidate, KnowledgeBase
 from .memory import Memory, Turn
 from .routing import RouterBackend
 from .tools import Decline, ToolCall
@@ -111,6 +111,26 @@ class Outcome:
             self.illustrate = None
 
 
+def _counterable(version: str) -> set[str]:
+    """Display names that name a fight, lower-cased. Empty when bosses.json is missing.
+
+    **The counter fast path was dark until 2026-08-11.** `StubRouter` grew the branch,
+    `score_branches.py` measured it at 16/16 on the written prompts it can claim, and
+    `build_router` never passed `counters=True` - so every counter question in play paid
+    a model round trip for an answer the stub had. That was an omission rather than a
+    decision: no commit or ADR argues for leaving it off, and the branch abstains
+    wherever the tier is in doubt, which is what the measurement was for.
+    """
+    import json
+
+    path = REPO / "data" / version / "bosses.json"
+    if not path.exists():
+        log.info("no bosses.json - the counter fast path stays off")
+        return set()
+    bosses = json.loads(path.read_text(encoding="utf-8"))
+    return {b["name"].lower() for b in bosses["entries"] if b.get("name")}
+
+
 def build_router(kb: KnowledgeBase, prefer: str = "auto",
                  router_config: "RouterConfig | None" = None) -> RouterBackend:
     """Select a router backend.
@@ -159,9 +179,20 @@ def build_router(kb: KnowledgeBase, prefer: str = "auto",
     # nothing outside the two query classes and produced no wrong card - which is the
     # result that had to be established rather than assumed, since Phase 1's "claimed
     # nothing outside Q1" was scored when there was no other tool to claim for.
-    fast = StubRouter(kb.lexicon, locatable, cues=cfg.cues)
+    # Which Pals have a boss form, read from the dataset rather than re-derived here.
+    # `BOSS_<name>` meaning "the alpha of" is the inference CLAUDE.md flags by name, and
+    # bosses.json already made it and recorded that it did.
+    #
+    # Empty when the dataset is absent, which turns the counter branch off rather than
+    # failing: every other class still answers, and `plan_counters` is the only one that
+    # needs it.
+    counterable = _counterable(kb.game_version)
+
+    fast = StubRouter(kb.lexicon, locatable, cues=cfg.cues,
+                      counters=bool(counterable), counterable=counterable)
     backstop = StubRouter(kb.lexicon, locatable, cues="wide",
-                          resource_floor=BACKSTOP_CONFIDENT)
+                          resource_floor=BACKSTOP_CONFIDENT,
+                          counters=bool(counterable), counterable=counterable)
 
     def wrapped(primary):
         """Wrap a hosted router with the backstop, and the fast path if enabled.
@@ -404,6 +435,33 @@ class Pipeline:
             self._remember(who, call, {"item": item}, f"{result.total} sources",
                            enabled=remember)
             return Outcome([cards.item_source_card(result)], call, candidates)
+
+        if call.name == "find_pals_by_attribute":
+            args = {k: v for k, v in call.args.items()
+                    if k in ("element", "work", "level") and v is not None}
+            if not args:
+                # Every filter empty means the model chose the class and described
+                # nothing, which would return the whole Paldeck sorted by level. Same
+                # shape as the missing-argument declines above, and the same answer.
+                log.warning("router called %s with no filters: %s", call.name, call.args)
+                return self._decline(
+                    Decline(reason="I didn't catch what kind of Pal you're after"),
+                    candidates)
+            if not self.kb.attributes:
+                return self._decline(
+                    Decline(reason="I don't have work and element data loaded"),
+                    candidates)
+
+            result = execution.find_pals_by_attribute(self.kb, **args)
+            log.info("find_pals_by_attribute(%s) -> %d/%d%s", args,
+                     len(result.matches), result.total_available,
+                     "" if result.level_exact else " (widened)")
+            # Deliberately NOT remembered. Conversation memory holds one referent per
+            # turn and this class produces five, so "what about the alpha?" after it has
+            # no single thing to resolve against - and picking the first would answer
+            # about whichever Pal happened to sort highest. ADR-0013's failure mode
+            # exactly. A follow-up naming one of them resolves on its own name.
+            return Outcome([cards.attribute_card(result)], call, candidates)
 
         if call.name == "plan_counters":
             boss = call.args.get("boss")

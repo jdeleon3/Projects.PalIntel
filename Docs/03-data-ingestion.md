@@ -134,6 +134,41 @@ Bosses need elements, level, location, and `tower_order`. Tower bosses are a sho
 enumerable list; field alphas are larger but still bounded. `tower_order` must be correct —
 conversation memory relies on it to resolve *"the next tower"*.
 
+**`tower_order` is still absent and cannot be extracted.** Nothing in the pak states that
+Victor's is the fifth tower. What *is* extractable, ingested 2026-08-11, is **who owns
+each tower**: `pal_names_flat.json` names the pair in one string
+(`PAL_NAME_SnowBoss` → `"Victor & Shadowbeak"`) for all nine, and `DT_UniqueNPCText`'s
+`BOSSNAME_DEMO_<REGION>_LEADER` / `_LEADER_PAL` rows reach eight of the same nine
+independently. `tools/ingest/_leaders.py` reads both and fails the build if they
+disagree. That makes *"how do I beat Victor"* answerable and *"how do I beat the fifth
+tower"* still not.
+
+Two traps recorded there rather than rediscovered:
+
+- The leader must resolve to a **character id**, not to the Pal's name. `bosses.json` is
+  sorted by `(kind, character_id)`, so a name index reaches `BOSS_BlackGriffon` — the
+  field alpha — before `GYM_BlackGriffon`. Both are called Shadowbeak and they are
+  different fights.
+- Astralym carries `ElementType::None` on every row, so Zenara's tower resolves and then
+  declines. That is the pak's answer, not a gap to fill.
+
+### 3.2b Work suitability (Pal search by attribute)
+
+Thirteen `WorkSuitability_*` integer columns on the Pal row, with the job labels taken
+from the game's own UI strings (`en_DT_UI_Common_Text_Common`,
+`COMMON_WORK_SUITABILITY_*`) rather than a hand map — so a card prints "Kindling" and not
+`EmitFlame`. `tools/ingest/build_work.py`. Nothing here is derived.
+
+`COMMON_WORK_SUITABILITY_Mining_Stone` / `_Copper` / `_Iron` / `_Platinum` have UI keys
+and are **not** jobs: their text is the untranslated `en Text` placeholder and no Pal row
+carries a column for them. They gate which ore a Mining level can work.
+
+**Unverified against the UI:** the columns run 1–8 with one Pal at the top of each job.
+Lamball's 1/1/1 matches the game exactly, but nobody has opened the Paldeck and counted
+the icons on a high-level Pal, so whether the internal integer *is* the displayed rank is
+a one-glance check that has not been made. Cards print the number and never call it a
+star count.
+
 ### 3.4 Breeding data (Q3)
 
 Strategy depends entirely on assumption **A3**
@@ -462,6 +497,15 @@ python tools/ingest/build_pal_drops.py --version 1.0.2
 # cached at data/raw/ranch_wiki.md (section 3.9), so refresh that file on a patch.
 dotnet run --project tools/extract/PakExtract -- ranch
 python tools/ingest/build_ranch.py --version 1.0.2
+
+# Work suitability, for Pal search by attribute. Needs the `tables` extract for the job
+# labels; optional, and its absence turns that one query class off (section 3.2b).
+python tools/ingest/build_work.py --version 1.0.2
+
+# ORDER MATTERS for these two: build_bosses.py reads lexicon.json to resolve a boss row
+# to a Pal name, and both read the tower leaders out of data/raw via _leaders.py.
+python tools/ingest/build_lexicon.py --version 1.0.2
+python tools/ingest/build_bosses.py  --version 1.0.2
 
 palintel-ingest   --version 1.0.2 --source-config sources.yaml
 palintel-corpus   --version 1.0.2 --embed          # chunk + embed prose

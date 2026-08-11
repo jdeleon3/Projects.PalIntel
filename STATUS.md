@@ -4,8 +4,8 @@
 any line.** This file is the two-minute orientation; the roadmap is the record of how each
 number was arrived at.
 
-*Last updated 2026-08-11. `main` is **current** — caught up 2026-08-11 and pushed;
-`design-and-phase0` has the same tree. Both are on `origin`.*
+*Last updated 2026-08-11. `main` was current as of the previous session; the leader
+mapping and attribute search are on `design-and-phase0` and not yet promoted.*
 
 ---
 
@@ -18,6 +18,8 @@ number was arrived at.
 | 2 — Q2 Pal spawns + memory | **Closed 2026-08-10** |
 | Card artwork + drops | **Shipped.** [ADR-0017](Docs/adr/0017-card-artwork-from-game-assets.md) Accepted |
 | 3 — Q3 breeding + Q5 counters | **Order swapped 2026-08-11. Q5 built end to end, unplayed.** Data, candidate set, Tier 2 guard, card, fast path and model path all land; nothing has answered a counter question in real play. **Q3 is blocked** — the ADR-0008 gate needs in-game breeding, not yet unlocked |
+| Pal search by attribute | **Shipped, unplayed.** The first new query class since the roadmap. Work-suitability ingest, three-axis filter, card, fast path and model path |
+| Tower leaders | **Shipped, unplayed.** *"How do I beat Victor"* resolves to the tower, not the field alpha |
 | 4 — Q6 tech + Q4 base siting + Q7 corpus | Not started |
 
 ## What answers a question today
@@ -28,10 +30,11 @@ number was arrived at.
 | Pal location | *"where can I find Chillet"* | + map crop, + icon, + "Ranch:" |
 | Pal drops | *"what does Vanwyrm drop"* | split ordinary / alpha-only / level-banded |
 | Item source | *"who drops Flame Organ"* | 151 items, enum-only (not in the lexicon) |
-| Boss counters | *"how do I beat Anubis"* | **Tier 2 — computed advice, amber card.** Filtered to Pals you own when the roster has been read; says so plainly when it has not |
+| Boss counters | *"how do I beat Anubis"*, *"how do I beat Victor"* | **Tier 2 — computed advice, amber card.** Filtered to Pals you own when the roster has been read; says so plainly when it has not. A tower leader resolves to the **tower**, not the field alpha of the same species |
+| Pal search by attribute | *"I need a mining pal"*, *"an electric pal at level 60"* | **Tier 1.** Element × job × wild level, all optional. The only class that takes a description instead of a name |
 
 Voice in via the local microphone, text in via the channel, cards out to Discord.
-One consolidated `answer_query` tool routes all five.
+One consolidated `answer_query` tool routes all six.
 
 ---
 
@@ -75,6 +78,12 @@ markers on each card were walked too, outside the base, with deposits standing t
 - `min_player_level` / `danger` shipped **uncalibrated** — the rule asks for ~20 nodes of
   known difficulty read in-game and has had none.
 - Tree-region coordinates go through a transform fitted only on MainMap landmarks.
+- **Work-suitability levels are unverified against the UI.** `WorkSuitability_*` runs
+  1–8 with one Pal at the top of each job. Lamball's 1/1/1 matches the game exactly, so
+  the scale is probably the displayed one — but nobody has opened the Paldeck and counted
+  the icons on a high-level Pal, and *"Anubis, Mining 6"* is wrong on a card if the game
+  shows 4. **A one-glance check settles it**, and until it happens the cards print the
+  number and never call it a star count.
 
 ---
 
@@ -93,16 +102,40 @@ markers on each card were walked too, outside the base, with deposits standing t
    dataset, owned roster, candidate set, Tier 2 guard, counter card, fast path with
    chained dispatch, and the model path. Q3 is blocked on the ADR-0008 gate, which needs
    breeding unlocked in game.
-4. **Play Q5, with capture on.** Nothing has answered a counter question in real play,
-   and the 58 new aliases were measured on the same recordings that produced them — real
-   play is the independent check for both. Set `[capture] enabled` and `feedback` true;
-   clips and a log land in `data/sessions/<timestamp>/`, and the three buttons under each
-   card are what promotes a label past `auto`. Press them in the same session, since the
-   view does not survive a restart.
+4. **Play, with capture on. This is now the only thing standing between three built
+   classes and any evidence they work.** `[capture] enabled` and `feedback` are **true in
+   `config.local.toml` as of 2026-08-11** and the write path was smoke-tested end to end
+   (clip, log line, message-id join, feedback fold), so the session needs nothing set up —
+   it needs playing. Clips and a log land in `data/sessions/<timestamp>/`; the three
+   buttons under each card are what promotes a label past `auto`, and they must be pressed
+   **in the same session** because the view does not survive a restart.
+
+   Four things are unplayed and each wants different questions asked:
+
+   - **Q5 counters.** Nothing has answered a counter question in real play.
+   - **Tower leaders.** *"How do I beat Victor"*, and each of the other eight. The failure
+     to watch for is a card about the field **alpha** instead of the tower — same species,
+     same name, different fight.
+   - **Pal search by attribute.** The four verified questions, plus whatever phrasings
+     come naturally. The branch is deliberately narrow; anything it declines that it
+     should have claimed is a cue to add, and `/palintel recent` is where that shows.
+   - **The 58 aliases**, measured on the same recordings that produced them. Real play is
+     the independent check.
+
+   **One in-game glance, unrelated to the bot**: open the Paldeck for a high-level Pal —
+   Anubis or Blazamut — and count the Mining icons. That settles the work-level scale
+   question in Known-uncalibrated above.
 5. **Then write the analysis half.** Rephrase-pair detection and failure-run grouping are
    designed and unbuilt, and `harvest_aliases.py` still reads `data/stt_eval/` rather than
    `data/sessions/`. Deliberately in this order: capture is the irreversible part, and the
    analysis can be written any time against clips already collected.
+6. **Re-measure the router when an eval run is next worth its cost.** `pal_search` joined
+   `PRODUCTION_CLASSES`, so the model now picks between six classes rather than five and
+   the schema carries two small enums it did not. The deterministic scorers show no
+   regression — `score_fast_path.py` is unchanged at 14/18 Q1, 43/49 Q2, zero wrong, and
+   `score_branches.py` at 16/16 written — but those do not exercise the model path.
+   Nothing about this is urgent: no eval prompt names an attribute query, so a run today
+   would measure the schema change against a corpus that cannot see it.
 
 ## Decisions waiting on you
 
@@ -115,44 +148,73 @@ markers on each card were walked too, outside the base, with deposits standing t
 
 ## Backlog
 
-- **Resolve a boss by its human name** — *"how do I beat Victor?"*. **A correction as much
-  as a feature.** `build_bosses.py`, the roadmap and this file all stated that no table
-  links a `GYM_` Pal to its tower. **It does.** `DT_UniqueNPCText` carries
-  `BOSSNAME_DEMO_<REGION>_LEADER` and `_LEADER_PAL` pairs: ZOE/GRIZZBOLT, LILY/LYLEEN,
-  AXEL/ORSERK, MARCUS/FALERIS, VICTOR/SHADOWBEAK, SAYA/SELYNE, BJORN/BASTIGOR,
-  AURI/SHAOLONG. The wrong claim came from searching `DT_UniqueNPC` (the NPC definitions)
-  and never `DT_UniqueNPCText` (the text). Pairing the two keys on their shared region
-  prefix is an **inference** — same class as `BOSS_` meaning "the alpha of", strong at 8
-  pairs with no orphans, and it must be declared where published. Once ingested, *"how do
-  I beat Victor"* reuses the counter machinery entirely. **Still absent:** tower ordinals
-  (nothing says Victor's is the 5th), faction names like "PAL Genetic Research Unit", and
-  tower boss levels.
-- **Pal search by attribute** — *"give me an electric Pal that is level 60"*,
-  *"I need a new mining Pal"*. **One shape, not several features**, and the largest
-  functional gap in the product: every shipped class takes a NAMED entity and returns
-  facts about it, while these describe what is wanted and ask which Pals match. Q1-Q7
-  never included that shape. **The first
-  genuinely new query class since the roadmap was written**, and a gap in the class
-  inventory rather than a bug: every shipped class takes a NAMED entity and returns facts
-  about it, while this one describes an entity and asks which Pals match. Q1-Q7 are all
-  "I know what I want, tell me about it" and never "tell me what I want."
+- ~~**Resolve a boss by its human name**~~ — **shipped 2026-08-11**, and it corrected the
+  correction. The previous entry said `DT_UniqueNPCText`'s `_LEADER` / `_LEADER_PAL` pairs
+  link a human to a tower by an **inference** on the key suffix, strong at 8 pairs. That
+  was still short. **`pal_names_flat.json` states each pair outright** —
+  `PAL_NAME_SnowBoss` is `"Victor & Shadowbeak"`, one string — in a file this project
+  already extracts and already builds the lexicon from, and it carries a **ninth** pair,
+  Zenara & Astralym, which the text table has no key for. So the note that Astralym's
+  tower simply has no leader was an artefact of reading one table.
 
-  Verified declining on 2026-08-11, both phrasings. Worth noting how narrowly: on *"what
-  electric pals are around level 60"* the top candidate was **Rayhound at 0.71**, matched
-  off "electric pals" and nothing to do with the question. The 0.85 floor is the only
-  thing that stopped a confident *"where can I find Rayhound"*.
+  The two sources agree on all eight they share and `build_bosses.py` fails if they stop.
+  What is *still* derived is one step, not two: reaching `GYM_BlackGriffon` from the name
+  "Shadowbeak" goes through the `BOSS_`-prefix inference already declared project-wide.
 
-  **All three filters have their data already.** `elements.json` carries typing for 739
-  Pals, `pal_spawns.json` carries level ranges per area, and `DT_PalMonsterParameter`
-  carries `WorkSuitability_*` for fourteen jobs — Mining, Watering, Handcraft, Deforest,
-  Transport and the rest — plus `BestWorkSuitability`. So this is a filter over tables
-  already extracted: Tier 1, selecting rows rather than generating anything, reusing the
-  counter card's element machinery.
+  **The trap worth remembering** — a leader must resolve to a **character id**, never to
+  the Pal's name. `bosses.json` sorts by `(kind, character_id)`, so a name index reaches
+  `BOSS_BlackGriffon`, the field **alpha**, before `GYM_BlackGriffon`. Both are called
+  Shadowbeak, they are different fights, and a card naming the wrong one would look
+  entirely correct.
 
-  **Four real questions, verified declining on 2026-08-11**, worth keeping verbatim
-  because they were asked rather than invented: *"give me an electric pal that is level
-  60"*, *"what electric pals are around level 60"*, *"I need a new mining pal"*, *"what
-  pal is best at mining"*.
+  Leaders are a **third lexicon kind**, not aliases of the tower Pal: aliasing would
+  collapse Victor into Shadowbeak during ranking and lose exactly that distinction. The
+  eight names were measured against the 271 A5 transcripts before being added — the
+  highest score any reaches against an unrelated fragment is 0.667, under both floors.
+
+  Zenara's tower resolves and then **declines**: every `WorldTreeDragon` row carries
+  `ElementType::None`, so Astralym cannot be countered by type. That is the pak's answer
+  and nothing invented an element to fill it.
+
+  **Still absent:** tower ordinals (nothing says Victor's is the 5th), faction names like
+  "PAL Genetic Research Unit", and tower boss levels.
+- ~~**Pal search by attribute**~~ — **shipped 2026-08-11.** The first genuinely new query
+  class since the roadmap was written, and a gap in the class inventory rather than a bug:
+  every other class takes a NAMED entity and returns facts about it, while this one takes
+  a description and asks which Pals match. Q1-Q7 are all "I know what I want, tell me
+  about it" and never "tell me what I want."
+
+  **Four real questions, verified declining that morning and answering that afternoon**,
+  kept verbatim because they were asked rather than invented: *"give me an electric pal
+  that is level 60"*, *"what electric pals are around level 60"*, *"I need a new mining
+  pal"*, *"what pal is best at mining"*. All four are parametrised tests.
+
+  Element × job × wild level, all optional, at least one required. Tier 1 and green: it
+  selects rows and orders them by an integer the game states, which is the same kind of
+  claim as a coordinate — unlike the counter card next door, which computes a
+  recommendation and is amber for it.
+
+  **The guard is the absence of a named entity**, which is what makes it structurally
+  unable to steal from another class: every query that names something belongs to one of
+  those. `score_fast_path.py` is unchanged across the change — 14/18 Q1, 43/49 Q2, zero
+  wrong — and that is the measurement, not the reasoning.
+
+  **Two things the data did that the design did not expect:**
+
+  - **A level band is a set, not a range.** Grizzbolt is placed at (18, 22) and (70, 72)
+    and (80, 80). Taking min and max gives "lvl 18-80" — arithmetically true, reads as
+    continuous, and would answer *"an electric Pal at 45"* with a species that appears at
+    no such level anywhere. Well-formed and wrong, caught before shipping only because
+    the number looked odd. The bands are kept distinct.
+  - **There is no electric Pal at exactly level 60.** Feybreak places most species at 80,
+    so wild levels are lumpy and exact containment often matches nothing. The card widens
+    to the nearest bands and **says so on the first line**, because "the closest thing to
+    an electric Pal at 60" and "an electric Pal at 60" are different claims.
+
+  Work suitability is a new ingest (`build_work.py`), thirteen jobs, with the labels taken
+  from the game's own UI strings so a card says "Kindling" and not `EmitFlame`. Nothing in
+  it is derived — but see Known-uncalibrated for the one thing about it nobody has
+  checked.
 
   **Every one of them was saved by the 0.85 floor, and the near-misses got closer each
   time.** Rayhound 0.71 on "electric pals", Carnibora 0.71 on "beat the", and worst,
@@ -186,7 +248,9 @@ markers on each card were walked too, outside the base, with deposits standing t
 
   *Sorting: highest Pal level first*, with the caveat the counter card just had to learn -
   highest is a proxy for strongest and nothing more, so the card must not imply a ranking
-  the data does not carry.
+  the data does not carry. **Shipped as "sorted by highest level, which is not a ranking"
+  in the footer**, and only when no job was named: with a job, the sort key is that job's
+  level, which is a number the game states and can be presented as one.
 - **Find dungeons near me** — spiked, viable, and **thinner than it looked**. The 18
   permanent "Sealed Realm" arenas are already marked on the in-game map; the 13 random
   sites hold a dungeon only ~67% of the time. Does not recover the lost cave coal.
@@ -322,3 +386,22 @@ Kept because each is a class of error worth recognising again, not a list of sca
 
 The pattern in all four: the data was *well-formed and wrong*, and the guard that would
 have caught it was either absent or logging at `debug`.
+
+Two more, from 2026-08-11, that are a different class — nothing was wrong, something was
+simply **not connected**, and everything downstream reported success:
+
+- **The Q5 counter fast path was dark in production for a day.** `StubRouter` grew the
+  branch, `score_branches.py` measured it at 16/16 on the written prompts it can claim,
+  the tests passed, and `build_router` never passed `counters=True`. So every counter
+  question in play paid a model round trip for an answer the stub already had, and this
+  file said "fast path with chained dispatch" lands. No commit or ADR argues for leaving
+  it off; it was an omission. **A measurement of a component is not a measurement of the
+  system** — `score_branches.py` constructs its own router and therefore could not have
+  noticed.
+- **A table was searched for one key and declared to lack the answer.** Twice. The
+  leader mapping was recorded as absent (wrong table), then as an inference (right table,
+  but not the one that states it outright). `pal_names_flat.json` had `"Victor &
+  Shadowbeak"` in it the whole time, in a file this project already reads on every
+  lexicon build. Searching all 81 tables for `BOSSNAME_DEMO_*_LEADER` found nothing new,
+  because the second source does not use that word — **"I searched for it" is only as
+  strong as the term searched for.**
