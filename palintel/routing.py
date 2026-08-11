@@ -260,9 +260,14 @@ _DROP_CUES = re.compile(r"\b(drop|drops|dropped|yield|yields|get from|give|gives
 # So `good against`, `strong against` and `use against` are OUT, despite reading like
 # the most natural counter phrasings, and the model keeps them. What is left are verbs
 # that take the boss as their object: you beat Anubis, you do not beat with Anubis.
+#
+# Inflections are part of the cue, not an afterthought. `\bbeat\b` does not match
+# "beats", and the branch missed "what beats Vanwyrm" - a plainer counter question than
+# several it did claim - until the batch measured it.
 _COUNTER_CUES = re.compile(
-    r"\b(counter|counters|beat|defeat|kill|fight|fighting|"
-    r"weak(?:ness)? (?:to|against)|take on)\b", re.I)
+    r"\b(?:counter|beat|defeat|kill|fight)(?:s|es|ing|en)?\b"
+    r"|\bweak(?:ness)? (?:to|against)\b"
+    r"|\btakes? on\b", re.I)
 
 _LOCATION_CUES = re.compile(rf"\b({_CUE_SETS[DEFAULT_CUES]})\b", re.I)
 _LEVEL = re.compile(r"\b(?:level|lvl)\s*(\d{1,2})\b", re.I)

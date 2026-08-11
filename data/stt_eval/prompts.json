@@ -10,6 +10,7 @@
   "scored_entities": 951,
   "prompts": [
     {
+      "expect_path": "fast",
       "group": "utterance",
       "text": "hey pal how do I beat Anubis",
       "expect_entities": [
@@ -22,6 +23,7 @@
       "batch": -1
     },
     {
+      "expect_path": "fast",
       "group": "utterance",
       "text": "hey pal what counters Bellanoir",
       "expect_entities": [
@@ -34,6 +36,7 @@
       "batch": -1
     },
     {
+      "expect_path": "fast",
       "group": "utterance",
       "text": "hey pal what should I bring to fight Grizzbolt",
       "expect_entities": [
@@ -46,6 +49,7 @@
       "batch": -1
     },
     {
+      "expect_path": "model",
       "group": "utterance",
       "text": "hey pal what's good against Jetragon",
       "expect_entities": [
@@ -58,6 +62,7 @@
       "batch": -1
     },
     {
+      "expect_path": "fast",
       "group": "utterance",
       "text": "hey pal how do I kill Frostallion",
       "expect_entities": [
@@ -70,6 +75,7 @@
       "batch": -1
     },
     {
+      "expect_path": "fast",
       "group": "utterance",
       "text": "hey pal what's Necromus weak to",
       "expect_entities": [
@@ -82,6 +88,7 @@
       "batch": -1
     },
     {
+      "expect_path": "model",
       "group": "utterance",
       "text": "hey pal what should I use against Paladius",
       "expect_entities": [
@@ -94,6 +101,7 @@
       "batch": -1
     },
     {
+      "expect_path": "fast",
       "group": "utterance",
       "text": "hey pal how do I beat the Chillet alpha",
       "expect_entities": [
@@ -106,6 +114,7 @@
       "batch": -1
     },
     {
+      "expect_path": "fast",
       "group": "utterance",
       "text": "hey pal what beats Vanwyrm",
       "expect_entities": [
@@ -118,6 +127,7 @@
       "batch": -1
     },
     {
+      "expect_path": "fast",
       "group": "utterance",
       "text": "hey pal how do I take on Blazamut",
       "expect_entities": [
@@ -130,6 +140,7 @@
       "batch": -1
     },
     {
+      "expect_path": "model",
       "group": "utterance",
       "text": "hey pal what's strong against Lyleen",
       "expect_entities": [
@@ -142,6 +153,7 @@
       "batch": -1
     },
     {
+      "expect_path": "fast",
       "group": "utterance",
       "text": "hey pal how do I defeat Orserk",
       "expect_entities": [
@@ -154,6 +166,7 @@
       "batch": -1
     },
     {
+      "expect_path": "fast",
       "group": "utterance",
       "text": "hey pal where can I find something to beat Anubis",
       "expect_entities": [
@@ -166,6 +179,7 @@
       "batch": -1
     },
     {
+      "expect_path": "fast",
       "group": "utterance",
       "text": "hey pal where do I go to fight Bellanoir",
       "expect_entities": [
@@ -178,6 +192,7 @@
       "batch": -1
     },
     {
+      "expect_path": "fast",
       "group": "utterance",
       "text": "hey pal find me a counter for Jetragon",
       "expect_entities": [
@@ -190,6 +205,7 @@
       "batch": -1
     },
     {
+      "expect_path": "fast",
       "group": "utterance",
       "text": "hey pal where's the nearest Pal that beats Frostallion",
       "expect_entities": [
@@ -202,6 +218,7 @@
       "batch": -1
     },
     {
+      "expect_path": "model",
       "group": "utterance",
       "text": "hey pal who drops flame organs",
       "expect_entities": [],
@@ -212,6 +229,7 @@
       "batch": -1
     },
     {
+      "expect_path": "model",
       "group": "utterance",
       "text": "hey pal what drops wool",
       "expect_entities": [],
@@ -222,6 +240,7 @@
       "batch": -1
     },
     {
+      "expect_path": "model",
       "group": "utterance",
       "text": "hey pal where do I get leather",
       "expect_entities": [],
@@ -232,6 +251,7 @@
       "batch": -1
     },
     {
+      "expect_path": "model",
       "group": "utterance",
       "text": "hey pal who drops bone",
       "expect_entities": [],
@@ -242,6 +262,7 @@
       "batch": -1
     },
     {
+      "expect_path": "model",
       "group": "utterance",
       "text": "hey pal what drops paldium fragment",
       "expect_entities": [],
@@ -252,6 +273,7 @@
       "batch": -1
     },
     {
+      "expect_path": "model",
       "group": "utterance",
       "text": "hey pal who drops ancient civilization parts",
       "expect_entities": [],
@@ -262,6 +284,7 @@
       "batch": -1
     },
     {
+      "expect_path": "model",
       "group": "utterance",
       "text": "hey pal where do I get high quality pal oil",
       "expect_entities": [],
@@ -272,6 +295,7 @@
       "batch": -1
     },
     {
+      "expect_path": "model",
       "group": "utterance",
       "text": "hey pal what drops ice organ",
       "expect_entities": [],
@@ -282,6 +306,7 @@
       "batch": -1
     },
     {
+      "expect_path": "model",
       "group": "utterance",
       "text": "hey pal who drops venom gland",
       "expect_entities": [],
@@ -292,6 +317,7 @@
       "batch": -1
     },
     {
+      "expect_path": "model",
       "group": "utterance",
       "text": "hey pal what drops gold coin",
       "expect_entities": [],
@@ -302,6 +328,7 @@
       "batch": -1
     },
     {
+      "expect_path": "fast",
       "group": "utterance",
       "text": "hey pal what does Vanwyrm drop",
       "expect_entities": [
@@ -314,6 +341,7 @@
       "batch": -1
     },
     {
+      "expect_path": "model",
       "group": "utterance",
       "text": "hey pal what do I get from Astralym and Mycora",
       "expect_entities": [
@@ -327,6 +355,7 @@
       "batch": -1
     },
     {
+      "expect_path": "fast",
       "group": "utterance",
       "text": "hey pal what does Lamball drop",
       "expect_entities": [
@@ -339,6 +368,7 @@
       "batch": -1
     },
     {
+      "expect_path": "fast",
       "group": "utterance",
       "text": "hey pal how do I beat Mycora",
       "expect_entities": [
@@ -351,6 +381,7 @@
       "batch": -1
     },
     {
+      "expect_path": "model",
       "group": "utterance",
       "text": "hey pal what drops paldium fragments",
       "expect_entities": [],

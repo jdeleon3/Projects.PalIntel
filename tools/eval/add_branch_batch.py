@@ -100,8 +100,18 @@ MANGLED = [
 def build() -> list[dict]:
     rows: list[dict] = []
 
+    # Which path is expected to answer. The fast path cannot claim item_source at all -
+    # items are deliberately out of the lexicon - and several counter phrasings put the
+    # named Pal in the attacker position, so the model keeps those too. Scoring them as
+    # fast-path misses measures the wrong thing: they are working as designed.
+    MODEL_ONLY_TEXT = ("good against", "use against", "strong against")
+
     def add(text, entities, branch, difficulty, item=None):
+        path = "model" if (branch == "item_source"
+                           or any(t in text.lower() for t in MODEL_ONLY_TEXT)
+                           or len(entities) > 1) else "fast"
         rows.append({
+            "expect_path": path,
             "group": "utterance",
             "text": text,
             "expect_entities": list(entities),
