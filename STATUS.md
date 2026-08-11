@@ -4,8 +4,8 @@
 any line.** This file is the two-minute orientation; the roadmap is the record of how each
 number was arrived at.
 
-*Last updated 2026-08-10. Branch `design-and-phase0`; `main` is **101 commits** behind and has
-never been promoted.*
+*Last updated 2026-08-11. `main` is **current** — caught up 2026-08-11 and pushed;
+`design-and-phase0` has the same tree. Both are on `origin`.*
 
 ---
 
@@ -98,7 +98,7 @@ markers on each card were walked too, outside the base, with deposits standing t
 | **Coal coverage** | 552 → 308 clusters. Cave coal is most of Palworld's coal and can no longer be asked for. Accept, or promote the dungeon feature? |
 | `maps` and `icons` | One flag pair, two features with very different risk. Separable. |
 | Card density | Resource cards gained "Also drops from", Pal cards gained "Ranch:". Editorial. |
-| `main` is 101 commits behind | Never promoted. Fine, but a deliberate choice rather than an accident. |
+| ~~`main` is 101 commits behind~~ | **Resolved 2026-08-11.** It also turned out to have been promoted once already, via PR #1 on GitHub, which no local branch recorded — the "never promoted" line above was wrong from the day it was written. Worth knowing that this file can be confidently wrong about the repo itself, not only about the data. |
 
 ## Backlog
 
