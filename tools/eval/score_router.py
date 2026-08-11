@@ -119,6 +119,10 @@ def score_one(router, row: dict, kb: KnowledgeBase, entities: set[str]) -> dict:
     u = router.last_usage
     return {"id": row["id"], "heard": heard, "group": row.get("group", "?"),
             "expected": sorted(expected), "got": sorted(got), "kind": kind,
+            # A transport failure is not a routing decision. Carried so the summary can
+            # refuse to score a run that hit them rather than reporting a rate limit as
+            # a bad router - which it did once, quietly, at 76.7%.
+            "transient": bool(getattr(call, "transient", False)),
             "hit": hit, "exact": exact, "wrong": wrong,
             "latency_ms": round(latency_ms),
             # Named a variant of the right Pal as well as the right Pal. Renders as a
@@ -338,6 +342,22 @@ def main() -> None:
     # token-hour, so leaving it to a 2h TTL charges for time nobody is using.
     if hasattr(router, "delete_cache"):
         router.delete_cache()
+
+    transient = [s for s in scored if s.get("transient")]
+    if transient:
+        # Loud and unmissable. Four full runs in an hour exhausted the Gemini quota, and
+        # every 429 arrived as Decline(transient=True) which the summary counted as an
+        # honest miss - a 13-point "regression" that was entirely the rate limiter.
+        print()
+        print("=" * 68)
+        print(f"  !! {len(transient)} of {len(scored)} prompts failed in TRANSPORT, not "
+              f"routing (rate limit, timeout).")
+        print(f"  !! Every one is scored as a decline, so the accuracy above is a FLOOR "
+              f"on a broken run, not a measurement.")
+        print(f"  !! Re-run when the quota resets. Affected: "
+              f"{', '.join(s['id'] for s in transient[:8])}"
+              f"{' ...' if len(transient) > 8 else ''}")
+        print("=" * 68)
 
     out = EVAL / args.condition / f"{stem}.json"
     out.write_text(json.dumps(scored, indent=2), encoding="utf-8")
