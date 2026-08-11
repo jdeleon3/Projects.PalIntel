@@ -2235,9 +2235,31 @@ while the level table uses `Grass001`, which looked like two vocabularies that w
 silently and wrongly. All 15 level ids appear in the item and enemy tables; the `Meadow01`
 family is unused extras.
 
-**Not built. The remaining question is a product one:** whether "nearest dungeon, contents
-known for a third of them" is worth shipping, or whether it waits until the other biomes'
-markers are located.
+**Two findings from play that shrink this feature, and both arrived after the spike.**
+
+*Random dungeons are transient.* `BP_PalGameSetting` carries
+`DungeonSpawnParameterDefault: { RespawnProbability: 67.0 }`, so a portal marker is a
+place a dungeon *can* appear, roughly two times in three — not a dungeon. A card saying
+"there is a dungeon at (x, y)" would be wrong about a third of the time, which is the
+failure this project exists to avoid. The in-game countdown seen on entering is
+consistent with a per-instance lifetime, but **no duration exists in any table, CDO or UI
+string checked** — like the ranch mapping, it is presumably in bytecode. Inferred from
+mechanism, not read from data.
+
+*The permanent ones are already on the in-game map.* The 18 fixed entrances are the
+"Sealed Realm of the …" boss arenas, and the player can already see them. So the half of
+this feature that can be stated confidently is the half nobody needs, and the half that
+would be new is the half that can only be described probabilistically.
+
+**Kept in the backlog, and deliberately not built.** What is left is "here are 13 places a
+dungeon appears about two thirds of the time", which is a much thinner product than the
+spike suggested at its high point. It also does **not** answer the coal question: cave coal
+sits inside dungeons, and knowing where a maybe-dungeon is does not recover it.
+
+Worth revisiting only if the other biomes' portal markers are located — Desert, Snow,
+Volcano, Sakura, Skyland, Viking, Yakushima all have marker classes and none is placed in
+`PL_MainWorld5` — or if the lifetime is recovered, which would let a card say how long is
+left rather than how likely it is to be there.
 
 ### Backlog — Discord voice receive, blocked on DAVE
 

@@ -76,9 +76,8 @@ All four are in [`Docs/play-session-protocol.md`](Docs/play-session-protocol.md)
    artwork/drop items and seven judgement calls. One session closes all of it — but only
    if block 9 (32 typed queries) is run, because the criterion needs 30 answered of each
    kind and every previous session was voice-only.
-2. **Dungeon spike.** Free, no API cost. Find whether an entrance actor references the
-   interior it opens onto — that link is the feature. Also the answer to the coal
-   question below.
+2. ~~Dungeon spike~~ — **done.** The link exists, but the feature shrank on contact with
+   play; see the backlog.
 3. **Phase 3** — Q3 breeding and Q5 counters, the next real capability.
 
 ## Decisions waiting on you
@@ -92,7 +91,9 @@ All four are in [`Docs/play-session-protocol.md`](Docs/play-session-protocol.md)
 
 ## Backlog
 
-- **Find dungeons near me** — the counterpart to the overworld-only node fix
+- **Find dungeons near me** — spiked, viable, and **thinner than it looked**. The 18
+  permanent "Sealed Realm" arenas are already marked on the in-game map; the 13 random
+  sites hold a dungeon only ~67% of the time. Does not recover the lost cave coal.
 - **Discord voice receive** — upstream-blocked on DAVE; party members cannot ask by voice
 - **Authoritative ranch source** — currently the only community-sourced dataset in the
   project ([ADR-0014](Docs/adr/0014-game-files-as-source.md) amendment)
