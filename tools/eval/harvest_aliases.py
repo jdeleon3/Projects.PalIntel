@@ -54,6 +54,15 @@ EVAL = REPO / "data" / "stt_eval"
 # deliberately not a dictionary: the point is not to catch every English word, it is to
 # stop the obviously-unsafe ones being auto-accepted from a corpus that cannot judge
 # them. Anything here lands in REVIEW, not REJECTED - a human may still want it.
+# Grammatical glue. Rejected if it appears ANYWHERE in an alias, not only alone,
+# because these are the words that sit between other words - which is what turns a
+# real mangling into a phrase that matches sentences it has nothing to do with.
+FUNCTION_WORDS = {
+    "a", "an", "and", "at", "do", "for", "from", "i", "in", "is", "it", "me", "my",
+    "of", "on", "or", "some", "that", "the", "their", "them", "these", "this", "to",
+    "what", "when", "where", "which", "who", "why", "with", "you", "your",
+}
+
 ORDINARY_WORDS = {
     "a", "an", "and", "any", "are", "at", "beacon", "best", "can", "creates", "do",
     "dragon", "find", "for", "from", "get", "go", "good", "has", "have", "how", "i",
@@ -156,7 +165,19 @@ def main() -> None:
             # So anything built entirely from ordinary words is held for review rather
             # than accepted. Note "defeat" already ranks as Felbat at 0.67, so cue
             # vocabulary is in this space too.
-            if all(t in ORDINARY_WORDS for t in surface.split()):
+            toks = surface.split()
+            if any(t in FUNCTION_WORDS for t in toks):
+                # **Grammatical glue is the dangerous kind, and a whole-string check
+                # misses it.** "and cryst" scored 1.00 for Vanwyrm Cryst - correct for
+                # the one recording it came from, and unsafe forever after, because
+                # "and" sits between any two words: "where can I find Mau and Cryst"
+                # would resolve confidently to the wrong Pal. Caught by an existing
+                # test that pins exactly this ("a mangled Pal name defers instead of
+                # guessing"), which is the second time today the corpus said yes and
+                # something else said no.
+                review[name].append((surface, "contains a function word"))
+                continue
+            if all(t in ORDINARY_WORDS for t in toks):
                 review[name].append((surface, "made of ordinary words"))
                 continue
             accepted[name].append(surface)
