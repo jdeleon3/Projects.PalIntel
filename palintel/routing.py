@@ -245,6 +245,14 @@ DEFAULT_CUES = "wide"
 # Deliberately narrow, and deliberately disjoint from the location cues - none of these
 # words appears in _CUE_SETS, so the two branches cannot fight over one utterance.
 _DROP_CUES = re.compile(r"\b(drop|drops|dropped|yield|yields|get from|give|gives)\b", re.I)
+# Q5. Deliberately narrow: every word here has to be about *fighting* a named thing,
+# because this branch decides a TIER, not just a tool. A location question answered as
+# a drop question is the wrong fact; a location question answered as a counter plan is
+# a fact request answered with advice, which ADR-0010 separates on purpose.
+_COUNTER_CUES = re.compile(
+    r"\b(counter|counters|beat|defeat|kill|fight|fighting|"
+    r"weak(?:ness)? (?:to|against)|strong against|"
+    r"bring (?:to|against|for)|take on|use against|good against)\b", re.I)
 
 _LOCATION_CUES = re.compile(rf"\b({_CUE_SETS[DEFAULT_CUES]})\b", re.I)
 _LEVEL = re.compile(r"\b(?:level|lvl)\s*(\d{1,2})\b", re.I)
@@ -360,7 +368,8 @@ class StubRouter:
     def __init__(self, lexicon: Lexicon, locatable: set[str] | None = None,
                  cues: str = DEFAULT_CUES, resource_floor: float = MIN_CONFIDENT,
                  pal_spawns: bool = True, pal_floor: float = PAL_CONFIDENT,
-                 pal_drops: bool = True):
+                 pal_drops: bool = True, counters: bool = False,
+                 counterable: set[str] | None = None):
         """`resource_floor` is how well a resource must match to be answered on.
 
         Separate from the Pal guard, which stays at MIN_CONFIDENT, because one constant
@@ -411,6 +420,12 @@ class StubRouter:
         self._pal_spawns = pal_spawns
         self._pal_drops = pal_drops
         self._pal_floor = pal_floor
+        self._counters = counters
+        # Which Pals have a boss form at all. Passed in rather than derived, because
+        # `BOSS_<name>` meaning "the alpha of" is the derived rule CLAUDE.md flags, and
+        # the router is the wrong place to re-infer it - bosses.json already did, and
+        # recorded that it was an inference.
+        self._counterable = {c.lower() for c in (counterable or ())}
         # Width, floor and registered classes are all in the name so they reach
         # `/palintel status` and every routing log line. A fast path that quietly widened,
         # or a backstop quietly answering on weaker matches, would be indistinguishable
@@ -433,6 +448,40 @@ class StubRouter:
             if c.kind == "pal" and self._pal_spawns and c.score >= self._pal_floor:
                 return "find_pal_spawns", "pal", c.canonical
         return None
+
+    def _counter_call(self, utterance: str, candidates: list) -> "ToolCall | None":
+        """`plan_counters` when the utterance clearly asks how to FIGHT a named Pal.
+
+        **This branch abstains far more readily than the others, and the asymmetry is
+        deliberate.** The drops branch and the location branch disagree about which
+        *fact* to return; this one disagrees about whether the player asked for a fact
+        at all. "Where can I find Anubis" and "how do I beat Anubis" resolve to the same
+        lexicon entity, so the cue carries the whole distinction between a Tier 1 card
+        and a Tier 2 one - and a fact request answered with advice is a worse failure
+        than a fact request answered with the wrong fact.
+
+        So it claims only when a counter cue is present **and no location cue is**. An
+        utterance carrying both is genuinely ambiguous and goes to the model, which has
+        sentence context this does not. Abstaining costs one query's latency; claiming
+        wrongly costs the tier.
+        """
+        if not (self._counters and candidates):
+            return None
+        if not _COUNTER_CUES.search(utterance):
+            return None
+        # The abstention. `self._cues` is the *wide* set on purpose - the point is to
+        # notice any hint of a location question, not to match the narrow one.
+        if self._cues.search(utterance):
+            return None
+        top = candidates[0]
+        if top.kind != "pal" or top.score < self._pal_floor:
+            return None
+        # A Pal with no boss form cannot be fought as one. Deferring rather than
+        # declining, because the model may know it is a different question entirely.
+        if top.canonical.lower() not in self._counterable:
+            return None
+        return ToolCall(name="plan_counters", args={"boss": top.canonical},
+                        rationale=f"counter cue + boss-capable pal {top}")
 
     def _drops_call(self, utterance: str, candidates: list) -> "ToolCall | None":
         """`find_pal_drops` when the utterance clearly asks what a Pal yields.
@@ -538,6 +587,14 @@ class StubRouter:
         # no location cue by construction - "what does Vanwyrm drop" contains none of
         # `where|nearest|find|...`, so the gate declined it before this branch could see
         # it. Measured: the branch claimed exactly nothing until it moved up here.
+        # Counters go above the location gate for the same reason drops do - "how do I
+        # beat Anubis" carries no `where|nearest|find` - and above drops because the two
+        # cue sets do not overlap, so the order between them is arbitrary and this one
+        # is the more selective.
+        counters = self._counter_call(utterance, candidates)
+        if counters is not None:
+            return counters
+
         drops = self._drops_call(utterance, candidates)
         if drops is not None:
             return drops

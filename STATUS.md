@@ -105,6 +105,27 @@ markers on each card were walked too, outside the base, with deposits standing t
 - **Find dungeons near me** — spiked, viable, and **thinner than it looked**. The 18
   permanent "Sealed Realm" arenas are already marked on the in-game map; the 13 random
   sites hold a dungeon only ~67% of the time. Does not recover the lost cave coal.
+- **Optional branch-keyword prefix** — *"Hey pal, boss help, how do I beat Anubis"*. Raised
+  2026-08-11 and parked for review, not rejected: [ADR-0002](Docs/adr/0002-llm-as-router.md)
+  already endorses keyword matching **as a fast path with model fallback** while rejecting
+  it as the only mechanism, so the shape is pre-authorised provided the keyword stays
+  optional. The real prize is not tier disambiguation — that is handled — it is
+  **`item_source`**, which cannot be fast-pathed at all today because items are out of the
+  lexicon, and which the roadmap calls a structural blocker on the p95 bar. A branch
+  keyword names the class without needing entity ranking. Against it: the wake word itself
+  mis-transcribes 9.3% of the time (`hippel`, `apal`, `PayPal`), a second required phrase
+  compounds that, and longer utterances widen the endpointing window that already produced
+  two empty activations. **Pre-flight before building any of it:** record ~30 utterances
+  with candidate keywords through `tools/eval/record_stt.py` and score them — a keyword
+  that transcribes worse than the wake word adds a failure mode to fix one. Note the
+  asymmetry: on the text channel this is nearly free and carries no STT risk at all.
+- **Answer both when the tier is ambiguous** — option 3 of the 2026-08-11 tier discussion,
+  and the only one of the four not built. When an utterance carries both a counter cue and
+  a location cue, emitting *both* cards is never wrong, and there is precedent (a variant
+  family already renders two). **Blocked on the tool contract**: `route()` returns one
+  `ToolCall` and these are two different tools, so it needs multi-call dispatch rather
+  than a cue change. That case abstains to the model today — correct, but it costs a
+  model round trip on exactly the phrasings a fast path would most like to claim.
 - **The drop fast path's second-entity guard depends on STT** — deferred 2026-08-11, not
   resolved. `routing.py:457` defers a two-Pal drop question to the model only when the
   *second* Pal clears the lexicon floor, so when speech damages that name the guard does
