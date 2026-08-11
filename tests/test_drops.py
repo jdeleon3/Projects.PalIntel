@@ -247,3 +247,23 @@ def test_an_item_question_reaches_the_item_slot():
                                          "resources": [], "items_named": ["Flame Organ"],
                                          "target": None, "max_player_level": None})
     assert (name, args) == ("find_item_source", {"item": "Flame Organ"})
+
+
+def test_the_line_names_each_pal_once(kb: KnowledgeBase):
+    """The dataset keys droppers by (pal, level band); the card is about species.
+
+    Pierdon Cryst drops Pure Quartz at level 0 and again at level 70, which is two true
+    rows and one Pal. Nine of the eleven resources with droppers hit this.
+    """
+    from palintel.cards import resource_card
+    from palintel.execution import find_resource_nodes
+
+    for resource in ("quartz", "coal", "ore"):
+        line = next((l for l in resource_card(
+            find_resource_nodes(kb, resource, limit=3)).lines if "drops from" in l), None)
+        if line is None:
+            continue
+        named = [chunk for chunk in line.split("**") if chunk.strip()
+                 and not chunk.startswith(" (")]
+        pals = [n for i, n in enumerate(named) if i % 2 == 0][1:]
+        assert len(pals) == len(set(pals)), f"{resource}: repeated Pal in {line}"

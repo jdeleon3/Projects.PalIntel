@@ -146,8 +146,15 @@ def _dropper_lines(result: ResourceResult) -> list[str]:
     """
     if not result.droppers:
         return []
-    shown = result.droppers[:MAX_DROPPERS]
-    rest = len(result.droppers) - len(shown)
+    # One entry per Pal. The dataset keys droppers by (pal, level band) so a species
+    # that drops the same thing at level 0 and level 70 appears twice - correct in the
+    # data, and "Pierdon Cryst, Pierdon Cryst" on a card. Keeping the first keeps the
+    # ordinary encounter, since the list is sorted by band ascending.
+    seen: set[str] = set()
+    unique = [d for d in result.droppers
+              if not (d.pal in seen or seen.add(d.pal))]
+    shown = unique[:MAX_DROPPERS]
+    rest = len(unique) - len(shown)
     named = ", ".join(f"**{d.pal}** ({d.amount()}{', alpha' if d.alpha_only else ''})"
                       for d in shown)
     more = f" _+{rest} more_" if rest > 0 else ""
