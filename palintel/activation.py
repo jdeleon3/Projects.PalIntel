@@ -123,3 +123,23 @@ def detect(utterance: str, wake_word: str = WAKE_WORD,
     consumed = " ".join(tokens[:n])
     idx = utterance.lower().find(tokens[n - 1].lower()) + len(tokens[n - 1])
     return Activation(True, utterance[idx:].lstrip(" ,.:;-").strip(), consumed, score)
+
+
+def bare(activation: Activation) -> bool:
+    """The wake word fired and nothing survived behind it.
+
+    Measured in play on 2026-08-11: two of twelve activations transcribed as *"Hey pal."*
+    and nothing else, because endpointing closed the clip while the player was still
+    drawing breath. Both were routed, and each spent a **full model round trip - 1.4s and
+    1.5s - to decline an utterance containing no question**, inside the graded latency
+    population.
+
+    Punctuation is not content. The remainder of "Hey pal." is "." once the wake word is
+    removed, so this asks for a word character rather than for a non-empty string.
+
+    Distinct from the empty-transcript case the bot already gates on: there STT returned
+    nothing at all and the detector probably fired on noise. Here the player demonstrably
+    spoke - the wake word is in the transcript - which is why the caller is expected to
+    treat a confident activation differently from a marginal one.
+    """
+    return activation.matched and not re.search(r"[\w']", activation.query)

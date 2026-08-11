@@ -31,6 +31,7 @@ import wave
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from . import activation
 from .activity import ActivityLog
 from .artwork import Artwork
 from .cards import TIER_DECLINE, Card, recent_card, status_card
@@ -436,6 +437,29 @@ def run() -> None:
                 activity.record("empty", f"{utt.seconds:.1f}s")
                 return
             activity.record("heard", text[:80])
+
+            act = activation.detect(text)
+            if activation.bare(act):
+                # The wake word arrived and the question did not - endpointing closed the
+                # clip too early. Routing it costs a model call to decline something with
+                # no question in it (1.4s and 1.5s, measured in play 2026-08-11), and the
+                # gate sits before `_answer` precisely so those never start the graded
+                # clock. This is the one class of query where not answering is strictly
+                # better than answering fast.
+                #
+                # Confident vs marginal decides whether to say so. A confident wake match
+                # means someone did address the bot and got cut off, and a silent drop
+                # there is ADR-0004's worst failure mode - the player speaks, nothing
+                # happens, nothing to diagnose. A marginal one is more likely party
+                # chatter that sounded like the wake word, and answering it would be
+                # channel noise for a query nobody made.
+                activity.record("empty", f"wake word only: {text[:40]!r}")
+                log.info("voice: wake word with no query (%r, score %.2f)",
+                         text, act.score)
+                if act.confident:
+                    await text_channel.send("I caught my name but not the question.")
+                return
+
             # The mic cannot say who spoke, so attribution is configuration: naming the
             # person at the machine is what lets a spoken question be followed up in
             # text, which is what ADR-0012 promises. Unset, it stays "voice" - guessing

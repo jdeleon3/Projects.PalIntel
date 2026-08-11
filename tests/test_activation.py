@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from palintel.activation import CONFIDENT, WAKE_WORD, detect
+from palintel.activation import CONFIDENT, WAKE_WORD, bare, detect
 
 REPO = Path(__file__).resolve().parents[1]
 RESULTS = REPO / "data" / "stt_eval" / "quiet" / "results.json"
@@ -95,6 +95,37 @@ def test_threshold_is_configurable_per_caller():
 
 def test_confident_requires_matched():
     assert not detect("no way that thing hit hard").confident
+
+
+def test_bare_catches_the_transcripts_that_cost_a_model_call():
+    """The two real ones from the 2026-08-11 play session, verbatim."""
+    for s in ["Hey pal.", "Hey pal"]:
+        assert bare(detect(s)), s
+
+
+def test_bare_ignores_punctuation_but_not_words():
+    """"Hey pal ..." leaves "." behind, which is not a question."""
+    assert bare(detect("Hey pal ..."))
+    assert not bare(detect("Hey pal, what drops bone?"))
+
+
+def test_a_mangled_wake_word_with_a_query_is_not_bare():
+    """Also from the session: the wake word degraded but the question survived."""
+    a = detect("PayPal Wooddrop Spones")
+    assert a.matched and not bare(a) and a.query == "Wooddrop Spones"
+
+
+def test_bare_requires_a_match():
+    """Unmatched text is somebody else's sentence, not an empty query.
+
+    This is the gate's known hole and it is deliberate: a *mangled* wake word with
+    nothing behind it - "Apal" alone, at 0.60 against a 0.62 threshold - is not caught,
+    and still costs the model call. Moving MIN_SIMILARITY to catch it trades against the
+    chatter measurement in the module docstring, which is not a trade this gate is
+    entitled to make on its own.
+    """
+    assert not bare(detect("Apal"))
+    assert not bare(detect(""))
 
 
 def test_custom_wake_word():
