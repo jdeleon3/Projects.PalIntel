@@ -91,7 +91,19 @@ def load(version: str = "1.0.2") -> tuple[dict, dict, dict]:
     except FileNotFoundError as e:
         raise CounterError(f"missing dataset: {e.filename} - run tools/ingest") from e
     typing = {p["character_id"].lower(): p for p in elements["pals"]}
-    by_boss = {b["character_id"].lower(): b for b in bosses["entries"]}
+    # Keyed by BOTH the character id and the display name, because the two callers hand
+    # over different things: the fast path resolves a lexicon entity and passes "Anubis",
+    # while the dataset is keyed `boss_anubis`. Looking up only one of them silently
+    # matched nothing for every query the router could actually produce.
+    #
+    # Character ids win on collision - they are unique by construction, while a display
+    # name can repeat across tiers of the same fight.
+    by_boss: dict[str, dict] = {}
+    for b in bosses["entries"]:
+        if b.get("name"):
+            by_boss.setdefault(b["name"].lower(), b)
+    for b in bosses["entries"]:
+        by_boss[b["character_id"].lower()] = b
     return elements["matrix"], typing, by_boss
 
 
@@ -144,6 +156,10 @@ class CounterResult:
     candidates: list[Matchup]
     owned_considered: int
     counter_elements: tuple[str, ...]   # what WOULD work, owned or not
+    # False when the roster was never read. "You own nothing that works" and "I have not
+    # looked at what you own" are different answers, and collapsing them would publish a
+    # confident claim about a set nobody inspected.
+    roster_known: bool = True
 
 
 def counter_elements(boss_elements: tuple[str, ...],
@@ -159,14 +175,24 @@ def counter_elements(boss_elements: tuple[str, ...],
         if effectiveness((e,), boss_elements, matrix) > NEUTRAL))
 
 
-def plan(boss_id: str, owned: frozenset[str], limit: int = 5,
+def plan(boss_id: str, owned: frozenset[str] | None, limit: int = 5,
          version: str = "1.0.2") -> CounterResult:
-    """The whole Tier 2 answer, computed. No model is consulted at any point."""
+    """The whole Tier 2 answer, computed. No model is consulted at any point.
+
+    `owned` of None means the roster has not been read - reading it costs a full
+    Level.sav parse, so it is not on the query path. The typing half of the answer does
+    not need it: which element beats this boss is a fact about the boss, and it is worth
+    saying on its own rather than withholding until a save is loaded.
+    """
     matrix, typing, bosses = load(version)
-    boss = bosses[boss_id.lower()]
+    boss = bosses.get(boss_id.lower())
+    if boss is None:
+        raise CounterError(f"not a known boss: {boss_id!r}")
     elements = tuple(boss["elements"])
-    candidates = candidate_set(boss_id, owned, version)
-    considered = sum(1 for c in owned
+    if not elements:
+        raise CounterError(f"{boss_id} has no element; it cannot be countered by type")
+    candidates = candidate_set(boss_id, owned, version) if owned is not None else []
+    considered = sum(1 for c in (owned or ())
                      if c in typing and not c.startswith(BOSS_PREFIXES))
     return CounterResult(
         boss_id=boss["character_id"],
@@ -178,6 +204,7 @@ def plan(boss_id: str, owned: frozenset[str], limit: int = 5,
         candidates=candidates[:limit],
         owned_considered=considered,
         counter_elements=counter_elements(elements, matrix),
+        roster_known=owned is not None,
     )
 
 

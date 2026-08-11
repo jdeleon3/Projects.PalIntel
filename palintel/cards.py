@@ -646,6 +646,18 @@ def counter_card(result: "CounterResult") -> Card:
         head += f", level {result.level}"
     lines = [f"{head} ({kind})."]
 
+    if not result.roster_known:
+        # NOT the same card as "you own nothing that works", and the difference is the
+        # whole point. Reading the roster costs a full Level.sav parse, so it is often
+        # absent - and asserting a fact about a set nobody looked at is precisely the
+        # confidently-wrong answer this project refuses. The typing half is still a fact
+        # about the boss and is worth saying on its own.
+        lines.append("")
+        lines.append(f"**{_elements(result.counter_elements)}** is what beats it.")
+        return Card(title=f"How to fight {name}", lines=lines, colour=TIER_ADVICE,
+                    footer="I haven't read your Pals, so this isn't filtered to what "
+                           "you own")
+
     if not result.candidates:
         # Not a decline: the question was understood and answered, and the answer is
         # that the roster is missing something. Saying which something is the point.

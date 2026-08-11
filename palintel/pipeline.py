@@ -38,6 +38,15 @@ class PlayerState:
     """
     player_level: int | None = None
     player_coords: tuple[float, float] | None = None
+    # Owned Pal species, lower-cased, from `saves.owned_species`. None means NOT READ,
+    # which is different from "owns nothing" and must stay different all the way to the
+    # card: telling a player nothing they own works, when we never looked, is exactly
+    # the confidently-wrong answer this project refuses.
+    #
+    # Absent by default because reading it costs a full Level.sav parse - seconds, not
+    # milliseconds - so it cannot happen per query. Populating it on a slow refresh is
+    # the caller's job.
+    owned_species: frozenset[str] | None = None
 
 
 # One answer may be several cards. A Paldeck slot holds a base Pal and its element
@@ -395,6 +404,29 @@ class Pipeline:
             self._remember(who, call, {"item": item}, f"{result.total} sources",
                            enabled=remember)
             return Outcome([cards.item_source_card(result)], call, candidates)
+
+        if call.name == "plan_counters":
+            boss = call.args.get("boss")
+            if not boss:
+                log.warning("router called %s with no boss: %s", call.name, call.args)
+                return self._decline(Decline(reason="no boss identified"), candidates)
+
+            from . import counters
+            try:
+                result = counters.plan(boss, state.owned_species)
+            except counters.CounterError as e:
+                # A Pal with no boss form, or a boss with no element at all - seven of
+                # them have none. Declining is the honest answer; returning an empty
+                # shortlist would read as "nothing works", which is a claim.
+                log.info("plan_counters(%s) declined: %s", boss, e)
+                return self._decline(Decline(reason=str(e)), candidates)
+
+            log.info("plan_counters(%s) -> %d candidates (roster %s)", boss,
+                     len(result.candidates),
+                     "read" if result.roster_known else "not read")
+            self._remember(who, call, {"boss": result.boss_id},
+                           f"{len(result.candidates)} counters", enabled=remember)
+            return Outcome([cards.counter_card(result)], call, candidates)
 
         # A tool the router knows about but the dispatcher does not is a wiring bug.
         # Fail loudly here rather than rendering something plausible.

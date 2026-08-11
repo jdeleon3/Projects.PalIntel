@@ -140,3 +140,52 @@ def test_the_attacker_position_is_not_claimed(router):
                  "is Anubis any good against the first tower",
                  "is Anubis strong against the tower boss"):
         assert getattr(call(router, text), "name", None) != "plan_counters", text
+
+
+# --- dispatch ----------------------------------------------------------------
+
+from palintel.pipeline import PlayerState  # noqa: E402
+
+
+def test_a_counter_question_renders_a_card_end_to_end(kb):
+    p = Pipeline(kb, _FixedRouter(ToolCall("plan_counters", {"boss": "Anubis"})))
+    out = p.handle("how do I beat Anubis",
+                   PlayerState(owned_species=frozenset({"lifmunk", "cutefox"})))
+    assert not isinstance(out.call, Decline)
+    assert "Anubis" in out.card.title
+
+
+def test_an_unread_roster_does_not_claim_you_own_nothing(kb):
+    """"You own nothing that works" and "I never looked" are different answers.
+    Reading the roster costs a full Level.sav parse, so absent is the normal case."""
+    p = Pipeline(kb, _FixedRouter(ToolCall("plan_counters", {"boss": "Anubis"})))
+    text = p.handle("how do I beat Anubis", PlayerState()).card.to_text()
+    assert "Nothing you own" not in text
+    assert "haven't read your Pals" in text
+
+
+def test_an_empty_roster_does_say_you_own_nothing(kb):
+    """Read and empty is a real answer, and a different one."""
+    p = Pipeline(kb, _FixedRouter(ToolCall("plan_counters", {"boss": "Anubis"})))
+    text = p.handle("how do I beat Anubis",
+                    PlayerState(owned_species=frozenset())).card.to_text()
+    assert "Nothing you own" in text
+
+
+def test_an_unknown_boss_declines_rather_than_raising(kb):
+    """Note Lamball is NOT this case: 364 field alphas mean nearly every Pal has a boss
+    form, so `how do I beat Lamball` is a real question with a real answer."""
+    p = Pipeline(kb, _FixedRouter(ToolCall("plan_counters", {"boss": "Flamewyrm"})))
+    assert isinstance(p.handle("how do I beat it", PlayerState()).call, Decline)
+
+
+def test_an_ordinary_pal_is_counterable_because_it_has_an_alpha(kb):
+    p = Pipeline(kb, _FixedRouter(ToolCall("plan_counters", {"boss": "Lamball"})))
+    out = p.handle("how do I beat Lamball", PlayerState())
+    assert not isinstance(out.call, Decline)
+    assert "field alpha" in out.card.to_text()
+
+
+def test_a_missing_boss_argument_declines(kb):
+    p = Pipeline(kb, _FixedRouter(ToolCall("plan_counters", {})))
+    assert isinstance(p.handle("how do I beat it", PlayerState()).call, Decline)
