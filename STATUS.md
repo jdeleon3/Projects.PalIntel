@@ -57,7 +57,7 @@ at all.
 | **`art_post` p95** | The Discord upload round trip. Every render figure is local. |
 | **Do markers land on the actual rock?** | The transform was validated to ±3 map units against 7 landmarks, **none of them a node or spawn area**. |
 | **Does `item_source` work?** | All 240 eval recordings predate the class. No API spend measures it. |
-| End-to-end latency vs the 2.5s bar | Accepted on a 16-query sample; the criterion asks for 30. |
+| **The Phase 1 latency criterion** | Carried forward twice. Needs ≥30 answered queries of **each** kind in one session; best so far is 16 voice and ~0 text. |
 
 All four are in [`Docs/play-session-protocol.md`](Docs/play-session-protocol.md).
 **That session is the single biggest unblocker in the project.**
@@ -72,8 +72,10 @@ All four are in [`Docs/play-session-protocol.md`](Docs/play-session-protocol.md)
 
 ## Next
 
-1. **Play session.** Closes three unmeasured things at once and settles seven judgement
-   calls a harness cannot make.
+1. **Play session.** The only outstanding *phase* criterion, plus three unmeasured
+   artwork/drop items and seven judgement calls. One session closes all of it — but only
+   if block 9 (32 typed queries) is run, because the criterion needs 30 answered of each
+   kind and every previous session was voice-only.
 2. **Dungeon spike.** Free, no API cost. Find whether an entrance actor references the
    interior it opens onto — that link is the feature. Also the answer to the coal
    question below.

@@ -53,9 +53,15 @@ makes the unscripted half diagnosable.
 
 ## What the numbers need
 
-The criterion is **p95 ≤ 2.5s over ≥ 30 answered voice queries**, and declines are tracked
-but not graded. The script below has **41 gradeable queries** so the count survives a
-normal decline rate; `/palintel status` shows `⏳ n/30` until it has enough to grade.
+The criterion is **p95 ≤ 2.5s voice and ≤ 1.5s text, over ≥ 30 answered queries of EACH
+kind**; declines are tracked but not graded.
+
+That "each" is why this criterion has been carried forward twice. Blocks 1-8 are ~52
+spoken queries, which clears 30 voice at a normal decline rate. **Block 9 is 32 typed
+queries and exists solely to clear the other half** - previous sessions had essentially no
+text sample, so the text bar was never gradeable at all rather than being failed.
+
+`/palintel status` shows `⏳ n/30` per kind until each has enough.
 
 Say every line with the wake word: *"Hey pal, …"*.
 
@@ -209,6 +215,44 @@ unseen and `art_post` is its cost.
 
 **Watch for:** ranch facts are the only thing on a Tier 1 card not extracted from the game.
 Does `(unofficial)` read as a useful caveat, or as noise on every ranchable Pal?
+
+## Block 9 — the text pass (32, typed not spoken)
+
+**This block exists because the phase debt cannot close without it.** The exit criterion
+is p95 over **≥ 30 answered queries of each kind**, and every block above is spoken. The
+best session so far reached 16 voice and effectively zero text, which is why latency has
+been carried forward twice.
+
+Type these into the channel. No wake word, no STT, so they are quick — five minutes of
+typing is the whole thing, and text p50 has measured 0.3s, so this is about *sample size*
+rather than about risk.
+
+| # | Type | # | Type |
+|---|---|---|---|
+| 55 | where's the nearest coal | 71 | what does Lamball drop |
+| 56 | where can I find ore | 72 | what does Chillet drop |
+| 57 | closest sulfur deposit | 73 | who drops flame organs |
+| 58 | show me quartz near my base | 74 | what drops wool |
+| 59 | where's the nearest stone | 75 | where do I get leather |
+| 60 | where can I find wood | 76 | who drops paldium fragment |
+| 61 | where's the nearest paldium | 77 | where can I find Cattiva |
+| 62 | find me hexolite quartz | 78 | where can I find Lifmunk |
+| 63 | where's the nearest chromite | 79 | where do Foxparks spawn |
+| 64 | where can I find soralite | 80 | where can I find Depresso |
+| 65 | where can I find Chillet | 81 | where can I find Vixy |
+| 66 | where do Lamball spawn | 82 | where can I find Jetragon |
+| 67 | where can I find Anubis | 83 | where can I find Bellanoir |
+| 68 | where's the alpha Anubis | 84 | what does Vanwyrm drop |
+| 69 | where can I find Leezpunk | 85 | where's the nearest Lamball |
+| 70 | where do Grizzbolt spawn | 86 | where can I find Kingpaca |
+
+**Watch for:** these are deliberately the same questions as the spoken blocks. Anything
+that succeeds typed and fails spoken is an STT or wake-word problem, not a routing one -
+and that split is otherwise very hard to see from the outside.
+
+`/palintel status` grades voice and text separately and shows `⏳ n/30` until each has
+enough. Both need to clear it in **one** session; the activity log is memory-only and does
+not survive a restart.
 
 ---
 
