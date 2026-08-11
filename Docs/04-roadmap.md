@@ -2124,6 +2124,108 @@ through it unvalidated against the in-game Tree map.
 
 ---
 
+## Short play run — the transform holds, and STT decides the routing path (2026-08-11)
+
+The abbreviated session from `play-session-protocol.md` §Short run: block 6 spoken, the
+drop fast path inspected in `/palintel recent`, and the four nearest ground-truth nodes
+walked. The transform question the session was designed around closed cleanly; the
+findings with consequences came from the routing side.
+
+### The markers land on the rock
+
+Ore, stone, wood and paldium at (227,-481), (224,-483), (237,-484) and (228,-490) were
+walked and confirmed against the **regenerated** table — the post-fix dataset, not the one
+that had 16.4% dungeon interiors in it. The coordinate chain works: pak → world
+centimetres → `coord_transform.json` → map units → a rock a player can stand on. That had
+never been demonstrated end to end.
+
+**And not only at the nearest marker.** For each of the four resources the *further*
+markers on the same card were walked as well, outside the base, with deposits standing
+there. So this is not one lucky point: multiple markers, four independent resources, and
+both inside and outside base extents. The clustering step is confirmed alongside the
+transform, since a card's second and third markers come from separate clusters.
+
+One thing worth recording so a later reader does not puzzle over it: the four *nearest*
+nodes are inside one of the player's bases and the assigned Pals keep them mined out, so
+those were verified by position rather than by a deposit standing there at the time. **A
+fact about where this base happens to sit, not a product problem** — node state stays
+unmodelled and the project does not code against it. The outside-base markers are what
+carry the physical confirmation.
+
+**And the far-field check was run too, which closes the question outright.** Quartz was
+confirmed at **(-53,-960) and (-52,12)** — roughly 551 and 573 map units from the save
+position, on different bearings and about 972 units apart from each other. Distance was
+the one thing the near-field walk could not speak to: a fitted affine transform's error
+grows with distance from its fit points, and the original fit used 7 MainMap landmarks
+only. Two long-range points on separate bearings, plus a dense near-field cluster,
+constrain rotation and scale as well as translation.
+
+**So the transform is verified rather than assumed, for the first time since it was
+fitted.** Five resources, near and far, separate clusters, deposits physically present.
+Every coordinate this project prints for MainMap rests on a chain that has now been walked
+end to end.
+
+The Tree-region caveat is untouched by this and stays open — `coord_transform.json` was
+fitted on MainMap landmarks, and nothing above stood on a Tree-region node.
+
+### The drop fast path fires in speech, and STT decides which path a query takes
+
+`pal_drops` was fast-pathed after the session that measured latency, so this is its first
+sighting on real STT output. It works — and the three bands it sorts into are the finding:
+
+| Transcript | Path | Reading |
+|---|---|---|
+| "what does Chillet drop" | **0.1s fast** | clean input, correct card, level bands intact |
+| "what does man worm drop" | model, 1.5s | the pal floor correctly refused a token it could not rank |
+| "Disneyland Ball Drop" (Lamball) | model, 3.0s | same, on a worse mangling |
+| **"Vanworm", "Makora"** | **0.1s fast** | **close enough to match, wrong enough to matter** |
+
+**The middle band is safe and the near-miss band is not**, which is the opposite of the
+intuition that worse input is more dangerous. Badly-mangled input fails the floor and
+lands on the model, which is the expensive-but-careful path. Slightly-mangled input clears
+the floor and is claimed by the path that preempts the model entirely.
+
+The sharpest case, deferred rather than resolved — typed *"Astralym and Mycora"* went to
+the model at 1.7s and spoken *"Astralym in Makora"* took the fast path at 0.1s, twice.
+`routing.py:457` defers a two-Pal drop question only when the **second** Pal clears the
+lexicon floor, so STT damage to that name removes the guard and the single-slot tool
+answers a two-answer question. The mechanism is confirmed in the code; **whether those
+runs produced one card or two was never checked**, and that observation is the whole
+finding. Backlogged deliberately rather than fixed on a guess.
+
+Chillet's card rendered `__Alpha only__` and `__Level 80+ only__` correctly on the fast
+path, which was worth confirming: the fast path skips the model, not the dispatcher, so
+the level-band split that once claimed 30-50 Ancient Relics survives the new route.
+
+### `item_source` on the model, as designed — and STT is a latency input
+
+All six item queries routed to the model at 1.4-2.0s. Correct: items are deliberately out
+of the lexicon ([ADR-0016](adr/0016-entity-resolution-in-router.md)), so nothing ranks
+"flame organ" for the stub to match.
+
+**But the two slowest queries of the session were the two most mangled transcripts** —
+`Apal, Woodtrap's Wool` at 3.7s and `PayPal Wooddrop Spones` at 4.3s, the latter sitting
+on the measured 4.2s voice p95. That adds a term the coverage analysis did not have:
+transcript quality feeds p95 both by denying the fast path *and*, apparently, by costing
+more once the model has it. **STT accuracy is a latency lever, not only an accuracy one**,
+which changes what the STT backlog item is worth.
+
+### Two of twelve activations were the wake word and nothing else
+
+`Hey pal.` twice, 1.4s and 1.5s, both routed to the model to decline an utterance
+containing no question, both inside the graded latency population. Fixed the same day:
+`activation.bare()` plus a gate in `bot.py` ahead of `_answer`, so these never start the
+graded clock. A confident wake match still gets one line back, because a silent drop after
+the player audibly spoke is [ADR-0004](adr/0004-wake-word-activation.md)'s worst failure
+mode; a marginal one stays silent as party chatter.
+
+The gate does **not** catch a *mangled* wake word with nothing behind it — bare "Apal"
+scores 0.60 against the 0.62 threshold. Left alone: moving `MIN_SIMILARITY` trades against
+the chatter measurement in `activation.py`'s docstring, and that is not a trade this gate
+is entitled to make by itself.
+
+---
+
 ## Phase 3 — Graph search and scoring: Q3 + Q5 (target: 3 weeks)
 
 Pairs the hardest Tier 1 class with the cleanest Tier 2 class.
