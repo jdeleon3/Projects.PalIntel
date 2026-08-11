@@ -759,7 +759,14 @@ foreach (var cell in cells)
             var cls = exp.Class?.Name.ToString() ?? exp.ExportType ?? "";
             var isNode = cls.StartsWith("BP_PalMapObjectSpawner", StringComparison.Ordinal);
             var isSpawn = cls.StartsWith("BP_PalSpawner_Sheets", StringComparison.Ordinal);
-            if (!isNode && !isSpawn) continue;
+            // Dungeon entrances. The portal marker's CDO carries SpawnAreaIds, and every
+            // dungeon table - item lottery, enemy spawns, rewards - keys on that id, so
+            // this position is what turns "dungeons contain X" into "THIS dungeon
+            // contains X". Collected here rather than in a second walk because the owner
+            // chain and transform composition are the same problem.
+            var isDungeon = cls.StartsWith("BP_DungeonPortalMarker", StringComparison.Ordinal)
+                         || cls.StartsWith("BP_DungeonFixedEntrance", StringComparison.Ordinal);
+            if (!isNode && !isSpawn && !isDungeon) continue;
 
             classCounts[cls] = classCounts.GetValueOrDefault(cls, 0) + 1;
 
@@ -801,7 +808,7 @@ foreach (var cell in cells)
             var (mx, my) = ToMap(pos);
             records.Add(new
             {
-                kind = isNode ? "node" : "pal_spawn",
+                kind = isNode ? "node" : isSpawn ? "pal_spawn" : "dungeon",
                 cls,
                 cell = Path.GetFileNameWithoutExtension(cell),
                 owner_hops = hops,

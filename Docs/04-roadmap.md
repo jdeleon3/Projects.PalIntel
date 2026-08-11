@@ -2190,37 +2190,54 @@ improvise; no Tier 2 card contains a candidate absent from its computed set.
 - Optional: local intent model and local embeddings, making the system fully offline apart
   from Discord
 
-### Backlog — "find dungeons near me"
+### Backlog — "find dungeons near me" — spiked 2026-08-10, viable with a split
 
-**Not a new idea so much as an unpaid debt.** Excluding `L15_X0_Y0` from the node dataset
-was correct — those coordinates are not places you can walk to — but it cost **672 of 998
-coal deposits**, and coal clusters fell from 552 to 308. Cave coal is most of Palworld's
-coal. A player who asks "where's the nearest coal" now gets a true answer to a narrower
-question than they asked, and nothing tells them the rest exists.
+**The link exists.** `BP_DungeonPortalMarker_*`'s class defaults carry
+`SpawnAreaIds: [{"Key": "Grass001"}]`, and every dungeon table keys on that same id:
+`DT_DungeonItemLotteryDataTable` (32 rows), `DT_DungeonEnemySpawnDataTable` (59),
+`DT_DungeonRewardSpawnerLotteryDataTable` (162) and `DT_DungeonLevelDataTable` (15). So
+marker position → spawn area → contents joins end to end. That was the unknown the spike
+existed to settle.
 
-The honest fix is not to relax the filter. It is to answer the other question directly:
-*where is the nearest dungeon*, and optionally *which ones contain coal*. That is a
-different data model — a dungeon has an entrance in the overworld and contents in its own
-local space, so it is one overworld coordinate plus an inventory, not a scattering of
-coordinates.
+**Positions are extractable.** The cell scan now collects dungeon actors alongside nodes
+and spawners — the same walk, since the owner-chain and transform problem is identical —
+and found **31 entrances, 30 of them on land**, spread map-wide (map_x −1356..286, map_y
+−1467..653) rather than clustered.
 
-What already exists towards it:
+**But the two entrance types are not the same feature.**
 
-- **The contents.** 6,718 excluded deposits are already extracted and correctly grouped by
-  dungeon-local position. Nothing was thrown away, only withheld from Q1.
-- **A signal that the entrances are extractable.** `DataTable/Dungeon/` holds
-  `DT_DungeonItemLotteryDataTable` and `DT_DungeonRewardSpawnerLotteryDataTable`, and the
-  World Partition scan already walks every overworld cell. Entrance actors were not looked
-  for because nothing needed them.
+| type | n | carries | gives |
+|---|---|---|---|
+| `BP_DungeonPortalMarker_Grass1` | 13 | `SpawnAreaIds: [Grass001]` | position **and contents** |
+| `BP_DungeonFixedEntrance_*` | 18 | `DungeonNameRowHandle` only | position and a **name**, no contents |
 
-What is unknown: whether an entrance actor links to the interior cell it opens onto. That
-link is the feature. Without it we can say where dungeons are and separately what dungeons
-contain, but not what *this* dungeon contains — which is most of the value.
+All **12** fixed-entrance classes that exist in the pak were found, so that set is
+complete. Portal markers are not: 11 classes exist — Desert, Snow, Volcano, Sakura,
+Skyland, Viking ×3, Yakushima — and **only Grass1 is placed in the scanned cells**. Those
+biomes are separate content (Sakurajima, Feybreak, Yakushima), so the likely explanation
+is level assets outside `PL_MainWorld5`, which is what the scan walks.
 
-**Spike first, exactly as the ranch question was**: find the entrance actors, check whether
-they carry a reference to their interior, and report before building. If the link is absent
-the feature shrinks to "nearest dungeon entrance", which is still worth having and is much
-less work.
+**So the feature splits cleanly, and the smaller half is the useful one now:**
+
+- *"Where's the nearest dungeon"* — buildable today against all 31, and honest.
+- *"What's in it"* — buildable for 13 of them. Thin, and worth saying so on the card
+  rather than implying the other 18 have unknown contents when they have a different
+  kind of contents entirely.
+
+**Two corrections to earlier assumptions here, both mine.** I had assumed dungeon contents
+were the 6,086 excluded `L15_X0_Y0` placements; they are not. Contents are **lottery
+tables** rolled per spawn area, which is why 142 data layers never mapped onto 15 spawn
+areas. And I briefly read the first five entrance rows as starter-region-only before
+checking the extent — they are map-wide.
+
+One risk checked and dismissed: `DT_DungeonSpawnAreaDataTable` uses ids like `Meadow01`
+while the level table uses `Grass001`, which looked like two vocabularies that would join
+silently and wrongly. All 15 level ids appear in the item and enemy tables; the `Meadow01`
+family is unused extras.
+
+**Not built. The remaining question is a product one:** whether "nearest dungeon, contents
+known for a third of them" is worth shipping, or whether it waits until the other biomes'
+markers are located.
 
 ### Backlog — Discord voice receive, blocked on DAVE
 
