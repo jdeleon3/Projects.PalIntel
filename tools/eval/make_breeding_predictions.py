@@ -36,11 +36,48 @@ def child_of(ra: int, rb: int, candidates: list[tuple[int, str]], rounding: str)
     return min(candidates, key=lambda rt: (abs(rt[0] - avg), rt[0]))[1]
 
 
+def pak_names() -> dict[str, str]:
+    """CharacterID -> English display name, straight from `DT_PalNameText_Common`.
+
+    The lexicon does not cover everything the exception table names - Necromus reaches
+    the sheet as `BlackCentaur` without this. But the table also ships **localisation
+    placeholders**: `BeardedDragon` has SourceString `en_text`, which is the string the
+    game shows when a name was never written. Taking it at face value would print
+    "en_text" as a Pal name, which is precisely the well-formed-and-wrong shape this
+    project keeps paying for, so placeholders are rejected rather than passed through.
+    """
+    raw = json.loads((REPO / "data" / "raw" / "pal_names_en.json").read_text(
+        encoding="utf-8"))
+    rows = (raw[0] if isinstance(raw, list) else raw)["Rows"]
+    out = {}
+    for key, val in rows.items():
+        if not key.startswith("PAL_NAME_"):
+            continue
+        text = (val.get("TextData") or {}).get("LocalizedString") or ""
+        # `en_text` is the placeholder; an empty string is the same thing said quietly.
+        if not text or text == "en_text":
+            continue
+        out[key[len("PAL_NAME_"):]] = text
+    return out
+
+
 def build(version: str) -> str:
     data = json.loads(
         (REPO / "data" / version / "breeding.json").read_text(encoding="utf-8"))
     tribes = data["tribes"]
-    name = {t["tribe"]: (t.get("name") or t["character_id"]) for t in tribes}
+
+    # Display names, in order of authority: the project's own canonical name, then the
+    # game's English table, then nothing. Nothing means the row is dropped - a tester
+    # cannot search the Paldeck for `YakushimaBoss001`, so a row naming it is not a
+    # test, it is a puzzle.
+    from_pak = pak_names()
+    name: dict[str, str] = {}
+    for t in tribes:
+        resolved = t.get("name") or from_pak.get(t["character_id"])
+        if resolved:
+            name[t["tribe"]] = resolved
+    for cid, display in from_pak.items():
+        name.setdefault(cid, display)
     rank = {t["tribe"]: t["rank"] for t in tribes}
     # Eligible children: the derived rule under test - no Zukan suffix. Check B in the
     # scorer says this rule is imperfect, so the sheet tests it rather than trusting it.
@@ -50,9 +87,12 @@ def build(version: str) -> str:
     exc_pairs = {(e["parent_a"], e["parent_b"]) for e in exceptions}
     exc_pairs |= {(b, a) for a, b in exc_pairs}
 
+    def named(*ids: str) -> bool:
+        """Every id on the row resolves to a name a tester can find in game."""
+        return all(name.get(i) for i in ids)
+
     def usable(a: str, b: str) -> bool:
-        return (a in rank and b in rank and (a, b) not in exc_pairs
-                and name.get(a) and name.get(b))
+        return a in rank and b in rank and (a, b) not in exc_pairs and named(a, b)
 
     # --- Block 1: agreement pairs. Both conventions agree, no exception applies.
     # If these fail, the model is wrong at the root and nothing after matters.
@@ -69,7 +109,7 @@ def build(version: str) -> str:
                 continue
             f = child_of(rank[a], rank[b], eligible, "floor")
             h = child_of(rank[a], rank[b], eligible, "floor_plus_half")
-            if f == h and f not in (a, b):
+            if f == h and f not in (a, b) and named(f):
                 baseline.append((a, b, f))
                 break  # one row per first parent, so the sheet spans the rank range
 
@@ -100,14 +140,23 @@ def build(version: str) -> str:
                 continue
             avg = (rank[a] + rank[b]) // 2
             nearest_any = min(all_ranked, key=lambda rt: (abs(rt[0] - avg), rt[0]))[1]
-            if nearest_any not in elig_set and nearest_any not in seen_skipped:
+            predicted = child_of(rank[a], rank[b], eligible, "floor")
+            if (nearest_any not in elig_set and nearest_any not in seen_skipped
+                    and named(nearest_any, predicted)):
                 seen_skipped.add(nearest_any)
-                skip_rows.append((a, b, nearest_any,
-                                  child_of(rank[a], rank[b], eligible, "floor")))
+                skip_rows.append((a, b, nearest_any, predicted))
 
     # --- Block 4: exception rows, sampled across kinds.
-    self_pairs = [e for e in exceptions if e["parent_a"] == e["parent_b"]]
-    cross_pairs = [e for e in exceptions if e["parent_a"] != e["parent_b"]]
+    def row_named(e: dict) -> bool:
+        return named(e["parent_a"], e["parent_b"], e["child_character_id"])
+
+    # Rows naming something with no English name are counted, then dropped. Most are
+    # Yakushima and raid content whose names the table ships as placeholders.
+    unnamed_rows = sum(1 for e in exceptions if not row_named(e))
+    self_pairs = [e for e in exceptions
+                  if e["parent_a"] == e["parent_b"] and row_named(e)]
+    cross_pairs = [e for e in exceptions
+                   if e["parent_a"] != e["parent_b"] and row_named(e)]
     # An exception whose child the rank rule would ALSO produce proves nothing, so
     # prefer rows where the rule disagrees - those are the table earning its place.
     overriding = []
@@ -208,6 +257,12 @@ def build(version: str) -> str:
         add(row(e["parent_a"], e["parent_b"], e["child_character_id"]))
     add("")
     add("### Self-pairs — two claims in one\n")
+    if unnamed_rows:
+        add(f"_{unnamed_rows} of the {len(exceptions)} exception rows are omitted here "
+            "because at least one Pal on them has no English name: "
+            "`DT_PalNameText_Common` ships the `en_text` placeholder for a few entries, "
+            "`BeardedDragon` among them. A row naming something unsearchable is not a "
+            "test, so they are dropped rather than printed as internal ids._\n")
     add(f"{len(self_pairs)} of the {len(exceptions)} rows pair a Pal with itself, and they "
         "encode two different things. Legendaries breed true because nothing else can "
         "make them; variants breed true so a line can be kept once you have one. Both "

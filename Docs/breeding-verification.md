@@ -86,18 +86,20 @@ In each row the average lands nearest the **skipped** Pal. The model says the eg
 
 ### Self-pairs — two claims in one
 
-122 of the 258 rows pair a Pal with itself, and they encode two different things. Legendaries breed true because nothing else can make them; variants breed true so a line can be kept once you have one. Both should hold, and a failure in either is interesting.
+_5 of the 258 exception rows are omitted here because at least one Pal on them has no English name: `DT_PalNameText_Common` ships the `en_text` placeholder for a few entries, `BeardedDragon` among them. A row naming something unsearchable is not a test, so they are dropped rather than printed as internal ids._
+
+117 of the 258 rows pair a Pal with itself, and they encode two different things. Legendaries breed true because nothing else can make them; variants breed true so a line can be kept once you have one. Both should hold, and a failure in either is interesting.
 
 | Parent A | Parent B | Predicted child | Actual |
 |---|---|---|---|
 | Kitsun Noct | Kitsun Noct | **Kitsun Noct** |  |
 | Incineram Noct | Incineram Noct | **Incineram Noct** |  |
 | Mau Cryst | Mau Cryst | **Mau Cryst** |  |
-| BeardedDragon | BeardedDragon | **BeardedDragon** |  |
 | Caprity Noct | Caprity Noct | **Caprity Noct** |  |
 | Vanwyrm Cryst | Vanwyrm Cryst | **Vanwyrm Cryst** |  |
-| BlackCentaur | BlackCentaur | **BlackCentaur** |  |
-| BlackFurDragon | BlackFurDragon | **BlackFurDragon** |  |
+| Necromus | Necromus | **Necromus** |  |
+| Dragostrophe | Dragostrophe | **Dragostrophe** |  |
+| Shadowbeak | Shadowbeak | **Shadowbeak** |  |
 
 ---
 
