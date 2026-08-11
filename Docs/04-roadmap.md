@@ -1791,6 +1791,61 @@ locatable resources; widening it to all 151 droppable items for the query classe
 table's casing disagrees with the name table's (`Gorilla_ground` vs `Gorilla_Ground`),
 which silently cost five real droppers until the join was made case-insensitive.
 
+### The latency criterion, finally measured — and it is a coverage problem
+
+Carried forward through the Phase 1 and Phase 2 exits as "accepted at measured behaviour"
+on samples too thin to grade. A 1h17m session with 87 answered queries cleared 30 of each
+kind, so `/palintel status` graded it for the first time. **Both bars fail.**
+
+| | p50 | p95 | budget | |
+|---|---|---|---|---|
+| Voice | 1.5s | **4.2s** | 2.5s | ❌ |
+| Text | 0.3s | **2.0s** | 1.5s | ❌ |
+
+**The medians are comfortable and the tails are a different population.** Stage p50s are
+`stt 0.38s · route 0.09s · post 0.23s`, and a route median of 0.09s means the fast path is
+claiming most queries. `/palintel recent` shows 11 of 12 at 0.0-0.1s and one model call —
+*"what does Vanwyrm drop"* at 1.5s. Add `post` and that is 1.7s, against a text p95 of
+2.0s; the same sum on voice (0.70 hangover + 0.38 stt + ~2.5 model + 0.23 post) lands at
+3.8-4.2s against a measured 4.2s.
+
+**So this is not a tuning problem, it is a coverage requirement, and the arithmetic is
+unforgiving.** p95 is the 95th percentile, so the 2.5s bar is only reachable when **fewer
+than 5% of queries reach the model.** The fast path claims resource and Pal *location*. It
+does not claim `pal_drops` or `item_source`, both shipped today, and the play protocol's
+text block is roughly 30% those. Any class without fast-path coverage puts p95 in the model
+population by construction.
+
+What follows:
+
+- **`pal_drops` is fast-pathable.** *"what does X drop"* is as templated as *"where can I
+  find X"* — a cue word plus a confident lexicon Pal match, the same shape the stub already
+  handles for spawns. Precision must be measured over the A5 transcripts before it ships,
+  exactly as adding `find_pal_spawns` to the stub was.
+- **`item_source` is not.** Items are deliberately absent from the lexicon
+  ([ADR-0016](adr/0016-entity-resolution-in-router.md) ranks what the corrector knows), so
+  nothing ranks "flame organ" for the stub to match on. It stays on the model unless that
+  decision is revisited — and it is the decision that keeps the item enum from polluting
+  every other query.
+- **Therefore the bar cannot be met while any shipped class lacks fast-path coverage.**
+  That is worth stating plainly rather than deferring a fourth time: either every class
+  gets a deterministic path, or the criterion is measuring something the design does not
+  promise.
+
+**Two numbers that were previously unmeasurable came free with it.**
+
+`art_post` is **531ms p50, 1,157ms p95** over 70 attachments — the one figure
+[ADR-0017](adr/0017-card-artwork-from-game-assets.md) was accepted without. The reflow
+lands about half a second after the card, so the edit-in delivery holds and a single
+message would have added that to every illustrated answer's graded latency. Render
+measured 16/47ms against 7.8/25.5 locally, which is the same order with a busy event loop.
+
+**Wake-word false positives: 1 in 53 activations** (one fired with no speech).
+[ADR-0004](adr/0004-wake-word-activation.md) recorded this as genuinely unmeasured, since
+four negative clips cannot support a rate. Decline rate was **10.3%** (10 of 97) against
+19-21% across the eval runs, and declines cost 3.8s p50 — the routing policy making
+declining the expensive judgement, visible in play.
+
 ### The shipping configuration, measured
 
 Four classes in the consolidated tool - `resource_location`, `pal_location`, `pal_drops`,

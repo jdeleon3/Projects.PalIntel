@@ -54,10 +54,10 @@ at all.
 
 | Gap | Why it is stuck |
 |---|---|
-| **`art_post` p95** | The Discord upload round trip. Every render figure is local. |
+| ~~`art_post` p95~~ | **Measured**: 531ms p50, 1,157ms p95 over 70 attachments. Edit-in delivery holds. |
 | **Do markers land on the actual rock?** | The transform was validated to ±3 map units against 7 landmarks, **none of them a node or spawn area**. |
 | **Does `item_source` work?** | All 240 eval recordings predate the class. No API spend measures it. |
-| **The Phase 1 latency criterion** | Carried forward twice. Needs ≥30 answered queries of **each** kind in one session; best so far is 16 voice and ~0 text. |
+| ~~The Phase 1 latency criterion~~ | **Measured 2026-08-10 and FAILED**: voice p95 4.2s / 2.5s, text 2.0s / 1.5s. Not a tuning problem — p95 sits in the model population whenever a shipped class has no fast path. See the roadmap. |
 
 All four are in [`Docs/play-session-protocol.md`](Docs/play-session-protocol.md).
 **That session is the single biggest unblocker in the project.**
