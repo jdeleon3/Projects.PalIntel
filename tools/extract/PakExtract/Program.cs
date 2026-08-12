@@ -52,7 +52,7 @@ Console.OutputEncoding = System.Text.Encoding.UTF8;
 // happened when `dotnet run --tables` (no separator) delivered zero arguments and the
 // default was a full World Partition scan.
 var MODES = new[] { "cells", "sheets", "drops", "items", "textures", "paldrops",
-                    "probe", "dump", "tables", "table", "export", "ranch" };
+                    "probe", "dump", "tables", "table", "export", "ranch", "settings" };
 
 var mode = args.Length > 0 && !int.TryParse(args[0], out _) ? args[0] : "";
 var limit = args.Length > 0 && int.TryParse(args[0], out var l) ? l : int.MaxValue;
@@ -82,6 +82,7 @@ if (mode.Length == 0 && limit == int.MaxValue)
           tables [s]   every data table, optionally filtered
           table <name> one table's rows -> data/raw/tables/, and its field list
           export <s>   every table whose path contains <s>, same output
+          settings     BP_PalGameSetting's tunables -> data/raw/game_settings.json
         """);
     return;
 }
@@ -155,6 +156,30 @@ if (mode == "tables")
     foreach (var p in all) Console.WriteLine("  " + p[..p.LastIndexOf('.')]);
     Console.WriteLine($"\n{all.Count:N0} data tables"
                       + (needle.Length > 0 ? $" matching '{needle}'" : ""));
+    return;
+}
+
+if (mode == "settings")
+{
+    // BP_PalGameSetting's class defaults, written to a file rather than to stdout.
+    //
+    // A file for the same reason `export` uses one, plus a second: `dotnet run` prints
+    // MSBuild restore warnings to stdout, so a redirect produces a JSON file with two
+    // lines of build output on the front. That is a corrupt file that looks like a
+    // serializer problem, and it cost a wrong diagnosis here before the bytes were read.
+    //
+    // This is where the tunables the data tables do not carry live - BaseCampAreaRange,
+    // the dungeon respawn probability - and both have now been wanted by a feature.
+    const string SETTINGS = "Pal/Content/Pal/Blueprint/System/BP_PalGameSetting";
+    var settingsOut = Path.Combine(outDir, "game_settings.json");
+    // ALL exports, not the first. The first is the generated class; the tunables live on
+    // the class-default object further down, and `.First()` wrote a file with an empty
+    // Properties block that looked like the settings simply were not there.
+    var exports = provider.LoadPackage(SETTINGS).GetExports();
+    File.WriteAllText(settingsOut,
+        JsonConvert.SerializeObject(exports, Formatting.Indented),
+        new System.Text.UTF8Encoding(false));
+    Console.WriteLine($"game settings -> {settingsOut}");
     return;
 }
 

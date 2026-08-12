@@ -545,6 +545,12 @@ class KnowledgeBase:
     # mounts.json is absent, which turns the mount filter off and leaves the rest of the
     # attribute search working.
     mounts: dict[str, "Mount"] = field(default_factory=dict)
+    # How far a base's Pals reach, in map units. `BaseCampAreaRange` read from the pak and
+    # converted through the same transform every coordinate here uses - see
+    # tools/ingest/build_base_camp.py. None when base_camp.json is absent, which turns
+    # base siting off: a radius is the entire question that class asks, and guessing one
+    # would put a coordinate on a card backed by nothing.
+    base_radius: float | None = None
 
     @classmethod
     def load(cls, version: str = "1.0.2", root: Path | None = None) -> "KnowledgeBase":
@@ -621,13 +627,20 @@ class KnowledgeBase:
                 for m in json.loads(
                     mount_path.read_text(encoding="utf-8"))["entries"]}
 
+        base_radius: float | None = None
+        base_path = base / "base_camp.json"
+        if base_path.exists():
+            base_radius = json.loads(
+                base_path.read_text(encoding="utf-8"))["map_units"]
+
         return cls(game_version=raw["game_version"], lexicon=lexicon, nodes=nodes,
                    spawns=spawns,
                    pals_without_areas=frozenset(spawn_raw["pals_without_areas"]),
                    droppers=droppers, pal_drops=pal_drops,
                    item_sources=item_sources, ranch=ranch,
                    ranch_source=ranch_source,
-                   attributes=attributes, jobs=jobs, mounts=mounts)
+                   attributes=attributes, jobs=jobs, mounts=mounts,
+                   base_radius=base_radius)
 
     def job_label(self, job: str) -> str:
         """The game's word for a job enum, falling back to the enum itself."""
@@ -651,4 +664,5 @@ class KnowledgeBase:
             "pals_with_attributes": len(self.attributes),
             "work_jobs": len(self.jobs),
             "tower_leaders": len(self.lexicon.leaders()),
+            "base_radius_map_units": self.base_radius,
         }

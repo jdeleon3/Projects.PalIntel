@@ -5,6 +5,7 @@ unit-testable. This is where every factual value in a Tier 1 card originates.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 
 from .knowledge import (Dropper, KnowledgeBase, Mount, PalAttributes, PalDrop,
@@ -527,3 +528,157 @@ def find_pals_by_attribute(
         unowned_only=unowned_only,
         roster_known=roster_known,
     )
+
+
+# --------------------------------------------------------------------- base siting
+#
+# **Q4, and it is not the Q4 the roadmap specified.** The design was twenty hand-curated
+# sites carrying a `flatness_score` "hand-curated, 0-1", prose rationale and a source
+# attribution. That was not built, and the reasoning is recorded in Docs/04-roadmap.md
+# rather than only here, because it is a scope decision and not an implementation detail.
+#
+# What IS here is the half that can be computed from what the game states: a base reaches
+# `BaseCampAreaRange` (3500 world units, 7.63 map units), and the node dataset says what
+# is inside any circle of that size. So "where should I put a base for ore and stone" is
+# answerable as set membership over coordinates the project already publishes.
+#
+# **What it deliberately does not claim is buildability.** Nothing found in the pak says
+# whether ground is flat or a spot is inside a no-build zone, so a site here is where the
+# resources are and never "you can build here". The card says so in those words. That
+# limitation is the honest reason this class is thinner than the roadmap's version - and
+# it is also the reason the roadmap's version was going to be *invented*, since a
+# hand-scored flatness is a judgement nobody in this project has measured.
+
+
+@dataclass(frozen=True)
+class BaseSite:
+    """One candidate base centre, and what falls inside the base radius around it."""
+    map_x: float
+    map_y: float
+    # resource -> deposits inside the radius. Only the requested resources.
+    covered: dict[str, int]
+    # Requested resources with nothing in range. Named rather than implied by absence,
+    # because "a base for coal and ore" that only reaches coal is a different answer from
+    # one that reaches both, and the reader must not have to count.
+    missing: tuple[str, ...]
+    # Everything else in range, biggest first. Free information and often the deciding
+    # one: a site that also happens to sit on wood is worth more than the ranking says.
+    also: tuple[tuple[str, int], ...]
+    distance: float | None = None
+
+    @property
+    def deposits(self) -> int:
+        return sum(self.covered.values())
+
+    @property
+    def complete(self) -> bool:
+        return not self.missing
+
+
+@dataclass(frozen=True)
+class BaseSiteResult:
+    resources: tuple[str, ...]
+    sites: list[BaseSite]
+    # In map units, from base_camp.json. Printed on the card: every count here is "inside
+    # a circle this big", and a reader who does not know the size cannot judge the claim.
+    radius: float
+    near: tuple[float, float] | None
+    # How many candidate centres covered every requested resource. Zero is a real answer
+    # and a useful one - it means no single base reaches all of them.
+    complete_sites: int
+    considered: int
+
+
+# A grid cell one radius across, so every node within `radius` of a point lies in that
+# point's cell or one of the eight around it. Without it this is 2,668 candidate centres
+# times 2,668 nodes - seven million distance computations on the answer path, which is
+# seconds, and the whole latency budget is 2.5.
+def _grid(nodes: list[ResourceNode], radius: float) -> dict[tuple[int, int], list]:
+    cells: dict[tuple[int, int], list] = {}
+    for n in nodes:
+        cells.setdefault((int(n.map_x // radius), int(n.map_y // radius)), []).append(n)
+    return cells
+
+
+def suggest_base_sites(
+    kb: KnowledgeBase,
+    resources: list[str],
+    near: tuple[float, float] | None = None,
+    limit: int = 3,
+) -> BaseSiteResult:
+    """Where to put a base so the named resources are inside it.
+
+    Candidate centres are the node clusters themselves rather than a swept grid. That is
+    a real restriction and worth stating: the best possible centre may sit between two
+    clusters and reach both when neither cluster's own centre does. Clusters are used
+    anyway because a base on top of a deposit is what players actually build, because it
+    keeps the answer to coordinates the project already publishes and has walked in game,
+    and because a swept grid would invent coordinates nobody has ever stood on - which is
+    a different kind of claim from repeating one from the node dataset.
+
+    `near` is injected by the dispatcher from save state, never parsed from the utterance.
+    """
+    radius = kb.base_radius
+    if radius is None:
+        # The caller checks this first; the guard is here so the function cannot be made
+        # to invent a radius by a future caller that forgets.
+        raise ValueError("no base radius loaded - run tools/ingest/build_base_camp.py")
+
+    wanted = tuple(dict.fromkeys(resources))
+    cells = _grid(kb.nodes, radius)
+    # Only clusters OF a requested resource are candidate centres. A base is built for
+    # something, so a centre that reaches none of what was asked for is not a site.
+    centres = [n for n in kb.nodes if n.resource in wanted]
+
+    sites: list[BaseSite] = []
+    for c in centres:
+        cx, cy = int(c.map_x // radius), int(c.map_y // radius)
+        covered: dict[str, int] = {}
+        other: dict[str, int] = {}
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for n in cells.get((cx + dx, cy + dy), ()):
+                    if n.distance_to(c.map_x, c.map_y) > radius:
+                        continue
+                    bucket = covered if n.resource in wanted else other
+                    bucket[n.resource] = bucket.get(n.resource, 0) + n.node_count
+        sites.append(BaseSite(
+            map_x=c.map_x, map_y=c.map_y,
+            covered=covered,
+            missing=tuple(r for r in wanted if r not in covered),
+            also=tuple(sorted(other.items(), key=lambda kv: (-kv[1], kv[0]))),
+            distance=(math.dist((c.map_x, c.map_y), near) if near else None),
+        ))
+
+    complete = sum(1 for s in sites if s.complete)
+
+    def sort_key(s: BaseSite):
+        # Covering everything asked for comes first, and it is not a tie-break: a site
+        # reaching two of two requested resources answers the question, and one reaching
+        # forty deposits of one of them does not. Then total deposits, then distance when
+        # the player's position is known, then the coordinate so two runs agree.
+        return (len(s.missing), -s.deposits,
+                s.distance if s.distance is not None else 0.0, s.map_x, s.map_y)
+
+    sites.sort(key=sort_key)
+
+    # **Distinct places, not distinct clusters.** Deposits come in tight groups, so the
+    # top three by deposit count are routinely three centres a few map units apart - one
+    # recommendation printed three times, which reads as three options. Asked for a base
+    # for ore and stone, the first two answers were (185, -475) and (188, -480).
+    #
+    # Separation is one full radius, and that is a PRESENTATION rule rather than the
+    # game's: `BaseCampNeighborMinimumDistance` is 1500 world units, less than the area
+    # range, so the game itself permits bases that overlap almost completely. Two centres
+    # closer than a radius cover substantially the same ground and are the same advice.
+    spread: list[BaseSite] = []
+    for s in sites:
+        if all(math.dist((s.map_x, s.map_y), (o.map_x, o.map_y)) > radius
+               for o in spread):
+            spread.append(s)
+        if len(spread) == limit:
+            break
+
+    return BaseSiteResult(resources=wanted, sites=spread, radius=radius,
+                          near=near, complete_sites=complete,
+                          considered=len(centres))
