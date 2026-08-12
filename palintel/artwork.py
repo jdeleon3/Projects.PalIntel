@@ -86,6 +86,18 @@ class Artwork:
         points = [(n.map_x, n.map_y, result.resource) for n in result.nodes]
         return lambda: self._draw_map(card, points, result.near)
 
+    def illustrate_sites(self, card: Card, points: list[tuple[float, float, str]],
+                         near: tuple[float, float] | None = None
+                         ) -> Callable[[], None]:
+        """Plan a map crop for any list of already-labelled coordinates.
+
+        The one illustrator that takes points rather than a typed result. Base siting
+        produces coordinates that belong to no single resource - a site exists because
+        several are in range - so there is no result shape to read them out of, and
+        reshaping one to fit would be worse than passing what the map actually needs.
+        """
+        return lambda: self._draw_map(card, points, near)
+
     def illustrate_spawn(self, card: Card, result: SpawnResult) -> Callable[[], None]:
         points = [(a.map_x, a.map_y, result.pal) for a in result.areas]
 
