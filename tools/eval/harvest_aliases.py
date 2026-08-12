@@ -77,16 +77,37 @@ ORDINARY_WORDS = {
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--condition", default="quiet")
+    ap.add_argument("--session", default="",
+                    help="harvest a GAMEPLAY session instead of the scripted set. Reads "
+                         "the analysis.json that tools/eval/analyse_session.py --write "
+                         "produces, whose expectations come from rephrase proposals "
+                         "rather than from a prompt - so they are weaker evidence and "
+                         "the output says so.")
     ap.add_argument("--floor", type=float, default=PAL_CONFIDENT)
     args = ap.parse_args()
 
     from build_lexicon import SEED_ALIASES, safe_aliases
 
-    prompts = {p["id"]: p for p in
-               json.loads((EVAL / "prompts.json").read_text(encoding="utf-8"))["prompts"]}
-    results = json.loads(
-        (EVAL / args.condition / "results.json").read_text(encoding="utf-8"))
-    records = list(results.values() if isinstance(results, dict) else results)
+    if args.session:
+        # A gameplay session. **The expectations are proposals, not prompts**: nothing
+        # told the player what to say, so what an utterance "should" have resolved to is
+        # inferred from a later rephrase that worked. The four checks below are unchanged
+        # and matter more here, not less.
+        path = REPO / "data" / "sessions" / args.session / "analysis.json"
+        if not path.exists():
+            sys.exit(f"no {path}\n  python tools/eval/analyse_session.py "
+                     f"--session {args.session} --write")
+        analysis = json.loads(path.read_text(encoding="utf-8"))
+        records = analysis["records"]
+        prompts = {r["id"]: {"expect_entities": r["expected"]} for r in records}
+        print(f"gameplay session {analysis['session']}: {len(records)} rephrase "
+              f"proposals, {len(analysis.get('unresolved', []))} unresolved\n")
+    else:
+        prompts = {p["id"]: p for p in
+                   json.loads((EVAL / "prompts.json").read_text(encoding="utf-8"))["prompts"]}
+        results = json.loads(
+            (EVAL / args.condition / "results.json").read_text(encoding="utf-8"))
+        records = list(results.values() if isinstance(results, dict) else results)
 
     kb = KnowledgeBase.load("1.0.2")
     known = {c: {a.lower() for a in SEED_ALIASES.get(c, [])} for c in SEED_ALIASES}
@@ -180,6 +201,24 @@ def main() -> None:
             if all(t in ORDINARY_WORDS for t in toks):
                 review[name].append((surface, "made of ordinary words"))
                 continue
+            if args.session:
+                # **Nothing from a gameplay session is auto-accepted, and this rule was
+                # earned on the first run of it.**
+                #
+                # The four checks above validate the SURFACE FORM - is it too short, too
+                # common, does it collide with another Pal. They say nothing about
+                # whether the TARGET is right, because on the scripted set the target
+                # comes from a prompt and is not in question. On a session it is
+                # inferred from a rephrase, and the first run accepted
+                # `majoran -> Bjorn` outright: a proposal that a human had already
+                # confirmed as *misheard* but never confirmed as *Bjorn*, sitting at 0.73
+                # frame similarity against a real pair at 0.70.
+                #
+                # A misheard button says the transcript was wrong. It does not say what
+                # was meant, and nothing in this file can tell the two apart.
+                review[name].append((surface, "target inferred from a rephrase, "
+                                              "not stated by a prompt"))
+                continue
             accepted[name].append(surface)
 
     print(f"scanned {scanned} recordings with expected entities\n")
@@ -197,6 +236,19 @@ def main() -> None:
             existing = SEED_ALIASES.get(name, [])
             merged = existing + [f for f in forms if f not in existing]
             print(f'    "{name}": {json.dumps(merged)},')
+
+    if review:
+        # **This block did not exist until 2026-08-12.** The `review` pile was collected
+        # by three separate branches, described in the module docstring as "HELD FOR
+        # REVIEW rather than accepted", and then never printed - so every run of this
+        # tool silently discarded exactly the candidates a human was supposed to judge.
+        # Found by adding a fourth branch and seeing its output vanish.
+        print(f"\nHELD FOR REVIEW - {sum(len(v) for v in review.values())} candidates "
+              f"across {len(review)} Pals")
+        print("  (a judgement, not a rejection - these are the ones worth your eyes)")
+        for name in sorted(review):
+            for surface, why in sorted(review[name]):
+                print(f"  {name:<18} {surface!r:<24} {why}")
 
     if rejected:
         print(f"\nREJECTED - {len(rejected)}")
