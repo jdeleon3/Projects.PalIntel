@@ -655,9 +655,16 @@ class Pipeline:
                     Decline(reason="I don't know where you are - read your save, or "
                                    "give me a coordinate like (185, -475)"), candidates)
 
+            # What the base is for. Filtered to what actually has nodes, the same way
+            # `suggest_base_sites` does, so a model naming crude oil cannot ask for a
+            # count of something that is not placed anywhere.
+            locatable = {n.resource for n in self.kb.nodes}
+            wanted = [r for r in (call.args.get("resources") or []) if r in locatable]
+
             built = []
             for x, y, label in spots:
-                rating = execution.rate_base_site(self.kb, x, y, label=label)
+                rating = execution.rate_base_site(self.kb, x, y, label=label,
+                                                  resources=wanted)
                 log.info("rate_base_site(%.0f, %.0f) -> %d/%d criteria",
                          x, y, rating.score, rating.checkable)
                 built.append(cards.base_rating_card(rating))

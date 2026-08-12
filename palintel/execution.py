@@ -659,6 +659,9 @@ class BaseRating:
     criteria: list[Criterion]
     covered: dict[str, int]
     radius: float
+    # What the base is FOR, when the player said. Empty means the general question, and
+    # the resource criterion then counts everything.
+    resources: tuple[str, ...] = ()
     # Nearby wild Pal levels, as a fact rather than as a danger label. The danger RULE is
     # the uncalibrated one; the levels themselves are extracted.
     wild_levels: tuple[int, int] | None = None
@@ -756,20 +759,27 @@ def describe_base_criteria(kb: KnowledgeBase) -> BaseCriteria:
 
 
 def rate_base_site(kb: KnowledgeBase, x: float, y: float,
-                   label: str = "here") -> BaseRating:
+                   label: str = "here",
+                   resources: list[str] | None = None) -> BaseRating:
     """Judge one place, rather than search for places.
 
     The mirror of `suggest_base_sites` and a genuinely different question: that one ranks
     candidates against each other, this one measures a coordinate the player already
     cares about — where they are standing, or where their base already is.
 
-    Two reference sets, and using the wrong one would produce a confident, useless
-    answer. Terrain and water are scored against the **32 areas the game marks itself**,
-    which is what those markers are good for: measured, they hold a median of three
-    deposits and a median roughness of 24 cm, so the designers are marking flat ground
-    near water. Resources are scored against **every node cluster on the map**, because
-    scoring them against a set that was never chosen for resources would put a
-    thirty-deposit site near the top of a distribution it does not belong to.
+    `resources` narrows the resource criterion to what the base is *for* — *"is this a
+    good spot for a quartz base"*. Everything else is unchanged, because flat ground and
+    water do not care what you are mining.
+
+    **Three reference sets, and each wrong one produces a confident, useless answer.**
+    Terrain and water are scored against the **32 areas the game marks itself**, which is
+    what those markers are good for: measured, they hold a median of three deposits and a
+    median roughness of 24 cm, so the designers are marking flat ground near water.
+    Resources with nothing named are scored against **every node cluster on the map**.
+    And a *named* resource is scored against **the clusters of that resource only** — the
+    median site holds three deposits of anything while the median coal site holds one
+    coal, so nine coal is unremarkable against the first distribution and the best there
+    is against the second.
     """
     f = kb.base_features
     if f is None:
@@ -781,7 +791,24 @@ def rate_base_site(kb: KnowledgeBase, x: float, y: float,
     for n in kb.nodes:
         if n.distance_to(x, y) <= radius:
             covered[n.resource] = covered.get(n.resource, 0) + n.node_count
-    deposits = sum(covered.values())
+
+    # `covered` always holds EVERYTHING in range, whatever was asked for, because the
+    # card lists it either way - a spot chosen for quartz that also sits on 30 stone is
+    # information the player wants and did not think to ask for. Only the criterion
+    # narrows.
+    wanted = tuple(dict.fromkeys(resources or ()))
+    if wanted:
+        deposits = sum(covered.get(r, 0) for r in wanted)
+        # One named resource has its own distribution; several are summed and fall back
+        # to the map-wide one, because a "quartz and coal" reference set does not exist
+        # and inventing one by adding two percentiles would be arithmetic on ranks.
+        percentile = (f.resource_percentile(wanted[0], deposits) if len(wanted) == 1
+                      else f.deposit_percentile(deposits))
+        label_for = " + ".join(r.replace("_", " ") for r in wanted)
+    else:
+        deposits = sum(covered.values())
+        percentile = f.deposit_percentile(deposits)
+        label_for = None
 
     roughness = f.roughness_at(x, y)
     water = f.nearest_water(x, y)
@@ -811,16 +838,20 @@ def rate_base_site(kb: KnowledgeBase, x: float, y: float,
             percentile=None if water is None else f.water_percentile(water[0]),
         ),
         Criterion(
-            name="resources in range",
-            # The bar is the median node cluster, so "yes" means this place is at least
-            # as good as half the places on the map you could put a base.
-            met=deposits > 0 and (f.deposit_percentile(deposits) or 0) >= 50,
-            detail=(f"{deposits} deposit{'s' if deposits != 1 else ''} across "
-                    f"{len(covered)} resource{'s' if len(covered) != 1 else ''}"
-                    if deposits else "nothing in range"),
+            name=f"{label_for} in range" if label_for else "resources in range",
+            # The bar is the median of whichever distribution applies, so "yes" means
+            # this place is at least as good as half the places you would consider - all
+            # sites for the general question, and sites that have the resource at all
+            # when one was named.
+            met=deposits > 0 and (percentile or 0) >= 50,
+            detail=(f"{deposits} deposit{'s' if deposits != 1 else ''}"
+                    + (f" across {len(covered)} resource"
+                       f"{'s' if len(covered) != 1 else ''}" if not wanted else "")
+                    if deposits
+                    else f"no {label_for} in range" if label_for else "nothing in range"),
             # No percentile on an empty site: "better than 0%" beside "nothing in range"
             # is the same fact twice, and the second telling looks like a score.
-            percentile=f.deposit_percentile(deposits) if deposits else None,
+            percentile=percentile if deposits else None,
         ),
         Criterion(
             name="the game marks this area",
@@ -840,7 +871,7 @@ def rate_base_site(kb: KnowledgeBase, x: float, y: float,
 
     return BaseRating(map_x=x, map_y=y, label=label, criteria=criteria,
                       covered=covered, radius=radius, wild_levels=levels,
-                      nearest_marked=marked, on_the_map=on_map)
+                      nearest_marked=marked, on_the_map=on_map, resources=wanted)
 
 
 def suggest_base_sites(
