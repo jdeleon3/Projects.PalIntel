@@ -565,6 +565,16 @@ class BaseSite:
     # one: a site that also happens to sit on wood is worth more than the ranking says.
     also: tuple[tuple[str, int], ...]
     distance: float | None = None
+    # Ground height spread inside the radius, in cm. None where too few actors stand to
+    # say, which is a real answer and NOT the same as flat.
+    roughness: int | None = None
+    # None when roughness is unknown. See BaseFeatures.is_flat.
+    flat: bool | None = None
+    # (distance in map units, kind) of the nearest water, or None when none is loaded.
+    water: tuple[float, str] | None = None
+    # Distance to the nearest BP_BaseCampPopularArea_C, or None when none is loaded. The
+    # strongest single signal here: 32 places the game's own designers marked.
+    marked_area: float | None = None
 
     @property
     def deposits(self) -> int:
@@ -573,6 +583,15 @@ class BaseSite:
     @property
     def complete(self) -> bool:
         return not self.missing
+
+    def in_marked_area(self, radius: float) -> bool:
+        """True when a base here covers substantially the same ground as a marked area.
+
+        One base radius is the bar, because that is the distance at which the two circles
+        stop overlapping meaningfully. The reference player's own main base sits 1.3 map
+        units from one, so this is not a generous threshold in practice.
+        """
+        return self.marked_area is not None and self.marked_area <= radius
 
 
 @dataclass(frozen=True)
@@ -587,6 +606,13 @@ class BaseSiteResult:
     # and a useful one - it means no single base reaches all of them.
     complete_sites: int
     considered: int
+    # False when base_features.json is absent, which turns terrain, water and the marked
+    # areas off and leaves the class answering on resource density alone. The card has to
+    # say which of the two answers it is giving.
+    features_known: bool = False
+    # The roughness at or below which ground counts as flat, calibrated from the 32
+    # marked areas rather than chosen. None when features are not loaded.
+    flat_cm: int | None = None
 
 
 # A grid cell one radius across, so every node within `radius` of a point lies in that
@@ -642,12 +668,17 @@ def suggest_base_sites(
                         continue
                     bucket = covered if n.resource in wanted else other
                     bucket[n.resource] = bucket.get(n.resource, 0) + n.node_count
+        f = kb.base_features
         sites.append(BaseSite(
             map_x=c.map_x, map_y=c.map_y,
             covered=covered,
             missing=tuple(r for r in wanted if r not in covered),
             also=tuple(sorted(other.items(), key=lambda kv: (-kv[1], kv[0]))),
             distance=(math.dist((c.map_x, c.map_y), near) if near else None),
+            roughness=f.roughness_at(c.map_x, c.map_y) if f else None,
+            flat=f.is_flat(c.map_x, c.map_y) if f else None,
+            water=f.nearest_water(c.map_x, c.map_y) if f else None,
+            marked_area=f.nearest_marked_area(c.map_x, c.map_y) if f else None,
         ))
 
     complete = sum(1 for s in sites if s.complete)
@@ -655,9 +686,27 @@ def suggest_base_sites(
     def sort_key(s: BaseSite):
         # Covering everything asked for comes first, and it is not a tie-break: a site
         # reaching two of two requested resources answers the question, and one reaching
-        # forty deposits of one of them does not. Then total deposits, then distance when
-        # the player's position is known, then the coordinate so two runs agree.
-        return (len(s.missing), -s.deposits,
+        # forty deposits of one of them does not.
+        #
+        # **Then flat ground, because it is a precondition rather than a preference.**
+        # You cannot build on a cliff, so a nine-deposit cliff is not a base site at all
+        # and ranking it above a two-deposit plateau answers a question nobody asked.
+        # Unknown roughness sorts with the rough: a cell with too few placed actors to
+        # measure is somewhere nobody put anything, which is as likely to be a cliff as a
+        # meadow, and guessing in the flattering direction is how a card recommends one.
+        #
+        # **Then deposits, because that is what was actually asked for**, and only then
+        # the game's marked areas. The first version had `marked` above `deposits` and it
+        # was wrong in a way the output made obvious: asked for a coal base it returned
+        # two-deposit marked spots and buried the nine-deposit ones. A designer's hint
+        # about where a base goes is worth a lot; it is not worth overruling the resource
+        # the player named.
+        #
+        # Then distance, then the coordinate so two runs agree.
+        return (len(s.missing),
+                0 if s.flat else 1,
+                -s.deposits,
+                0 if s.in_marked_area(radius) else 1,
                 s.distance if s.distance is not None else 0.0, s.map_x, s.map_y)
 
     sites.sort(key=sort_key)
@@ -681,4 +730,6 @@ def suggest_base_sites(
 
     return BaseSiteResult(resources=wanted, sites=spread, radius=radius,
                           near=near, complete_sites=complete,
-                          considered=len(centres))
+                          considered=len(centres),
+                          features_known=kb.base_features is not None,
+                          flat_cm=kb.base_features.flat_cm if kb.base_features else None)
