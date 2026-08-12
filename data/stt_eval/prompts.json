@@ -5,7 +5,7 @@
   "seed": 20260809,
   "batch_size": 40,
   "batches": 25,
-  "count": 1031,
+  "count": 1067,
   "utterances": 996,
   "scored_entities": 951,
   "prompts": [
@@ -439,7 +439,8 @@
       ],
       "difficulty": "easy",
       "id": "P05",
-      "batch": 0
+      "batch": 0,
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -449,7 +450,8 @@
       ],
       "difficulty": "medium",
       "id": "P06",
-      "batch": 0
+      "batch": 0,
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -459,7 +461,8 @@
       ],
       "difficulty": "easy",
       "id": "P07",
-      "batch": 0
+      "batch": 0,
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -469,7 +472,8 @@
       ],
       "difficulty": "easy",
       "id": "P08",
-      "batch": 0
+      "batch": 0,
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -479,7 +483,8 @@
       ],
       "difficulty": "easy",
       "id": "P09",
-      "batch": 0
+      "batch": 0,
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -489,7 +494,8 @@
       ],
       "difficulty": "hard",
       "id": "P10",
-      "batch": 0
+      "batch": 0,
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -509,7 +515,8 @@
       ],
       "difficulty": "hard",
       "id": "P12",
-      "batch": 0
+      "batch": 0,
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -519,7 +526,8 @@
       ],
       "difficulty": "easy",
       "id": "P13",
-      "batch": 0
+      "batch": 0,
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -529,7 +537,8 @@
       ],
       "difficulty": "medium",
       "id": "P14",
-      "batch": 0
+      "batch": 0,
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -539,7 +548,8 @@
       ],
       "difficulty": "easy",
       "id": "P15",
-      "batch": 0
+      "batch": 0,
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -549,7 +559,8 @@
       ],
       "difficulty": "hard",
       "id": "P16",
-      "batch": 0
+      "batch": 0,
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -559,7 +570,8 @@
       ],
       "difficulty": "hard",
       "id": "P17",
-      "batch": 0
+      "batch": 0,
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -569,7 +581,8 @@
       ],
       "difficulty": "medium",
       "id": "P18",
-      "batch": 0
+      "batch": 0,
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -589,7 +602,8 @@
       ],
       "difficulty": "medium",
       "id": "P20",
-      "batch": 0
+      "batch": 0,
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -599,7 +613,8 @@
       ],
       "difficulty": "hard",
       "id": "P21",
-      "batch": 0
+      "batch": 0,
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -609,7 +624,8 @@
       ],
       "difficulty": "hard",
       "id": "P22",
-      "batch": 0
+      "batch": 0,
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -619,7 +635,8 @@
       ],
       "difficulty": "easy",
       "id": "P23",
-      "batch": 0
+      "batch": 0,
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -629,7 +646,8 @@
       ],
       "difficulty": "hard",
       "id": "P24",
-      "batch": 0
+      "batch": 0,
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -639,7 +657,8 @@
       ],
       "difficulty": "medium",
       "id": "P25",
-      "batch": 0
+      "batch": 0,
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -649,7 +668,8 @@
       ],
       "difficulty": "easy",
       "id": "P26",
-      "batch": 0
+      "batch": 0,
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -669,7 +689,8 @@
       ],
       "difficulty": "medium",
       "id": "P28",
-      "batch": 0
+      "batch": 0,
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -679,7 +700,8 @@
       ],
       "difficulty": "medium",
       "id": "P29",
-      "batch": 0
+      "batch": 0,
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -689,7 +711,8 @@
       ],
       "difficulty": "medium",
       "id": "P30",
-      "batch": 0
+      "batch": 0,
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -699,7 +722,8 @@
       ],
       "difficulty": "easy",
       "id": "P31",
-      "batch": 0
+      "batch": 0,
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -710,7 +734,8 @@
       ],
       "difficulty": "two_entity",
       "id": "P32",
-      "batch": 0
+      "batch": 0,
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -721,7 +746,8 @@
       ],
       "difficulty": "two_entity",
       "id": "P33",
-      "batch": 0
+      "batch": 0,
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -731,7 +757,8 @@
       ],
       "difficulty": "resource",
       "id": "P34",
-      "batch": 0
+      "batch": 0,
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -741,7 +768,8 @@
       ],
       "difficulty": "resource",
       "id": "P35",
-      "batch": 0
+      "batch": 0,
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -751,7 +779,8 @@
       ],
       "difficulty": "resource",
       "id": "P36",
-      "batch": 0
+      "batch": 0,
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -761,7 +790,8 @@
       ],
       "difficulty": "resource",
       "id": "P37",
-      "batch": 0
+      "batch": 0,
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -777,7 +807,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "id": "P39",
-      "batch": 0
+      "batch": 0,
+      "expect_branch": "base_site"
     },
     {
       "group": "utterance",
@@ -785,7 +816,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "id": "P40",
-      "batch": 0
+      "batch": 0,
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -795,7 +827,8 @@
       ],
       "difficulty": "hard",
       "batch": 1,
-      "id": "P041"
+      "id": "P041",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -805,7 +838,8 @@
       ],
       "difficulty": "hard",
       "batch": 1,
-      "id": "P042"
+      "id": "P042",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -815,7 +849,8 @@
       ],
       "difficulty": "hard",
       "batch": 1,
-      "id": "P043"
+      "id": "P043",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -825,7 +860,8 @@
       ],
       "difficulty": "hard",
       "batch": 1,
-      "id": "P044"
+      "id": "P044",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -835,7 +871,8 @@
       ],
       "difficulty": "hard",
       "batch": 1,
-      "id": "P045"
+      "id": "P045",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -845,7 +882,8 @@
       ],
       "difficulty": "hard",
       "batch": 1,
-      "id": "P046"
+      "id": "P046",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -855,7 +893,8 @@
       ],
       "difficulty": "hard",
       "batch": 1,
-      "id": "P047"
+      "id": "P047",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -875,7 +914,8 @@
       ],
       "difficulty": "hard",
       "batch": 1,
-      "id": "P049"
+      "id": "P049",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -885,7 +925,8 @@
       ],
       "difficulty": "medium",
       "batch": 1,
-      "id": "P050"
+      "id": "P050",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -895,7 +936,8 @@
       ],
       "difficulty": "medium",
       "batch": 1,
-      "id": "P051"
+      "id": "P051",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -905,7 +947,8 @@
       ],
       "difficulty": "medium",
       "batch": 1,
-      "id": "P052"
+      "id": "P052",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -915,7 +958,8 @@
       ],
       "difficulty": "medium",
       "batch": 1,
-      "id": "P053"
+      "id": "P053",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -925,7 +969,8 @@
       ],
       "difficulty": "medium",
       "batch": 1,
-      "id": "P054"
+      "id": "P054",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -935,7 +980,8 @@
       ],
       "difficulty": "medium",
       "batch": 1,
-      "id": "P055"
+      "id": "P055",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -945,7 +991,8 @@
       ],
       "difficulty": "easy",
       "batch": 1,
-      "id": "P056"
+      "id": "P056",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -955,7 +1002,8 @@
       ],
       "difficulty": "easy",
       "batch": 1,
-      "id": "P057"
+      "id": "P057",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -965,7 +1013,8 @@
       ],
       "difficulty": "easy",
       "batch": 1,
-      "id": "P058"
+      "id": "P058",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -975,7 +1024,8 @@
       ],
       "difficulty": "variant",
       "batch": 1,
-      "id": "P059"
+      "id": "P059",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -995,7 +1045,8 @@
       ],
       "difficulty": "variant",
       "batch": 1,
-      "id": "P061"
+      "id": "P061",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -1005,7 +1056,8 @@
       ],
       "difficulty": "variant",
       "batch": 1,
-      "id": "P062"
+      "id": "P062",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -1025,7 +1077,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 1,
-      "id": "P064"
+      "id": "P064",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -1035,7 +1088,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 1,
-      "id": "P065"
+      "id": "P065",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -1045,7 +1099,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 1,
-      "id": "P066"
+      "id": "P066",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -1055,7 +1110,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 1,
-      "id": "P067"
+      "id": "P067",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -1066,7 +1122,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 1,
-      "id": "P068"
+      "id": "P068",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -1077,7 +1134,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 1,
-      "id": "P069"
+      "id": "P069",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -1088,7 +1146,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 1,
-      "id": "P070"
+      "id": "P070",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -1099,7 +1158,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 1,
-      "id": "P071"
+      "id": "P071",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -1109,7 +1169,8 @@
       ],
       "difficulty": "resource",
       "batch": 1,
-      "id": "P072"
+      "id": "P072",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -1119,7 +1180,8 @@
       ],
       "difficulty": "resource",
       "batch": 1,
-      "id": "P073"
+      "id": "P073",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -1129,7 +1191,8 @@
       ],
       "difficulty": "resource",
       "batch": 1,
-      "id": "P074"
+      "id": "P074",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -1137,7 +1200,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 1,
-      "id": "P075"
+      "id": "P075",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -1145,7 +1209,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 1,
-      "id": "P076"
+      "id": "P076",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -1153,7 +1218,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 1,
-      "id": "P077"
+      "id": "P077",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -1161,7 +1227,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 1,
-      "id": "P078"
+      "id": "P078",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -1169,7 +1236,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 1,
-      "id": "P079"
+      "id": "P079",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -1177,7 +1245,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 1,
-      "id": "P080"
+      "id": "P080",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -1187,7 +1256,8 @@
       ],
       "difficulty": "hard",
       "batch": 2,
-      "id": "P081"
+      "id": "P081",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -1197,7 +1267,8 @@
       ],
       "difficulty": "hard",
       "batch": 2,
-      "id": "P082"
+      "id": "P082",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -1207,7 +1278,8 @@
       ],
       "difficulty": "hard",
       "batch": 2,
-      "id": "P083"
+      "id": "P083",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -1217,7 +1289,8 @@
       ],
       "difficulty": "hard",
       "batch": 2,
-      "id": "P084"
+      "id": "P084",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -1227,7 +1300,8 @@
       ],
       "difficulty": "hard",
       "batch": 2,
-      "id": "P085"
+      "id": "P085",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -1247,7 +1321,8 @@
       ],
       "difficulty": "hard",
       "batch": 2,
-      "id": "P087"
+      "id": "P087",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -1257,7 +1332,8 @@
       ],
       "difficulty": "hard",
       "batch": 2,
-      "id": "P088"
+      "id": "P088",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -1267,7 +1343,8 @@
       ],
       "difficulty": "hard",
       "batch": 2,
-      "id": "P089"
+      "id": "P089",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -1277,7 +1354,8 @@
       ],
       "difficulty": "medium",
       "batch": 2,
-      "id": "P090"
+      "id": "P090",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -1287,7 +1365,8 @@
       ],
       "difficulty": "medium",
       "batch": 2,
-      "id": "P091"
+      "id": "P091",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -1297,7 +1376,8 @@
       ],
       "difficulty": "medium",
       "batch": 2,
-      "id": "P092"
+      "id": "P092",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -1307,7 +1387,8 @@
       ],
       "difficulty": "medium",
       "batch": 2,
-      "id": "P093"
+      "id": "P093",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -1317,7 +1398,8 @@
       ],
       "difficulty": "medium",
       "batch": 2,
-      "id": "P094"
+      "id": "P094",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -1327,7 +1409,8 @@
       ],
       "difficulty": "medium",
       "batch": 2,
-      "id": "P095"
+      "id": "P095",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -1337,7 +1420,8 @@
       ],
       "difficulty": "easy",
       "batch": 2,
-      "id": "P096"
+      "id": "P096",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -1357,7 +1441,8 @@
       ],
       "difficulty": "easy",
       "batch": 2,
-      "id": "P098"
+      "id": "P098",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -1367,7 +1452,8 @@
       ],
       "difficulty": "variant",
       "batch": 2,
-      "id": "P099"
+      "id": "P099",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -1377,7 +1463,8 @@
       ],
       "difficulty": "variant",
       "batch": 2,
-      "id": "P100"
+      "id": "P100",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -1387,7 +1474,8 @@
       ],
       "difficulty": "variant",
       "batch": 2,
-      "id": "P101"
+      "id": "P101",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -1397,7 +1485,8 @@
       ],
       "difficulty": "variant",
       "batch": 2,
-      "id": "P102"
+      "id": "P102",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -1417,7 +1506,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 2,
-      "id": "P104"
+      "id": "P104",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -1427,7 +1517,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 2,
-      "id": "P105"
+      "id": "P105",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -1437,7 +1528,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 2,
-      "id": "P106"
+      "id": "P106",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -1447,7 +1539,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 2,
-      "id": "P107"
+      "id": "P107",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -1458,7 +1551,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 2,
-      "id": "P108"
+      "id": "P108",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -1469,7 +1563,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 2,
-      "id": "P109"
+      "id": "P109",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -1480,7 +1575,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 2,
-      "id": "P110"
+      "id": "P110",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -1491,7 +1587,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 2,
-      "id": "P111"
+      "id": "P111",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -1501,7 +1598,8 @@
       ],
       "difficulty": "resource",
       "batch": 2,
-      "id": "P112"
+      "id": "P112",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -1511,7 +1609,8 @@
       ],
       "difficulty": "resource",
       "batch": 2,
-      "id": "P113"
+      "id": "P113",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -1521,7 +1620,8 @@
       ],
       "difficulty": "resource",
       "batch": 2,
-      "id": "P114"
+      "id": "P114",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -1529,7 +1629,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 2,
-      "id": "P115"
+      "id": "P115",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -1537,7 +1638,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 2,
-      "id": "P116"
+      "id": "P116",
+      "expect_branch": "tech_next"
     },
     {
       "group": "utterance",
@@ -1545,7 +1647,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 2,
-      "id": "P117"
+      "id": "P117",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -1553,7 +1656,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 2,
-      "id": "P118"
+      "id": "P118",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -1561,7 +1665,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 2,
-      "id": "P119"
+      "id": "P119",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -1569,7 +1674,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 2,
-      "id": "P120"
+      "id": "P120",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -1579,7 +1685,8 @@
       ],
       "difficulty": "hard",
       "batch": 3,
-      "id": "P121"
+      "id": "P121",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -1589,7 +1696,8 @@
       ],
       "difficulty": "hard",
       "batch": 3,
-      "id": "P122"
+      "id": "P122",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -1599,7 +1707,8 @@
       ],
       "difficulty": "hard",
       "batch": 3,
-      "id": "P123"
+      "id": "P123",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -1609,7 +1718,8 @@
       ],
       "difficulty": "hard",
       "batch": 3,
-      "id": "P124"
+      "id": "P124",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -1619,7 +1729,8 @@
       ],
       "difficulty": "hard",
       "batch": 3,
-      "id": "P125"
+      "id": "P125",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -1629,7 +1740,8 @@
       ],
       "difficulty": "hard",
       "batch": 3,
-      "id": "P126"
+      "id": "P126",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -1639,7 +1751,8 @@
       ],
       "difficulty": "hard",
       "batch": 3,
-      "id": "P127"
+      "id": "P127",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -1659,7 +1772,8 @@
       ],
       "difficulty": "hard",
       "batch": 3,
-      "id": "P129"
+      "id": "P129",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -1669,7 +1783,8 @@
       ],
       "difficulty": "medium",
       "batch": 3,
-      "id": "P130"
+      "id": "P130",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -1689,7 +1804,8 @@
       ],
       "difficulty": "medium",
       "batch": 3,
-      "id": "P132"
+      "id": "P132",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -1709,7 +1825,8 @@
       ],
       "difficulty": "medium",
       "batch": 3,
-      "id": "P134"
+      "id": "P134",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -1719,7 +1836,8 @@
       ],
       "difficulty": "medium",
       "batch": 3,
-      "id": "P135"
+      "id": "P135",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -1729,7 +1847,8 @@
       ],
       "difficulty": "easy",
       "batch": 3,
-      "id": "P136"
+      "id": "P136",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -1739,7 +1858,8 @@
       ],
       "difficulty": "easy",
       "batch": 3,
-      "id": "P137"
+      "id": "P137",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -1749,7 +1869,8 @@
       ],
       "difficulty": "easy",
       "batch": 3,
-      "id": "P138"
+      "id": "P138",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -1759,7 +1880,8 @@
       ],
       "difficulty": "variant",
       "batch": 3,
-      "id": "P139"
+      "id": "P139",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -1769,7 +1891,8 @@
       ],
       "difficulty": "variant",
       "batch": 3,
-      "id": "P140"
+      "id": "P140",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -1789,7 +1912,8 @@
       ],
       "difficulty": "variant",
       "batch": 3,
-      "id": "P142"
+      "id": "P142",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -1799,7 +1923,8 @@
       ],
       "difficulty": "variant",
       "batch": 3,
-      "id": "P143"
+      "id": "P143",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -1809,7 +1934,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 3,
-      "id": "P144"
+      "id": "P144",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -1829,7 +1955,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 3,
-      "id": "P146"
+      "id": "P146",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -1839,7 +1966,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 3,
-      "id": "P147"
+      "id": "P147",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -1850,7 +1978,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 3,
-      "id": "P148"
+      "id": "P148",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -1861,7 +1990,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 3,
-      "id": "P149"
+      "id": "P149",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -1872,7 +2002,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 3,
-      "id": "P150"
+      "id": "P150",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -1883,7 +2014,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 3,
-      "id": "P151"
+      "id": "P151",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -1893,7 +2025,8 @@
       ],
       "difficulty": "resource",
       "batch": 3,
-      "id": "P152"
+      "id": "P152",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -1903,7 +2036,8 @@
       ],
       "difficulty": "resource",
       "batch": 3,
-      "id": "P153"
+      "id": "P153",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -1913,7 +2047,8 @@
       ],
       "difficulty": "resource",
       "batch": 3,
-      "id": "P154"
+      "id": "P154",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -1921,7 +2056,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 3,
-      "id": "P155"
+      "id": "P155",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -1929,7 +2065,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 3,
-      "id": "P156"
+      "id": "P156",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -1945,7 +2082,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 3,
-      "id": "P158"
+      "id": "P158",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -1953,7 +2091,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 3,
-      "id": "P159"
+      "id": "P159",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -1961,7 +2100,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 3,
-      "id": "P160"
+      "id": "P160",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -1971,7 +2111,8 @@
       ],
       "difficulty": "hard",
       "batch": 4,
-      "id": "P161"
+      "id": "P161",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -1981,7 +2122,8 @@
       ],
       "difficulty": "hard",
       "batch": 4,
-      "id": "P162"
+      "id": "P162",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -1991,7 +2133,8 @@
       ],
       "difficulty": "hard",
       "batch": 4,
-      "id": "P163"
+      "id": "P163",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -2001,7 +2144,8 @@
       ],
       "difficulty": "hard",
       "batch": 4,
-      "id": "P164"
+      "id": "P164",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -2011,7 +2155,8 @@
       ],
       "difficulty": "hard",
       "batch": 4,
-      "id": "P165"
+      "id": "P165",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -2031,7 +2176,8 @@
       ],
       "difficulty": "hard",
       "batch": 4,
-      "id": "P167"
+      "id": "P167",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -2041,7 +2187,8 @@
       ],
       "difficulty": "hard",
       "batch": 4,
-      "id": "P168"
+      "id": "P168",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -2051,7 +2198,8 @@
       ],
       "difficulty": "hard",
       "batch": 4,
-      "id": "P169"
+      "id": "P169",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -2061,7 +2209,8 @@
       ],
       "difficulty": "medium",
       "batch": 4,
-      "id": "P170"
+      "id": "P170",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -2071,7 +2220,8 @@
       ],
       "difficulty": "medium",
       "batch": 4,
-      "id": "P171"
+      "id": "P171",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -2081,7 +2231,8 @@
       ],
       "difficulty": "medium",
       "batch": 4,
-      "id": "P172"
+      "id": "P172",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -2091,7 +2242,8 @@
       ],
       "difficulty": "medium",
       "batch": 4,
-      "id": "P173"
+      "id": "P173",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -2101,7 +2253,8 @@
       ],
       "difficulty": "medium",
       "batch": 4,
-      "id": "P174"
+      "id": "P174",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -2111,7 +2264,8 @@
       ],
       "difficulty": "medium",
       "batch": 4,
-      "id": "P175"
+      "id": "P175",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -2121,7 +2275,8 @@
       ],
       "difficulty": "easy",
       "batch": 4,
-      "id": "P176"
+      "id": "P176",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -2131,7 +2286,8 @@
       ],
       "difficulty": "easy",
       "batch": 4,
-      "id": "P177"
+      "id": "P177",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -2141,7 +2297,8 @@
       ],
       "difficulty": "easy",
       "batch": 4,
-      "id": "P178"
+      "id": "P178",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -2151,7 +2308,8 @@
       ],
       "difficulty": "variant",
       "batch": 4,
-      "id": "P179"
+      "id": "P179",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -2161,7 +2319,8 @@
       ],
       "difficulty": "variant",
       "batch": 4,
-      "id": "P180"
+      "id": "P180",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -2181,7 +2340,8 @@
       ],
       "difficulty": "variant",
       "batch": 4,
-      "id": "P182"
+      "id": "P182",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -2191,7 +2351,8 @@
       ],
       "difficulty": "variant",
       "batch": 4,
-      "id": "P183"
+      "id": "P183",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -2201,7 +2362,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 4,
-      "id": "P184"
+      "id": "P184",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -2211,7 +2373,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 4,
-      "id": "P185"
+      "id": "P185",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -2221,7 +2384,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 4,
-      "id": "P186"
+      "id": "P186",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -2231,7 +2395,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 4,
-      "id": "P187"
+      "id": "P187",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -2242,7 +2407,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 4,
-      "id": "P188"
+      "id": "P188",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -2253,7 +2419,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 4,
-      "id": "P189"
+      "id": "P189",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -2264,7 +2431,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 4,
-      "id": "P190"
+      "id": "P190",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -2275,7 +2443,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 4,
-      "id": "P191"
+      "id": "P191",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -2285,7 +2454,8 @@
       ],
       "difficulty": "resource",
       "batch": 4,
-      "id": "P192"
+      "id": "P192",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -2295,7 +2465,8 @@
       ],
       "difficulty": "resource",
       "batch": 4,
-      "id": "P193"
+      "id": "P193",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -2305,7 +2476,8 @@
       ],
       "difficulty": "resource",
       "batch": 4,
-      "id": "P194"
+      "id": "P194",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -2313,7 +2485,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 4,
-      "id": "P195"
+      "id": "P195",
+      "expect_branch": "tech_next"
     },
     {
       "group": "utterance",
@@ -2321,7 +2494,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 4,
-      "id": "P196"
+      "id": "P196",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -2329,7 +2503,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 4,
-      "id": "P197"
+      "id": "P197",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -2345,7 +2520,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 4,
-      "id": "P199"
+      "id": "P199",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -2353,7 +2529,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 4,
-      "id": "P200"
+      "id": "P200",
+      "expect_branch": "tech_next"
     },
     {
       "group": "utterance",
@@ -2363,7 +2540,8 @@
       ],
       "difficulty": "hard",
       "batch": 5,
-      "id": "P201"
+      "id": "P201",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -2373,7 +2551,8 @@
       ],
       "difficulty": "hard",
       "batch": 5,
-      "id": "P202"
+      "id": "P202",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -2383,7 +2562,8 @@
       ],
       "difficulty": "hard",
       "batch": 5,
-      "id": "P203"
+      "id": "P203",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -2393,7 +2573,8 @@
       ],
       "difficulty": "hard",
       "batch": 5,
-      "id": "P204"
+      "id": "P204",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -2403,7 +2584,8 @@
       ],
       "difficulty": "hard",
       "batch": 5,
-      "id": "P205"
+      "id": "P205",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -2413,7 +2595,8 @@
       ],
       "difficulty": "hard",
       "batch": 5,
-      "id": "P206"
+      "id": "P206",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -2423,7 +2606,8 @@
       ],
       "difficulty": "hard",
       "batch": 5,
-      "id": "P207"
+      "id": "P207",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -2443,7 +2627,8 @@
       ],
       "difficulty": "hard",
       "batch": 5,
-      "id": "P209"
+      "id": "P209",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -2453,7 +2638,8 @@
       ],
       "difficulty": "medium",
       "batch": 5,
-      "id": "P210"
+      "id": "P210",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -2463,7 +2649,8 @@
       ],
       "difficulty": "medium",
       "batch": 5,
-      "id": "P211"
+      "id": "P211",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -2473,7 +2660,8 @@
       ],
       "difficulty": "medium",
       "batch": 5,
-      "id": "P212"
+      "id": "P212",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -2483,7 +2671,8 @@
       ],
       "difficulty": "medium",
       "batch": 5,
-      "id": "P213"
+      "id": "P213",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -2493,7 +2682,8 @@
       ],
       "difficulty": "medium",
       "batch": 5,
-      "id": "P214"
+      "id": "P214",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -2503,7 +2693,8 @@
       ],
       "difficulty": "medium",
       "batch": 5,
-      "id": "P215"
+      "id": "P215",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -2513,7 +2704,8 @@
       ],
       "difficulty": "easy",
       "batch": 5,
-      "id": "P216"
+      "id": "P216",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -2523,7 +2715,8 @@
       ],
       "difficulty": "easy",
       "batch": 5,
-      "id": "P217"
+      "id": "P217",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -2553,7 +2746,8 @@
       ],
       "difficulty": "variant",
       "batch": 5,
-      "id": "P220"
+      "id": "P220",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -2563,7 +2757,8 @@
       ],
       "difficulty": "variant",
       "batch": 5,
-      "id": "P221"
+      "id": "P221",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -2573,7 +2768,8 @@
       ],
       "difficulty": "variant",
       "batch": 5,
-      "id": "P222"
+      "id": "P222",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -2583,7 +2779,8 @@
       ],
       "difficulty": "variant",
       "batch": 5,
-      "id": "P223"
+      "id": "P223",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -2593,7 +2790,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 5,
-      "id": "P224"
+      "id": "P224",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -2603,7 +2801,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 5,
-      "id": "P225"
+      "id": "P225",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -2613,7 +2812,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 5,
-      "id": "P226"
+      "id": "P226",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -2634,7 +2834,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 5,
-      "id": "P228"
+      "id": "P228",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -2645,7 +2846,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 5,
-      "id": "P229"
+      "id": "P229",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -2656,7 +2858,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 5,
-      "id": "P230"
+      "id": "P230",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -2667,7 +2870,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 5,
-      "id": "P231"
+      "id": "P231",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -2677,7 +2881,8 @@
       ],
       "difficulty": "resource",
       "batch": 5,
-      "id": "P232"
+      "id": "P232",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -2687,7 +2892,8 @@
       ],
       "difficulty": "resource",
       "batch": 5,
-      "id": "P233"
+      "id": "P233",
+      "expect_branch": "base_site"
     },
     {
       "group": "utterance",
@@ -2697,7 +2903,8 @@
       ],
       "difficulty": "resource",
       "batch": 5,
-      "id": "P234"
+      "id": "P234",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -2705,7 +2912,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 5,
-      "id": "P235"
+      "id": "P235",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -2713,7 +2921,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 5,
-      "id": "P236"
+      "id": "P236",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -2721,7 +2930,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 5,
-      "id": "P237"
+      "id": "P237",
+      "expect_branch": "tech_next"
     },
     {
       "group": "utterance",
@@ -2729,7 +2939,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 5,
-      "id": "P238"
+      "id": "P238",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -2737,7 +2948,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 5,
-      "id": "P239"
+      "id": "P239",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -2745,7 +2957,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 5,
-      "id": "P240"
+      "id": "P240",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -2755,7 +2968,8 @@
       ],
       "difficulty": "hard",
       "batch": 6,
-      "id": "P241"
+      "id": "P241",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -2765,7 +2979,8 @@
       ],
       "difficulty": "hard",
       "batch": 6,
-      "id": "P242"
+      "id": "P242",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -2775,7 +2990,8 @@
       ],
       "difficulty": "hard",
       "batch": 6,
-      "id": "P243"
+      "id": "P243",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -2785,7 +3001,8 @@
       ],
       "difficulty": "hard",
       "batch": 6,
-      "id": "P244"
+      "id": "P244",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -2795,7 +3012,8 @@
       ],
       "difficulty": "hard",
       "batch": 6,
-      "id": "P245"
+      "id": "P245",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -2815,7 +3033,8 @@
       ],
       "difficulty": "hard",
       "batch": 6,
-      "id": "P247"
+      "id": "P247",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -2825,7 +3044,8 @@
       ],
       "difficulty": "hard",
       "batch": 6,
-      "id": "P248"
+      "id": "P248",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -2835,7 +3055,8 @@
       ],
       "difficulty": "hard",
       "batch": 6,
-      "id": "P249"
+      "id": "P249",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -2845,7 +3066,8 @@
       ],
       "difficulty": "medium",
       "batch": 6,
-      "id": "P250"
+      "id": "P250",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -2865,7 +3087,8 @@
       ],
       "difficulty": "medium",
       "batch": 6,
-      "id": "P252"
+      "id": "P252",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -2885,7 +3108,8 @@
       ],
       "difficulty": "medium",
       "batch": 6,
-      "id": "P254"
+      "id": "P254",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -2895,7 +3119,8 @@
       ],
       "difficulty": "medium",
       "batch": 6,
-      "id": "P255"
+      "id": "P255",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -2905,7 +3130,8 @@
       ],
       "difficulty": "easy",
       "batch": 6,
-      "id": "P256"
+      "id": "P256",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -2915,7 +3141,8 @@
       ],
       "difficulty": "easy",
       "batch": 6,
-      "id": "P257"
+      "id": "P257",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -2925,7 +3152,8 @@
       ],
       "difficulty": "easy",
       "batch": 6,
-      "id": "P258"
+      "id": "P258",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -2945,7 +3173,8 @@
       ],
       "difficulty": "variant",
       "batch": 6,
-      "id": "P260"
+      "id": "P260",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -2955,7 +3184,8 @@
       ],
       "difficulty": "variant",
       "batch": 6,
-      "id": "P261"
+      "id": "P261",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -2975,7 +3205,8 @@
       ],
       "difficulty": "variant",
       "batch": 6,
-      "id": "P263"
+      "id": "P263",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -2985,7 +3216,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 6,
-      "id": "P264"
+      "id": "P264",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -2995,7 +3227,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 6,
-      "id": "P265"
+      "id": "P265",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -3005,7 +3238,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 6,
-      "id": "P266"
+      "id": "P266",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -3015,7 +3249,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 6,
-      "id": "P267"
+      "id": "P267",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -3026,7 +3261,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 6,
-      "id": "P268"
+      "id": "P268",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -3037,7 +3273,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 6,
-      "id": "P269"
+      "id": "P269",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -3048,7 +3285,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 6,
-      "id": "P270"
+      "id": "P270",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -3059,7 +3297,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 6,
-      "id": "P271"
+      "id": "P271",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -3069,7 +3308,8 @@
       ],
       "difficulty": "resource",
       "batch": 6,
-      "id": "P272"
+      "id": "P272",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -3079,7 +3319,8 @@
       ],
       "difficulty": "resource",
       "batch": 6,
-      "id": "P273"
+      "id": "P273",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -3089,7 +3330,8 @@
       ],
       "difficulty": "resource",
       "batch": 6,
-      "id": "P274"
+      "id": "P274",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -3097,7 +3339,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 6,
-      "id": "P275"
+      "id": "P275",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -3105,7 +3348,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 6,
-      "id": "P276"
+      "id": "P276",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -3113,7 +3357,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 6,
-      "id": "P277"
+      "id": "P277",
+      "expect_branch": "tech_next"
     },
     {
       "group": "utterance",
@@ -3121,7 +3366,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 6,
-      "id": "P278"
+      "id": "P278",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -3129,7 +3375,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 6,
-      "id": "P279"
+      "id": "P279",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -3137,7 +3384,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 6,
-      "id": "P280"
+      "id": "P280",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -3147,7 +3395,8 @@
       ],
       "difficulty": "hard",
       "batch": 7,
-      "id": "P281"
+      "id": "P281",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -3157,7 +3406,8 @@
       ],
       "difficulty": "hard",
       "batch": 7,
-      "id": "P282"
+      "id": "P282",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -3167,7 +3417,8 @@
       ],
       "difficulty": "hard",
       "batch": 7,
-      "id": "P283"
+      "id": "P283",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -3177,7 +3428,8 @@
       ],
       "difficulty": "hard",
       "batch": 7,
-      "id": "P284"
+      "id": "P284",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -3187,7 +3439,8 @@
       ],
       "difficulty": "hard",
       "batch": 7,
-      "id": "P285"
+      "id": "P285",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -3197,7 +3450,8 @@
       ],
       "difficulty": "hard",
       "batch": 7,
-      "id": "P286"
+      "id": "P286",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -3207,7 +3461,8 @@
       ],
       "difficulty": "hard",
       "batch": 7,
-      "id": "P287"
+      "id": "P287",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -3227,7 +3482,8 @@
       ],
       "difficulty": "hard",
       "batch": 7,
-      "id": "P289"
+      "id": "P289",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -3237,7 +3493,8 @@
       ],
       "difficulty": "medium",
       "batch": 7,
-      "id": "P290"
+      "id": "P290",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -3247,7 +3504,8 @@
       ],
       "difficulty": "medium",
       "batch": 7,
-      "id": "P291"
+      "id": "P291",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -3257,7 +3515,8 @@
       ],
       "difficulty": "medium",
       "batch": 7,
-      "id": "P292"
+      "id": "P292",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -3267,7 +3526,8 @@
       ],
       "difficulty": "medium",
       "batch": 7,
-      "id": "P293"
+      "id": "P293",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -3277,7 +3537,8 @@
       ],
       "difficulty": "medium",
       "batch": 7,
-      "id": "P294"
+      "id": "P294",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -3287,7 +3548,8 @@
       ],
       "difficulty": "medium",
       "batch": 7,
-      "id": "P295"
+      "id": "P295",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -3297,7 +3559,8 @@
       ],
       "difficulty": "easy",
       "batch": 7,
-      "id": "P296"
+      "id": "P296",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -3307,7 +3570,8 @@
       ],
       "difficulty": "easy",
       "batch": 7,
-      "id": "P297"
+      "id": "P297",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -3317,7 +3581,8 @@
       ],
       "difficulty": "easy",
       "batch": 7,
-      "id": "P298"
+      "id": "P298",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -3327,7 +3592,8 @@
       ],
       "difficulty": "variant",
       "batch": 7,
-      "id": "P299"
+      "id": "P299",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -3337,7 +3603,8 @@
       ],
       "difficulty": "variant",
       "batch": 7,
-      "id": "P300"
+      "id": "P300",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -3347,7 +3614,8 @@
       ],
       "difficulty": "variant",
       "batch": 7,
-      "id": "P301"
+      "id": "P301",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -3367,7 +3635,8 @@
       ],
       "difficulty": "variant",
       "batch": 7,
-      "id": "P303"
+      "id": "P303",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -3377,7 +3646,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 7,
-      "id": "P304"
+      "id": "P304",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -3387,7 +3657,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 7,
-      "id": "P305"
+      "id": "P305",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -3397,7 +3668,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 7,
-      "id": "P306"
+      "id": "P306",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -3407,7 +3679,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 7,
-      "id": "P307"
+      "id": "P307",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -3418,7 +3691,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 7,
-      "id": "P308"
+      "id": "P308",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -3429,7 +3703,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 7,
-      "id": "P309"
+      "id": "P309",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -3440,7 +3715,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 7,
-      "id": "P310"
+      "id": "P310",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -3451,7 +3727,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 7,
-      "id": "P311"
+      "id": "P311",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -3461,7 +3738,8 @@
       ],
       "difficulty": "resource",
       "batch": 7,
-      "id": "P312"
+      "id": "P312",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -3471,7 +3749,8 @@
       ],
       "difficulty": "resource",
       "batch": 7,
-      "id": "P313"
+      "id": "P313",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -3481,7 +3760,8 @@
       ],
       "difficulty": "resource",
       "batch": 7,
-      "id": "P314"
+      "id": "P314",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -3489,7 +3769,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 7,
-      "id": "P315"
+      "id": "P315",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -3497,7 +3778,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 7,
-      "id": "P316"
+      "id": "P316",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -3505,7 +3787,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 7,
-      "id": "P317"
+      "id": "P317",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -3513,7 +3796,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 7,
-      "id": "P318"
+      "id": "P318",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -3521,7 +3805,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 7,
-      "id": "P319"
+      "id": "P319",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -3529,7 +3814,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 7,
-      "id": "P320"
+      "id": "P320",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -3539,7 +3825,8 @@
       ],
       "difficulty": "hard",
       "batch": 8,
-      "id": "P321"
+      "id": "P321",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -3549,7 +3836,8 @@
       ],
       "difficulty": "hard",
       "batch": 8,
-      "id": "P322"
+      "id": "P322",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -3559,7 +3847,8 @@
       ],
       "difficulty": "hard",
       "batch": 8,
-      "id": "P323"
+      "id": "P323",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -3569,7 +3858,8 @@
       ],
       "difficulty": "hard",
       "batch": 8,
-      "id": "P324"
+      "id": "P324",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -3589,7 +3879,8 @@
       ],
       "difficulty": "hard",
       "batch": 8,
-      "id": "P326"
+      "id": "P326",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -3599,7 +3890,8 @@
       ],
       "difficulty": "hard",
       "batch": 8,
-      "id": "P327"
+      "id": "P327",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -3609,7 +3901,8 @@
       ],
       "difficulty": "hard",
       "batch": 8,
-      "id": "P328"
+      "id": "P328",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -3619,7 +3912,8 @@
       ],
       "difficulty": "hard",
       "batch": 8,
-      "id": "P329"
+      "id": "P329",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -3629,7 +3923,8 @@
       ],
       "difficulty": "medium",
       "batch": 8,
-      "id": "P330"
+      "id": "P330",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -3639,7 +3934,8 @@
       ],
       "difficulty": "medium",
       "batch": 8,
-      "id": "P331"
+      "id": "P331",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -3649,7 +3945,8 @@
       ],
       "difficulty": "medium",
       "batch": 8,
-      "id": "P332"
+      "id": "P332",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -3659,7 +3956,8 @@
       ],
       "difficulty": "medium",
       "batch": 8,
-      "id": "P333"
+      "id": "P333",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -3669,7 +3967,8 @@
       ],
       "difficulty": "medium",
       "batch": 8,
-      "id": "P334"
+      "id": "P334",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -3679,7 +3978,8 @@
       ],
       "difficulty": "medium",
       "batch": 8,
-      "id": "P335"
+      "id": "P335",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -3689,7 +3989,8 @@
       ],
       "difficulty": "easy",
       "batch": 8,
-      "id": "P336"
+      "id": "P336",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -3709,7 +4010,8 @@
       ],
       "difficulty": "easy",
       "batch": 8,
-      "id": "P338"
+      "id": "P338",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -3719,7 +4021,8 @@
       ],
       "difficulty": "variant",
       "batch": 8,
-      "id": "P339"
+      "id": "P339",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -3739,7 +4042,8 @@
       ],
       "difficulty": "variant",
       "batch": 8,
-      "id": "P341"
+      "id": "P341",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -3749,7 +4053,8 @@
       ],
       "difficulty": "variant",
       "batch": 8,
-      "id": "P342"
+      "id": "P342",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -3759,7 +4064,8 @@
       ],
       "difficulty": "variant",
       "batch": 8,
-      "id": "P343"
+      "id": "P343",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -3769,7 +4075,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 8,
-      "id": "P344"
+      "id": "P344",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -3789,7 +4096,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 8,
-      "id": "P346"
+      "id": "P346",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -3799,7 +4107,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 8,
-      "id": "P347"
+      "id": "P347",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -3810,7 +4119,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 8,
-      "id": "P348"
+      "id": "P348",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -3821,7 +4131,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 8,
-      "id": "P349"
+      "id": "P349",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -3832,7 +4143,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 8,
-      "id": "P350"
+      "id": "P350",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -3843,7 +4155,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 8,
-      "id": "P351"
+      "id": "P351",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -3853,7 +4166,8 @@
       ],
       "difficulty": "resource",
       "batch": 8,
-      "id": "P352"
+      "id": "P352",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -3863,7 +4177,8 @@
       ],
       "difficulty": "resource",
       "batch": 8,
-      "id": "P353"
+      "id": "P353",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -3873,7 +4188,8 @@
       ],
       "difficulty": "resource",
       "batch": 8,
-      "id": "P354"
+      "id": "P354",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -3881,7 +4197,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 8,
-      "id": "P355"
+      "id": "P355",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -3889,7 +4206,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 8,
-      "id": "P356"
+      "id": "P356",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -3897,7 +4215,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 8,
-      "id": "P357"
+      "id": "P357",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -3905,7 +4224,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 8,
-      "id": "P358"
+      "id": "P358",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -3913,7 +4233,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 8,
-      "id": "P359"
+      "id": "P359",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -3921,7 +4242,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 8,
-      "id": "P360"
+      "id": "P360",
+      "expect_branch": "tech_next"
     },
     {
       "group": "utterance",
@@ -3931,7 +4253,8 @@
       ],
       "difficulty": "hard",
       "batch": 9,
-      "id": "P361"
+      "id": "P361",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -3941,7 +4264,8 @@
       ],
       "difficulty": "hard",
       "batch": 9,
-      "id": "P362"
+      "id": "P362",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -3951,7 +4275,8 @@
       ],
       "difficulty": "hard",
       "batch": 9,
-      "id": "P363"
+      "id": "P363",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -3961,7 +4286,8 @@
       ],
       "difficulty": "hard",
       "batch": 9,
-      "id": "P364"
+      "id": "P364",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -3971,7 +4297,8 @@
       ],
       "difficulty": "hard",
       "batch": 9,
-      "id": "P365"
+      "id": "P365",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -3981,7 +4308,8 @@
       ],
       "difficulty": "hard",
       "batch": 9,
-      "id": "P366"
+      "id": "P366",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -4001,7 +4329,8 @@
       ],
       "difficulty": "hard",
       "batch": 9,
-      "id": "P368"
+      "id": "P368",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -4011,7 +4340,8 @@
       ],
       "difficulty": "hard",
       "batch": 9,
-      "id": "P369"
+      "id": "P369",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -4031,7 +4361,8 @@
       ],
       "difficulty": "medium",
       "batch": 9,
-      "id": "P371"
+      "id": "P371",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -4051,7 +4382,8 @@
       ],
       "difficulty": "medium",
       "batch": 9,
-      "id": "P373"
+      "id": "P373",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -4061,7 +4393,8 @@
       ],
       "difficulty": "medium",
       "batch": 9,
-      "id": "P374"
+      "id": "P374",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -4071,7 +4404,8 @@
       ],
       "difficulty": "medium",
       "batch": 9,
-      "id": "P375"
+      "id": "P375",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -4081,7 +4415,8 @@
       ],
       "difficulty": "easy",
       "batch": 9,
-      "id": "P376"
+      "id": "P376",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -4091,7 +4426,8 @@
       ],
       "difficulty": "easy",
       "batch": 9,
-      "id": "P377"
+      "id": "P377",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -4101,7 +4437,8 @@
       ],
       "difficulty": "easy",
       "batch": 9,
-      "id": "P378"
+      "id": "P378",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -4111,7 +4448,8 @@
       ],
       "difficulty": "variant",
       "batch": 9,
-      "id": "P379"
+      "id": "P379",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -4131,7 +4469,8 @@
       ],
       "difficulty": "variant",
       "batch": 9,
-      "id": "P381"
+      "id": "P381",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -4141,7 +4480,8 @@
       ],
       "difficulty": "variant",
       "batch": 9,
-      "id": "P382"
+      "id": "P382",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -4161,7 +4501,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 9,
-      "id": "P384"
+      "id": "P384",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -4171,7 +4512,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 9,
-      "id": "P385"
+      "id": "P385",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -4181,7 +4523,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 9,
-      "id": "P386"
+      "id": "P386",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -4191,7 +4534,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 9,
-      "id": "P387"
+      "id": "P387",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -4202,7 +4546,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 9,
-      "id": "P388"
+      "id": "P388",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -4213,7 +4558,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 9,
-      "id": "P389"
+      "id": "P389",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -4224,7 +4570,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 9,
-      "id": "P390"
+      "id": "P390",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -4235,7 +4582,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 9,
-      "id": "P391"
+      "id": "P391",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -4245,7 +4593,8 @@
       ],
       "difficulty": "resource",
       "batch": 9,
-      "id": "P392"
+      "id": "P392",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -4255,7 +4604,8 @@
       ],
       "difficulty": "resource",
       "batch": 9,
-      "id": "P393"
+      "id": "P393",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -4265,7 +4615,8 @@
       ],
       "difficulty": "resource",
       "batch": 9,
-      "id": "P394"
+      "id": "P394",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -4273,7 +4624,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 9,
-      "id": "P395"
+      "id": "P395",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -4281,7 +4633,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 9,
-      "id": "P396"
+      "id": "P396",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -4289,7 +4642,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 9,
-      "id": "P397"
+      "id": "P397",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -4297,7 +4651,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 9,
-      "id": "P398"
+      "id": "P398",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -4305,7 +4660,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 9,
-      "id": "P399"
+      "id": "P399",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -4313,7 +4669,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 9,
-      "id": "P400"
+      "id": "P400",
+      "expect_branch": "tech_next"
     },
     {
       "group": "utterance",
@@ -4323,7 +4680,8 @@
       ],
       "difficulty": "hard",
       "batch": 10,
-      "id": "P401"
+      "id": "P401",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -4333,7 +4691,8 @@
       ],
       "difficulty": "hard",
       "batch": 10,
-      "id": "P402"
+      "id": "P402",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -4343,7 +4702,8 @@
       ],
       "difficulty": "hard",
       "batch": 10,
-      "id": "P403"
+      "id": "P403",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -4353,7 +4713,8 @@
       ],
       "difficulty": "hard",
       "batch": 10,
-      "id": "P404"
+      "id": "P404",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -4373,7 +4734,8 @@
       ],
       "difficulty": "hard",
       "batch": 10,
-      "id": "P406"
+      "id": "P406",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -4383,7 +4745,8 @@
       ],
       "difficulty": "hard",
       "batch": 10,
-      "id": "P407"
+      "id": "P407",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -4393,7 +4756,8 @@
       ],
       "difficulty": "hard",
       "batch": 10,
-      "id": "P408"
+      "id": "P408",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -4403,7 +4767,8 @@
       ],
       "difficulty": "hard",
       "batch": 10,
-      "id": "P409"
+      "id": "P409",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -4413,7 +4778,8 @@
       ],
       "difficulty": "medium",
       "batch": 10,
-      "id": "P410"
+      "id": "P410",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -4423,7 +4789,8 @@
       ],
       "difficulty": "medium",
       "batch": 10,
-      "id": "P411"
+      "id": "P411",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -4433,7 +4800,8 @@
       ],
       "difficulty": "medium",
       "batch": 10,
-      "id": "P412"
+      "id": "P412",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -4443,7 +4811,8 @@
       ],
       "difficulty": "medium",
       "batch": 10,
-      "id": "P413"
+      "id": "P413",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -4453,7 +4822,8 @@
       ],
       "difficulty": "medium",
       "batch": 10,
-      "id": "P414"
+      "id": "P414",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -4463,7 +4833,8 @@
       ],
       "difficulty": "medium",
       "batch": 10,
-      "id": "P415"
+      "id": "P415",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -4473,7 +4844,8 @@
       ],
       "difficulty": "easy",
       "batch": 10,
-      "id": "P416"
+      "id": "P416",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -4483,7 +4855,8 @@
       ],
       "difficulty": "easy",
       "batch": 10,
-      "id": "P417"
+      "id": "P417",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -4493,7 +4866,8 @@
       ],
       "difficulty": "easy",
       "batch": 10,
-      "id": "P418"
+      "id": "P418",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -4503,7 +4877,8 @@
       ],
       "difficulty": "variant",
       "batch": 10,
-      "id": "P419"
+      "id": "P419",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -4513,7 +4888,8 @@
       ],
       "difficulty": "variant",
       "batch": 10,
-      "id": "P420"
+      "id": "P420",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -4523,7 +4899,8 @@
       ],
       "difficulty": "variant",
       "batch": 10,
-      "id": "P421"
+      "id": "P421",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -4533,7 +4910,8 @@
       ],
       "difficulty": "variant",
       "batch": 10,
-      "id": "P422"
+      "id": "P422",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -4553,7 +4931,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 10,
-      "id": "P424"
+      "id": "P424",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -4563,7 +4942,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 10,
-      "id": "P425"
+      "id": "P425",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -4573,7 +4953,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 10,
-      "id": "P426"
+      "id": "P426",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -4594,7 +4975,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 10,
-      "id": "P428"
+      "id": "P428",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -4605,7 +4987,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 10,
-      "id": "P429"
+      "id": "P429",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -4616,7 +4999,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 10,
-      "id": "P430"
+      "id": "P430",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -4627,7 +5011,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 10,
-      "id": "P431"
+      "id": "P431",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -4637,7 +5022,8 @@
       ],
       "difficulty": "resource",
       "batch": 10,
-      "id": "P432"
+      "id": "P432",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -4647,7 +5033,8 @@
       ],
       "difficulty": "resource",
       "batch": 10,
-      "id": "P433"
+      "id": "P433",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -4657,7 +5044,8 @@
       ],
       "difficulty": "resource",
       "batch": 10,
-      "id": "P434"
+      "id": "P434",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -4665,7 +5053,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 10,
-      "id": "P435"
+      "id": "P435",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -4673,7 +5062,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 10,
-      "id": "P436"
+      "id": "P436",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -4681,7 +5071,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 10,
-      "id": "P437"
+      "id": "P437",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -4689,7 +5080,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 10,
-      "id": "P438"
+      "id": "P438",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -4697,7 +5089,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 10,
-      "id": "P439"
+      "id": "P439",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -4705,7 +5098,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 10,
-      "id": "P440"
+      "id": "P440",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -4715,7 +5109,8 @@
       ],
       "difficulty": "hard",
       "batch": 11,
-      "id": "P441"
+      "id": "P441",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -4725,7 +5120,8 @@
       ],
       "difficulty": "hard",
       "batch": 11,
-      "id": "P442"
+      "id": "P442",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -4735,7 +5131,8 @@
       ],
       "difficulty": "hard",
       "batch": 11,
-      "id": "P443"
+      "id": "P443",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -4745,7 +5142,8 @@
       ],
       "difficulty": "hard",
       "batch": 11,
-      "id": "P444"
+      "id": "P444",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -4755,7 +5153,8 @@
       ],
       "difficulty": "hard",
       "batch": 11,
-      "id": "P445"
+      "id": "P445",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -4765,7 +5164,8 @@
       ],
       "difficulty": "hard",
       "batch": 11,
-      "id": "P446"
+      "id": "P446",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -4785,7 +5185,8 @@
       ],
       "difficulty": "hard",
       "batch": 11,
-      "id": "P448"
+      "id": "P448",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -4795,7 +5196,8 @@
       ],
       "difficulty": "hard",
       "batch": 11,
-      "id": "P449"
+      "id": "P449",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -4805,7 +5207,8 @@
       ],
       "difficulty": "medium",
       "batch": 11,
-      "id": "P450"
+      "id": "P450",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -4815,7 +5218,8 @@
       ],
       "difficulty": "medium",
       "batch": 11,
-      "id": "P451"
+      "id": "P451",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -4825,7 +5229,8 @@
       ],
       "difficulty": "medium",
       "batch": 11,
-      "id": "P452"
+      "id": "P452",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -4835,7 +5240,8 @@
       ],
       "difficulty": "medium",
       "batch": 11,
-      "id": "P453"
+      "id": "P453",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -4845,7 +5251,8 @@
       ],
       "difficulty": "medium",
       "batch": 11,
-      "id": "P454"
+      "id": "P454",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -4855,7 +5262,8 @@
       ],
       "difficulty": "medium",
       "batch": 11,
-      "id": "P455"
+      "id": "P455",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -4865,7 +5273,8 @@
       ],
       "difficulty": "easy",
       "batch": 11,
-      "id": "P456"
+      "id": "P456",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -4875,7 +5284,8 @@
       ],
       "difficulty": "easy",
       "batch": 11,
-      "id": "P457"
+      "id": "P457",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -4895,7 +5305,8 @@
       ],
       "difficulty": "variant",
       "batch": 11,
-      "id": "P459"
+      "id": "P459",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -4905,7 +5316,8 @@
       ],
       "difficulty": "variant",
       "batch": 11,
-      "id": "P460"
+      "id": "P460",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -4925,7 +5337,8 @@
       ],
       "difficulty": "variant",
       "batch": 11,
-      "id": "P462"
+      "id": "P462",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -4935,7 +5348,8 @@
       ],
       "difficulty": "variant",
       "batch": 11,
-      "id": "P463"
+      "id": "P463",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -4945,7 +5359,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 11,
-      "id": "P464"
+      "id": "P464",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -4955,7 +5370,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 11,
-      "id": "P465"
+      "id": "P465",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -4965,7 +5381,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 11,
-      "id": "P466"
+      "id": "P466",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -4975,7 +5392,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 11,
-      "id": "P467"
+      "id": "P467",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -4986,7 +5404,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 11,
-      "id": "P468"
+      "id": "P468",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -4997,7 +5416,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 11,
-      "id": "P469"
+      "id": "P469",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -5008,7 +5428,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 11,
-      "id": "P470"
+      "id": "P470",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -5019,7 +5440,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 11,
-      "id": "P471"
+      "id": "P471",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -5029,7 +5451,8 @@
       ],
       "difficulty": "resource",
       "batch": 11,
-      "id": "P472"
+      "id": "P472",
+      "expect_branch": "base_site"
     },
     {
       "group": "utterance",
@@ -5039,7 +5462,8 @@
       ],
       "difficulty": "resource",
       "batch": 11,
-      "id": "P473"
+      "id": "P473",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -5049,7 +5473,8 @@
       ],
       "difficulty": "resource",
       "batch": 11,
-      "id": "P474"
+      "id": "P474",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -5057,7 +5482,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 11,
-      "id": "P475"
+      "id": "P475",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -5065,7 +5491,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 11,
-      "id": "P476"
+      "id": "P476",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -5073,7 +5500,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 11,
-      "id": "P477"
+      "id": "P477",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -5081,7 +5509,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 11,
-      "id": "P478"
+      "id": "P478",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -5089,7 +5518,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 11,
-      "id": "P479"
+      "id": "P479",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -5097,7 +5527,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 11,
-      "id": "P480"
+      "id": "P480",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -5107,7 +5538,8 @@
       ],
       "difficulty": "hard",
       "batch": 12,
-      "id": "P481"
+      "id": "P481",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -5117,7 +5549,8 @@
       ],
       "difficulty": "hard",
       "batch": 12,
-      "id": "P482"
+      "id": "P482",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -5127,7 +5560,8 @@
       ],
       "difficulty": "hard",
       "batch": 12,
-      "id": "P483"
+      "id": "P483",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -5137,7 +5571,8 @@
       ],
       "difficulty": "hard",
       "batch": 12,
-      "id": "P484"
+      "id": "P484",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -5157,7 +5592,8 @@
       ],
       "difficulty": "hard",
       "batch": 12,
-      "id": "P486"
+      "id": "P486",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -5167,7 +5603,8 @@
       ],
       "difficulty": "hard",
       "batch": 12,
-      "id": "P487"
+      "id": "P487",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -5177,7 +5614,8 @@
       ],
       "difficulty": "hard",
       "batch": 12,
-      "id": "P488"
+      "id": "P488",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -5187,7 +5625,8 @@
       ],
       "difficulty": "hard",
       "batch": 12,
-      "id": "P489"
+      "id": "P489",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -5207,7 +5646,8 @@
       ],
       "difficulty": "medium",
       "batch": 12,
-      "id": "P491"
+      "id": "P491",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -5227,7 +5667,8 @@
       ],
       "difficulty": "medium",
       "batch": 12,
-      "id": "P493"
+      "id": "P493",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -5237,7 +5678,8 @@
       ],
       "difficulty": "medium",
       "batch": 12,
-      "id": "P494"
+      "id": "P494",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -5247,7 +5689,8 @@
       ],
       "difficulty": "medium",
       "batch": 12,
-      "id": "P495"
+      "id": "P495",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -5257,7 +5700,8 @@
       ],
       "difficulty": "easy",
       "batch": 12,
-      "id": "P496"
+      "id": "P496",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -5267,7 +5711,8 @@
       ],
       "difficulty": "easy",
       "batch": 12,
-      "id": "P497"
+      "id": "P497",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -5277,7 +5722,8 @@
       ],
       "difficulty": "easy",
       "batch": 12,
-      "id": "P498"
+      "id": "P498",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -5287,7 +5733,8 @@
       ],
       "difficulty": "variant",
       "batch": 12,
-      "id": "P499"
+      "id": "P499",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -5297,7 +5744,8 @@
       ],
       "difficulty": "variant",
       "batch": 12,
-      "id": "P500"
+      "id": "P500",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -5317,7 +5765,8 @@
       ],
       "difficulty": "variant",
       "batch": 12,
-      "id": "P502"
+      "id": "P502",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -5327,7 +5776,8 @@
       ],
       "difficulty": "variant",
       "batch": 12,
-      "id": "P503"
+      "id": "P503",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -5337,7 +5787,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 12,
-      "id": "P504"
+      "id": "P504",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -5347,7 +5798,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 12,
-      "id": "P505"
+      "id": "P505",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -5357,7 +5809,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 12,
-      "id": "P506"
+      "id": "P506",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -5367,7 +5820,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 12,
-      "id": "P507"
+      "id": "P507",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -5378,7 +5832,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 12,
-      "id": "P508"
+      "id": "P508",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -5389,7 +5844,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 12,
-      "id": "P509"
+      "id": "P509",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -5400,7 +5856,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 12,
-      "id": "P510"
+      "id": "P510",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -5411,7 +5868,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 12,
-      "id": "P511"
+      "id": "P511",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -5421,7 +5879,8 @@
       ],
       "difficulty": "resource",
       "batch": 12,
-      "id": "P512"
+      "id": "P512",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -5431,7 +5890,8 @@
       ],
       "difficulty": "resource",
       "batch": 12,
-      "id": "P513"
+      "id": "P513",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -5441,7 +5901,8 @@
       ],
       "difficulty": "resource",
       "batch": 12,
-      "id": "P514"
+      "id": "P514",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -5449,7 +5910,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 12,
-      "id": "P515"
+      "id": "P515",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -5465,7 +5927,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 12,
-      "id": "P517"
+      "id": "P517",
+      "expect_branch": "base_site"
     },
     {
       "group": "utterance",
@@ -5473,7 +5936,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 12,
-      "id": "P518"
+      "id": "P518",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -5481,7 +5945,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 12,
-      "id": "P519"
+      "id": "P519",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -5489,7 +5954,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 12,
-      "id": "P520"
+      "id": "P520",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -5499,7 +5965,8 @@
       ],
       "difficulty": "hard",
       "batch": 13,
-      "id": "P521"
+      "id": "P521",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -5509,7 +5976,8 @@
       ],
       "difficulty": "hard",
       "batch": 13,
-      "id": "P522"
+      "id": "P522",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -5519,7 +5987,8 @@
       ],
       "difficulty": "hard",
       "batch": 13,
-      "id": "P523"
+      "id": "P523",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -5529,7 +5998,8 @@
       ],
       "difficulty": "hard",
       "batch": 13,
-      "id": "P524"
+      "id": "P524",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -5539,7 +6009,8 @@
       ],
       "difficulty": "hard",
       "batch": 13,
-      "id": "P525"
+      "id": "P525",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -5549,7 +6020,8 @@
       ],
       "difficulty": "hard",
       "batch": 13,
-      "id": "P526"
+      "id": "P526",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -5569,7 +6041,8 @@
       ],
       "difficulty": "hard",
       "batch": 13,
-      "id": "P528"
+      "id": "P528",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -5579,7 +6052,8 @@
       ],
       "difficulty": "hard",
       "batch": 13,
-      "id": "P529"
+      "id": "P529",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -5589,7 +6063,8 @@
       ],
       "difficulty": "medium",
       "batch": 13,
-      "id": "P530"
+      "id": "P530",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -5599,7 +6074,8 @@
       ],
       "difficulty": "medium",
       "batch": 13,
-      "id": "P531"
+      "id": "P531",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -5609,7 +6085,8 @@
       ],
       "difficulty": "medium",
       "batch": 13,
-      "id": "P532"
+      "id": "P532",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -5619,7 +6096,8 @@
       ],
       "difficulty": "medium",
       "batch": 13,
-      "id": "P533"
+      "id": "P533",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -5629,7 +6107,8 @@
       ],
       "difficulty": "medium",
       "batch": 13,
-      "id": "P534"
+      "id": "P534",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -5639,7 +6118,8 @@
       ],
       "difficulty": "medium",
       "batch": 13,
-      "id": "P535"
+      "id": "P535",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -5649,7 +6129,8 @@
       ],
       "difficulty": "easy",
       "batch": 13,
-      "id": "P536"
+      "id": "P536",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -5659,7 +6140,8 @@
       ],
       "difficulty": "easy",
       "batch": 13,
-      "id": "P537"
+      "id": "P537",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -5669,7 +6151,8 @@
       ],
       "difficulty": "easy",
       "batch": 13,
-      "id": "P538"
+      "id": "P538",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -5689,7 +6172,8 @@
       ],
       "difficulty": "variant",
       "batch": 13,
-      "id": "P540"
+      "id": "P540",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -5699,7 +6183,8 @@
       ],
       "difficulty": "variant",
       "batch": 13,
-      "id": "P541"
+      "id": "P541",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -5709,7 +6194,8 @@
       ],
       "difficulty": "variant",
       "batch": 13,
-      "id": "P542"
+      "id": "P542",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -5719,7 +6205,8 @@
       ],
       "difficulty": "variant",
       "batch": 13,
-      "id": "P543"
+      "id": "P543",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -5729,7 +6216,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 13,
-      "id": "P544"
+      "id": "P544",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -5749,7 +6237,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 13,
-      "id": "P546"
+      "id": "P546",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -5759,7 +6248,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 13,
-      "id": "P547"
+      "id": "P547",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -5770,7 +6260,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 13,
-      "id": "P548"
+      "id": "P548",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -5781,7 +6272,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 13,
-      "id": "P549"
+      "id": "P549",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -5792,7 +6284,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 13,
-      "id": "P550"
+      "id": "P550",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -5803,7 +6296,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 13,
-      "id": "P551"
+      "id": "P551",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -5813,7 +6307,8 @@
       ],
       "difficulty": "resource",
       "batch": 13,
-      "id": "P552"
+      "id": "P552",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -5823,7 +6318,8 @@
       ],
       "difficulty": "resource",
       "batch": 13,
-      "id": "P553"
+      "id": "P553",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -5833,7 +6329,8 @@
       ],
       "difficulty": "resource",
       "batch": 13,
-      "id": "P554"
+      "id": "P554",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -5849,7 +6346,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 13,
-      "id": "P556"
+      "id": "P556",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -5857,7 +6355,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 13,
-      "id": "P557"
+      "id": "P557",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -5865,7 +6364,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 13,
-      "id": "P558"
+      "id": "P558",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -5873,7 +6373,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 13,
-      "id": "P559"
+      "id": "P559",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -5881,7 +6382,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 13,
-      "id": "P560"
+      "id": "P560",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -5891,7 +6393,8 @@
       ],
       "difficulty": "hard",
       "batch": 14,
-      "id": "P561"
+      "id": "P561",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -5901,7 +6404,8 @@
       ],
       "difficulty": "hard",
       "batch": 14,
-      "id": "P562"
+      "id": "P562",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -5911,7 +6415,8 @@
       ],
       "difficulty": "hard",
       "batch": 14,
-      "id": "P563"
+      "id": "P563",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -5921,7 +6426,8 @@
       ],
       "difficulty": "hard",
       "batch": 14,
-      "id": "P564"
+      "id": "P564",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -5941,7 +6447,8 @@
       ],
       "difficulty": "hard",
       "batch": 14,
-      "id": "P566"
+      "id": "P566",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -5951,7 +6458,8 @@
       ],
       "difficulty": "hard",
       "batch": 14,
-      "id": "P567"
+      "id": "P567",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -5961,7 +6469,8 @@
       ],
       "difficulty": "hard",
       "batch": 14,
-      "id": "P568"
+      "id": "P568",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -5971,7 +6480,8 @@
       ],
       "difficulty": "hard",
       "batch": 14,
-      "id": "P569"
+      "id": "P569",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -5981,7 +6491,8 @@
       ],
       "difficulty": "medium",
       "batch": 14,
-      "id": "P570"
+      "id": "P570",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -5991,7 +6502,8 @@
       ],
       "difficulty": "medium",
       "batch": 14,
-      "id": "P571"
+      "id": "P571",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -6001,7 +6513,8 @@
       ],
       "difficulty": "medium",
       "batch": 14,
-      "id": "P572"
+      "id": "P572",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -6011,7 +6524,8 @@
       ],
       "difficulty": "medium",
       "batch": 14,
-      "id": "P573"
+      "id": "P573",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -6021,7 +6535,8 @@
       ],
       "difficulty": "medium",
       "batch": 14,
-      "id": "P574"
+      "id": "P574",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -6031,7 +6546,8 @@
       ],
       "difficulty": "medium",
       "batch": 14,
-      "id": "P575"
+      "id": "P575",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -6041,7 +6557,8 @@
       ],
       "difficulty": "easy",
       "batch": 14,
-      "id": "P576"
+      "id": "P576",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -6061,7 +6578,8 @@
       ],
       "difficulty": "easy",
       "batch": 14,
-      "id": "P578"
+      "id": "P578",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -6081,7 +6599,8 @@
       ],
       "difficulty": "variant",
       "batch": 14,
-      "id": "P580"
+      "id": "P580",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -6091,7 +6610,8 @@
       ],
       "difficulty": "variant",
       "batch": 14,
-      "id": "P581"
+      "id": "P581",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -6111,7 +6631,8 @@
       ],
       "difficulty": "variant",
       "batch": 14,
-      "id": "P583"
+      "id": "P583",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -6121,7 +6642,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 14,
-      "id": "P584"
+      "id": "P584",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -6131,7 +6653,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 14,
-      "id": "P585"
+      "id": "P585",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -6141,7 +6664,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 14,
-      "id": "P586"
+      "id": "P586",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -6151,7 +6675,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 14,
-      "id": "P587"
+      "id": "P587",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -6162,7 +6687,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 14,
-      "id": "P588"
+      "id": "P588",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -6173,7 +6699,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 14,
-      "id": "P589"
+      "id": "P589",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -6184,7 +6711,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 14,
-      "id": "P590"
+      "id": "P590",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -6195,7 +6723,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 14,
-      "id": "P591"
+      "id": "P591",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -6205,7 +6734,8 @@
       ],
       "difficulty": "resource",
       "batch": 14,
-      "id": "P592"
+      "id": "P592",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -6215,7 +6745,8 @@
       ],
       "difficulty": "resource",
       "batch": 14,
-      "id": "P593"
+      "id": "P593",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -6225,7 +6756,8 @@
       ],
       "difficulty": "resource",
       "batch": 14,
-      "id": "P594"
+      "id": "P594",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -6233,7 +6765,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 14,
-      "id": "P595"
+      "id": "P595",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -6241,7 +6774,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 14,
-      "id": "P596"
+      "id": "P596",
+      "expect_branch": "tech_next"
     },
     {
       "group": "utterance",
@@ -6249,7 +6783,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 14,
-      "id": "P597"
+      "id": "P597",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -6257,7 +6792,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 14,
-      "id": "P598"
+      "id": "P598",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -6265,7 +6801,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 14,
-      "id": "P599"
+      "id": "P599",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -6273,7 +6810,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 14,
-      "id": "P600"
+      "id": "P600",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -6283,7 +6821,8 @@
       ],
       "difficulty": "hard",
       "batch": 15,
-      "id": "P601"
+      "id": "P601",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -6293,7 +6832,8 @@
       ],
       "difficulty": "hard",
       "batch": 15,
-      "id": "P602"
+      "id": "P602",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -6303,7 +6843,8 @@
       ],
       "difficulty": "hard",
       "batch": 15,
-      "id": "P603"
+      "id": "P603",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -6313,7 +6854,8 @@
       ],
       "difficulty": "hard",
       "batch": 15,
-      "id": "P604"
+      "id": "P604",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -6323,7 +6865,8 @@
       ],
       "difficulty": "hard",
       "batch": 15,
-      "id": "P605"
+      "id": "P605",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -6333,7 +6876,8 @@
       ],
       "difficulty": "hard",
       "batch": 15,
-      "id": "P606"
+      "id": "P606",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -6353,7 +6897,8 @@
       ],
       "difficulty": "hard",
       "batch": 15,
-      "id": "P608"
+      "id": "P608",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -6363,7 +6908,8 @@
       ],
       "difficulty": "hard",
       "batch": 15,
-      "id": "P609"
+      "id": "P609",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -6383,7 +6929,8 @@
       ],
       "difficulty": "medium",
       "batch": 15,
-      "id": "P611"
+      "id": "P611",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -6403,7 +6950,8 @@
       ],
       "difficulty": "medium",
       "batch": 15,
-      "id": "P613"
+      "id": "P613",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -6413,7 +6961,8 @@
       ],
       "difficulty": "medium",
       "batch": 15,
-      "id": "P614"
+      "id": "P614",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -6423,7 +6972,8 @@
       ],
       "difficulty": "medium",
       "batch": 15,
-      "id": "P615"
+      "id": "P615",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -6433,7 +6983,8 @@
       ],
       "difficulty": "easy",
       "batch": 15,
-      "id": "P616"
+      "id": "P616",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -6443,7 +6994,8 @@
       ],
       "difficulty": "easy",
       "batch": 15,
-      "id": "P617"
+      "id": "P617",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -6453,7 +7005,8 @@
       ],
       "difficulty": "easy",
       "batch": 15,
-      "id": "P618"
+      "id": "P618",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -6463,7 +7016,8 @@
       ],
       "difficulty": "variant",
       "batch": 15,
-      "id": "P619"
+      "id": "P619",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -6473,7 +7027,8 @@
       ],
       "difficulty": "variant",
       "batch": 15,
-      "id": "P620"
+      "id": "P620",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -6483,7 +7038,8 @@
       ],
       "difficulty": "variant",
       "batch": 15,
-      "id": "P621"
+      "id": "P621",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -6503,7 +7059,8 @@
       ],
       "difficulty": "variant",
       "batch": 15,
-      "id": "P623"
+      "id": "P623",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -6513,7 +7070,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 15,
-      "id": "P624"
+      "id": "P624",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -6523,7 +7081,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 15,
-      "id": "P625"
+      "id": "P625",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -6533,7 +7092,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 15,
-      "id": "P626"
+      "id": "P626",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -6554,7 +7114,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 15,
-      "id": "P628"
+      "id": "P628",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -6565,7 +7126,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 15,
-      "id": "P629"
+      "id": "P629",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -6576,7 +7138,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 15,
-      "id": "P630"
+      "id": "P630",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -6587,7 +7150,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 15,
-      "id": "P631"
+      "id": "P631",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -6597,7 +7161,8 @@
       ],
       "difficulty": "resource",
       "batch": 15,
-      "id": "P632"
+      "id": "P632",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -6607,7 +7172,8 @@
       ],
       "difficulty": "resource",
       "batch": 15,
-      "id": "P633"
+      "id": "P633",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -6617,7 +7183,8 @@
       ],
       "difficulty": "resource",
       "batch": 15,
-      "id": "P634"
+      "id": "P634",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -6625,7 +7192,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 15,
-      "id": "P635"
+      "id": "P635",
+      "expect_branch": "tech_next"
     },
     {
       "group": "utterance",
@@ -6633,7 +7201,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 15,
-      "id": "P636"
+      "id": "P636",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -6641,7 +7210,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 15,
-      "id": "P637"
+      "id": "P637",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -6649,7 +7219,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 15,
-      "id": "P638"
+      "id": "P638",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -6657,7 +7228,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 15,
-      "id": "P639"
+      "id": "P639",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -6665,7 +7237,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 15,
-      "id": "P640"
+      "id": "P640",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -6675,7 +7248,8 @@
       ],
       "difficulty": "hard",
       "batch": 16,
-      "id": "P641"
+      "id": "P641",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -6685,7 +7259,8 @@
       ],
       "difficulty": "hard",
       "batch": 16,
-      "id": "P642"
+      "id": "P642",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -6695,7 +7270,8 @@
       ],
       "difficulty": "hard",
       "batch": 16,
-      "id": "P643"
+      "id": "P643",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -6705,7 +7281,8 @@
       ],
       "difficulty": "hard",
       "batch": 16,
-      "id": "P644"
+      "id": "P644",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -6725,7 +7302,8 @@
       ],
       "difficulty": "hard",
       "batch": 16,
-      "id": "P646"
+      "id": "P646",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -6735,7 +7313,8 @@
       ],
       "difficulty": "hard",
       "batch": 16,
-      "id": "P647"
+      "id": "P647",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -6745,7 +7324,8 @@
       ],
       "difficulty": "hard",
       "batch": 16,
-      "id": "P648"
+      "id": "P648",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -6755,7 +7335,8 @@
       ],
       "difficulty": "hard",
       "batch": 16,
-      "id": "P649"
+      "id": "P649",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -6765,7 +7346,8 @@
       ],
       "difficulty": "medium",
       "batch": 16,
-      "id": "P650"
+      "id": "P650",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -6775,7 +7357,8 @@
       ],
       "difficulty": "medium",
       "batch": 16,
-      "id": "P651"
+      "id": "P651",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -6785,7 +7368,8 @@
       ],
       "difficulty": "medium",
       "batch": 16,
-      "id": "P652"
+      "id": "P652",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -6795,7 +7379,8 @@
       ],
       "difficulty": "medium",
       "batch": 16,
-      "id": "P653"
+      "id": "P653",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -6805,7 +7390,8 @@
       ],
       "difficulty": "medium",
       "batch": 16,
-      "id": "P654"
+      "id": "P654",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -6815,7 +7401,8 @@
       ],
       "difficulty": "medium",
       "batch": 16,
-      "id": "P655"
+      "id": "P655",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -6825,7 +7412,8 @@
       ],
       "difficulty": "easy",
       "batch": 16,
-      "id": "P656"
+      "id": "P656",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -6835,7 +7423,8 @@
       ],
       "difficulty": "easy",
       "batch": 16,
-      "id": "P657"
+      "id": "P657",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -6845,7 +7434,8 @@
       ],
       "difficulty": "easy",
       "batch": 16,
-      "id": "P658"
+      "id": "P658",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -6855,7 +7445,8 @@
       ],
       "difficulty": "variant",
       "batch": 16,
-      "id": "P659"
+      "id": "P659",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -6875,7 +7466,8 @@
       ],
       "difficulty": "variant",
       "batch": 16,
-      "id": "P661"
+      "id": "P661",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -6885,7 +7477,8 @@
       ],
       "difficulty": "variant",
       "batch": 16,
-      "id": "P662"
+      "id": "P662",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -6895,7 +7488,8 @@
       ],
       "difficulty": "variant",
       "batch": 16,
-      "id": "P663"
+      "id": "P663",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -6905,7 +7499,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 16,
-      "id": "P664"
+      "id": "P664",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -6915,7 +7510,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 16,
-      "id": "P665"
+      "id": "P665",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -6925,7 +7521,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 16,
-      "id": "P666"
+      "id": "P666",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -6935,7 +7532,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 16,
-      "id": "P667"
+      "id": "P667",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -6946,7 +7544,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 16,
-      "id": "P668"
+      "id": "P668",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -6957,7 +7556,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 16,
-      "id": "P669"
+      "id": "P669",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -6968,7 +7568,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 16,
-      "id": "P670"
+      "id": "P670",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -6979,7 +7580,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 16,
-      "id": "P671"
+      "id": "P671",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -6989,7 +7591,8 @@
       ],
       "difficulty": "resource",
       "batch": 16,
-      "id": "P672"
+      "id": "P672",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -6999,7 +7602,8 @@
       ],
       "difficulty": "resource",
       "batch": 16,
-      "id": "P673"
+      "id": "P673",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -7009,7 +7613,8 @@
       ],
       "difficulty": "resource",
       "batch": 16,
-      "id": "P674"
+      "id": "P674",
+      "expect_branch": "base_site"
     },
     {
       "group": "utterance",
@@ -7017,7 +7622,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 16,
-      "id": "P675"
+      "id": "P675",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -7025,7 +7631,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 16,
-      "id": "P676"
+      "id": "P676",
+      "expect_branch": "tech_next"
     },
     {
       "group": "utterance",
@@ -7033,7 +7640,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 16,
-      "id": "P677"
+      "id": "P677",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -7041,7 +7649,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 16,
-      "id": "P678"
+      "id": "P678",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -7049,7 +7658,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 16,
-      "id": "P679"
+      "id": "P679",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -7057,7 +7667,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 16,
-      "id": "P680"
+      "id": "P680",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -7067,7 +7678,8 @@
       ],
       "difficulty": "hard",
       "batch": 17,
-      "id": "P681"
+      "id": "P681",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -7077,7 +7689,8 @@
       ],
       "difficulty": "hard",
       "batch": 17,
-      "id": "P682"
+      "id": "P682",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -7087,7 +7700,8 @@
       ],
       "difficulty": "hard",
       "batch": 17,
-      "id": "P683"
+      "id": "P683",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -7097,7 +7711,8 @@
       ],
       "difficulty": "hard",
       "batch": 17,
-      "id": "P684"
+      "id": "P684",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -7107,7 +7722,8 @@
       ],
       "difficulty": "hard",
       "batch": 17,
-      "id": "P685"
+      "id": "P685",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -7117,7 +7733,8 @@
       ],
       "difficulty": "hard",
       "batch": 17,
-      "id": "P686"
+      "id": "P686",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -7127,7 +7744,8 @@
       ],
       "difficulty": "hard",
       "batch": 17,
-      "id": "P687"
+      "id": "P687",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -7137,7 +7755,8 @@
       ],
       "difficulty": "hard",
       "batch": 17,
-      "id": "P688"
+      "id": "P688",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -7147,7 +7766,8 @@
       ],
       "difficulty": "hard",
       "batch": 17,
-      "id": "P689"
+      "id": "P689",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -7157,7 +7777,8 @@
       ],
       "difficulty": "medium",
       "batch": 17,
-      "id": "P690"
+      "id": "P690",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -7167,7 +7788,8 @@
       ],
       "difficulty": "medium",
       "batch": 17,
-      "id": "P691"
+      "id": "P691",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -7177,7 +7799,8 @@
       ],
       "difficulty": "medium",
       "batch": 17,
-      "id": "P692"
+      "id": "P692",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -7187,7 +7810,8 @@
       ],
       "difficulty": "medium",
       "batch": 17,
-      "id": "P693"
+      "id": "P693",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -7197,7 +7821,8 @@
       ],
       "difficulty": "medium",
       "batch": 17,
-      "id": "P694"
+      "id": "P694",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -7207,7 +7832,8 @@
       ],
       "difficulty": "medium",
       "batch": 17,
-      "id": "P695"
+      "id": "P695",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -7217,7 +7843,8 @@
       ],
       "difficulty": "easy",
       "batch": 17,
-      "id": "P696"
+      "id": "P696",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -7227,7 +7854,8 @@
       ],
       "difficulty": "easy",
       "batch": 17,
-      "id": "P697"
+      "id": "P697",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -7247,7 +7875,8 @@
       ],
       "difficulty": "variant",
       "batch": 17,
-      "id": "P699"
+      "id": "P699",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -7267,7 +7896,8 @@
       ],
       "difficulty": "variant",
       "batch": 17,
-      "id": "P701"
+      "id": "P701",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -7277,7 +7907,8 @@
       ],
       "difficulty": "variant",
       "batch": 17,
-      "id": "P702"
+      "id": "P702",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -7297,7 +7928,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 17,
-      "id": "P704"
+      "id": "P704",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -7307,7 +7939,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 17,
-      "id": "P705"
+      "id": "P705",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -7317,7 +7950,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 17,
-      "id": "P706"
+      "id": "P706",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -7327,7 +7961,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 17,
-      "id": "P707"
+      "id": "P707",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -7338,7 +7973,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 17,
-      "id": "P708"
+      "id": "P708",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -7349,7 +7985,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 17,
-      "id": "P709"
+      "id": "P709",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -7360,7 +7997,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 17,
-      "id": "P710"
+      "id": "P710",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -7371,7 +8009,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 17,
-      "id": "P711"
+      "id": "P711",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -7381,7 +8020,8 @@
       ],
       "difficulty": "resource",
       "batch": 17,
-      "id": "P712"
+      "id": "P712",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -7391,7 +8031,8 @@
       ],
       "difficulty": "resource",
       "batch": 17,
-      "id": "P713"
+      "id": "P713",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -7401,7 +8042,8 @@
       ],
       "difficulty": "resource",
       "batch": 17,
-      "id": "P714"
+      "id": "P714",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -7409,7 +8051,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 17,
-      "id": "P715"
+      "id": "P715",
+      "expect_branch": "base_site"
     },
     {
       "group": "utterance",
@@ -7417,7 +8060,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 17,
-      "id": "P716"
+      "id": "P716",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -7425,7 +8069,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 17,
-      "id": "P717"
+      "id": "P717",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -7433,7 +8078,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 17,
-      "id": "P718"
+      "id": "P718",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -7449,7 +8095,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 17,
-      "id": "P720"
+      "id": "P720",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -7459,7 +8106,8 @@
       ],
       "difficulty": "hard",
       "batch": 18,
-      "id": "P721"
+      "id": "P721",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -7469,7 +8117,8 @@
       ],
       "difficulty": "hard",
       "batch": 18,
-      "id": "P722"
+      "id": "P722",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -7489,7 +8138,8 @@
       ],
       "difficulty": "hard",
       "batch": 18,
-      "id": "P724"
+      "id": "P724",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -7499,7 +8149,8 @@
       ],
       "difficulty": "hard",
       "batch": 18,
-      "id": "P725"
+      "id": "P725",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -7509,7 +8160,8 @@
       ],
       "difficulty": "hard",
       "batch": 18,
-      "id": "P726"
+      "id": "P726",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -7519,7 +8171,8 @@
       ],
       "difficulty": "hard",
       "batch": 18,
-      "id": "P727"
+      "id": "P727",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -7529,7 +8182,8 @@
       ],
       "difficulty": "hard",
       "batch": 18,
-      "id": "P728"
+      "id": "P728",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -7539,7 +8193,8 @@
       ],
       "difficulty": "hard",
       "batch": 18,
-      "id": "P729"
+      "id": "P729",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -7559,7 +8214,8 @@
       ],
       "difficulty": "medium",
       "batch": 18,
-      "id": "P731"
+      "id": "P731",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -7579,7 +8235,8 @@
       ],
       "difficulty": "medium",
       "batch": 18,
-      "id": "P733"
+      "id": "P733",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -7589,7 +8246,8 @@
       ],
       "difficulty": "medium",
       "batch": 18,
-      "id": "P734"
+      "id": "P734",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -7599,7 +8257,8 @@
       ],
       "difficulty": "medium",
       "batch": 18,
-      "id": "P735"
+      "id": "P735",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -7609,7 +8268,8 @@
       ],
       "difficulty": "easy",
       "batch": 18,
-      "id": "P736"
+      "id": "P736",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -7619,7 +8279,8 @@
       ],
       "difficulty": "easy",
       "batch": 18,
-      "id": "P737"
+      "id": "P737",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -7629,7 +8290,8 @@
       ],
       "difficulty": "easy",
       "batch": 18,
-      "id": "P738"
+      "id": "P738",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -7639,7 +8301,8 @@
       ],
       "difficulty": "variant",
       "batch": 18,
-      "id": "P739"
+      "id": "P739",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -7649,7 +8312,8 @@
       ],
       "difficulty": "variant",
       "batch": 18,
-      "id": "P740"
+      "id": "P740",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -7659,7 +8323,8 @@
       ],
       "difficulty": "variant",
       "batch": 18,
-      "id": "P741"
+      "id": "P741",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -7669,7 +8334,8 @@
       ],
       "difficulty": "variant",
       "batch": 18,
-      "id": "P742"
+      "id": "P742",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -7689,7 +8355,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 18,
-      "id": "P744"
+      "id": "P744",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -7709,7 +8376,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 18,
-      "id": "P746"
+      "id": "P746",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -7719,7 +8387,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 18,
-      "id": "P747"
+      "id": "P747",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -7730,7 +8399,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 18,
-      "id": "P748"
+      "id": "P748",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -7741,7 +8411,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 18,
-      "id": "P749"
+      "id": "P749",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -7752,7 +8423,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 18,
-      "id": "P750"
+      "id": "P750",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -7763,7 +8435,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 18,
-      "id": "P751"
+      "id": "P751",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -7773,7 +8446,8 @@
       ],
       "difficulty": "resource",
       "batch": 18,
-      "id": "P752"
+      "id": "P752",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -7783,7 +8457,8 @@
       ],
       "difficulty": "resource",
       "batch": 18,
-      "id": "P753"
+      "id": "P753",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -7793,7 +8468,8 @@
       ],
       "difficulty": "resource",
       "batch": 18,
-      "id": "P754"
+      "id": "P754",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -7801,7 +8477,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 18,
-      "id": "P755"
+      "id": "P755",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -7809,7 +8486,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 18,
-      "id": "P756"
+      "id": "P756",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -7817,7 +8495,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 18,
-      "id": "P757"
+      "id": "P757",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -7825,7 +8504,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 18,
-      "id": "P758"
+      "id": "P758",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -7833,7 +8513,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 18,
-      "id": "P759"
+      "id": "P759",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -7841,7 +8522,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 18,
-      "id": "P760"
+      "id": "P760",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -7851,7 +8533,8 @@
       ],
       "difficulty": "hard",
       "batch": 19,
-      "id": "P761"
+      "id": "P761",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -7861,7 +8544,8 @@
       ],
       "difficulty": "hard",
       "batch": 19,
-      "id": "P762"
+      "id": "P762",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -7871,7 +8555,8 @@
       ],
       "difficulty": "hard",
       "batch": 19,
-      "id": "P763"
+      "id": "P763",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -7881,7 +8566,8 @@
       ],
       "difficulty": "hard",
       "batch": 19,
-      "id": "P764"
+      "id": "P764",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -7901,7 +8587,8 @@
       ],
       "difficulty": "hard",
       "batch": 19,
-      "id": "P766"
+      "id": "P766",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -7911,7 +8598,8 @@
       ],
       "difficulty": "hard",
       "batch": 19,
-      "id": "P767"
+      "id": "P767",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -7921,7 +8609,8 @@
       ],
       "difficulty": "hard",
       "batch": 19,
-      "id": "P768"
+      "id": "P768",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -7931,7 +8620,8 @@
       ],
       "difficulty": "hard",
       "batch": 19,
-      "id": "P769"
+      "id": "P769",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -7941,7 +8631,8 @@
       ],
       "difficulty": "medium",
       "batch": 19,
-      "id": "P770"
+      "id": "P770",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -7951,7 +8642,8 @@
       ],
       "difficulty": "medium",
       "batch": 19,
-      "id": "P771"
+      "id": "P771",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -7961,7 +8653,8 @@
       ],
       "difficulty": "medium",
       "batch": 19,
-      "id": "P772"
+      "id": "P772",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -7971,7 +8664,8 @@
       ],
       "difficulty": "medium",
       "batch": 19,
-      "id": "P773"
+      "id": "P773",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -7981,7 +8675,8 @@
       ],
       "difficulty": "medium",
       "batch": 19,
-      "id": "P774"
+      "id": "P774",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -7991,7 +8686,8 @@
       ],
       "difficulty": "medium",
       "batch": 19,
-      "id": "P775"
+      "id": "P775",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -8001,7 +8697,8 @@
       ],
       "difficulty": "easy",
       "batch": 19,
-      "id": "P776"
+      "id": "P776",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -8011,7 +8708,8 @@
       ],
       "difficulty": "easy",
       "batch": 19,
-      "id": "P777"
+      "id": "P777",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -8021,7 +8719,8 @@
       ],
       "difficulty": "easy",
       "batch": 19,
-      "id": "P778"
+      "id": "P778",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -8031,7 +8730,8 @@
       ],
       "difficulty": "variant",
       "batch": 19,
-      "id": "P779"
+      "id": "P779",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -8041,7 +8741,8 @@
       ],
       "difficulty": "variant",
       "batch": 19,
-      "id": "P780"
+      "id": "P780",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -8061,7 +8762,8 @@
       ],
       "difficulty": "variant",
       "batch": 19,
-      "id": "P782"
+      "id": "P782",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -8071,7 +8773,8 @@
       ],
       "difficulty": "variant",
       "batch": 19,
-      "id": "P783"
+      "id": "P783",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -8081,7 +8784,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 19,
-      "id": "P784"
+      "id": "P784",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -8091,7 +8795,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 19,
-      "id": "P785"
+      "id": "P785",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -8101,7 +8806,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 19,
-      "id": "P786"
+      "id": "P786",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -8111,7 +8817,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 19,
-      "id": "P787"
+      "id": "P787",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -8122,7 +8829,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 19,
-      "id": "P788"
+      "id": "P788",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -8133,7 +8841,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 19,
-      "id": "P789"
+      "id": "P789",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -8144,7 +8853,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 19,
-      "id": "P790"
+      "id": "P790",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -8155,7 +8865,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 19,
-      "id": "P791"
+      "id": "P791",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -8165,7 +8876,8 @@
       ],
       "difficulty": "resource",
       "batch": 19,
-      "id": "P792"
+      "id": "P792",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -8175,7 +8887,8 @@
       ],
       "difficulty": "resource",
       "batch": 19,
-      "id": "P793"
+      "id": "P793",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -8185,7 +8898,8 @@
       ],
       "difficulty": "resource",
       "batch": 19,
-      "id": "P794"
+      "id": "P794",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -8193,7 +8907,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 19,
-      "id": "P795"
+      "id": "P795",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -8201,7 +8916,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 19,
-      "id": "P796"
+      "id": "P796",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -8209,7 +8925,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 19,
-      "id": "P797"
+      "id": "P797",
+      "expect_branch": "tech_next"
     },
     {
       "group": "utterance",
@@ -8217,7 +8934,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 19,
-      "id": "P798"
+      "id": "P798",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -8225,7 +8943,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 19,
-      "id": "P799"
+      "id": "P799",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -8233,7 +8952,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 19,
-      "id": "P800"
+      "id": "P800",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -8243,7 +8963,8 @@
       ],
       "difficulty": "hard",
       "batch": 20,
-      "id": "P801"
+      "id": "P801",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -8253,7 +8974,8 @@
       ],
       "difficulty": "hard",
       "batch": 20,
-      "id": "P802"
+      "id": "P802",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -8273,7 +8995,8 @@
       ],
       "difficulty": "hard",
       "batch": 20,
-      "id": "P804"
+      "id": "P804",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -8283,7 +9006,8 @@
       ],
       "difficulty": "hard",
       "batch": 20,
-      "id": "P805"
+      "id": "P805",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -8293,7 +9017,8 @@
       ],
       "difficulty": "hard",
       "batch": 20,
-      "id": "P806"
+      "id": "P806",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -8303,7 +9028,8 @@
       ],
       "difficulty": "hard",
       "batch": 20,
-      "id": "P807"
+      "id": "P807",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -8313,7 +9039,8 @@
       ],
       "difficulty": "hard",
       "batch": 20,
-      "id": "P808"
+      "id": "P808",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -8323,7 +9050,8 @@
       ],
       "difficulty": "hard",
       "batch": 20,
-      "id": "P809"
+      "id": "P809",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -8333,7 +9061,8 @@
       ],
       "difficulty": "medium",
       "batch": 20,
-      "id": "P810"
+      "id": "P810",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -8343,7 +9072,8 @@
       ],
       "difficulty": "medium",
       "batch": 20,
-      "id": "P811"
+      "id": "P811",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -8353,7 +9083,8 @@
       ],
       "difficulty": "medium",
       "batch": 20,
-      "id": "P812"
+      "id": "P812",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -8363,7 +9094,8 @@
       ],
       "difficulty": "medium",
       "batch": 20,
-      "id": "P813"
+      "id": "P813",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -8373,7 +9105,8 @@
       ],
       "difficulty": "medium",
       "batch": 20,
-      "id": "P814"
+      "id": "P814",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -8383,7 +9116,8 @@
       ],
       "difficulty": "medium",
       "batch": 20,
-      "id": "P815"
+      "id": "P815",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -8393,7 +9127,8 @@
       ],
       "difficulty": "easy",
       "batch": 20,
-      "id": "P816"
+      "id": "P816",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -8413,7 +9148,8 @@
       ],
       "difficulty": "easy",
       "batch": 20,
-      "id": "P818"
+      "id": "P818",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -8423,7 +9159,8 @@
       ],
       "difficulty": "variant",
       "batch": 20,
-      "id": "P819"
+      "id": "P819",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -8433,7 +9170,8 @@
       ],
       "difficulty": "variant",
       "batch": 20,
-      "id": "P820"
+      "id": "P820",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -8453,7 +9191,8 @@
       ],
       "difficulty": "variant",
       "batch": 20,
-      "id": "P822"
+      "id": "P822",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -8463,7 +9202,8 @@
       ],
       "difficulty": "variant",
       "batch": 20,
-      "id": "P823"
+      "id": "P823",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -8473,7 +9213,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 20,
-      "id": "P824"
+      "id": "P824",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -8483,7 +9224,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 20,
-      "id": "P825"
+      "id": "P825",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -8493,7 +9235,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 20,
-      "id": "P826"
+      "id": "P826",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -8514,7 +9257,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 20,
-      "id": "P828"
+      "id": "P828",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -8525,7 +9269,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 20,
-      "id": "P829"
+      "id": "P829",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -8536,7 +9281,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 20,
-      "id": "P830"
+      "id": "P830",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -8547,7 +9293,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 20,
-      "id": "P831"
+      "id": "P831",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -8557,7 +9304,8 @@
       ],
       "difficulty": "resource",
       "batch": 20,
-      "id": "P832"
+      "id": "P832",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -8567,7 +9315,8 @@
       ],
       "difficulty": "resource",
       "batch": 20,
-      "id": "P833"
+      "id": "P833",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -8577,7 +9326,8 @@
       ],
       "difficulty": "resource",
       "batch": 20,
-      "id": "P834"
+      "id": "P834",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -8585,7 +9335,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 20,
-      "id": "P835"
+      "id": "P835",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -8593,7 +9344,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 20,
-      "id": "P836"
+      "id": "P836",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -8609,7 +9361,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 20,
-      "id": "P838"
+      "id": "P838",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -8617,7 +9370,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 20,
-      "id": "P839"
+      "id": "P839",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -8625,7 +9379,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 20,
-      "id": "P840"
+      "id": "P840",
+      "expect_branch": "tech_next"
     },
     {
       "group": "utterance",
@@ -8635,7 +9390,8 @@
       ],
       "difficulty": "hard",
       "batch": 21,
-      "id": "P841"
+      "id": "P841",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -8645,7 +9401,8 @@
       ],
       "difficulty": "hard",
       "batch": 21,
-      "id": "P842"
+      "id": "P842",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -8655,7 +9412,8 @@
       ],
       "difficulty": "hard",
       "batch": 21,
-      "id": "P843"
+      "id": "P843",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -8665,7 +9423,8 @@
       ],
       "difficulty": "hard",
       "batch": 21,
-      "id": "P844"
+      "id": "P844",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -8685,7 +9444,8 @@
       ],
       "difficulty": "hard",
       "batch": 21,
-      "id": "P846"
+      "id": "P846",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -8695,7 +9455,8 @@
       ],
       "difficulty": "hard",
       "batch": 21,
-      "id": "P847"
+      "id": "P847",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -8705,7 +9466,8 @@
       ],
       "difficulty": "hard",
       "batch": 21,
-      "id": "P848"
+      "id": "P848",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -8715,7 +9477,8 @@
       ],
       "difficulty": "hard",
       "batch": 21,
-      "id": "P849"
+      "id": "P849",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -8735,7 +9498,8 @@
       ],
       "difficulty": "medium",
       "batch": 21,
-      "id": "P851"
+      "id": "P851",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -8755,7 +9519,8 @@
       ],
       "difficulty": "medium",
       "batch": 21,
-      "id": "P853"
+      "id": "P853",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -8765,7 +9530,8 @@
       ],
       "difficulty": "medium",
       "batch": 21,
-      "id": "P854"
+      "id": "P854",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -8775,7 +9541,8 @@
       ],
       "difficulty": "medium",
       "batch": 21,
-      "id": "P855"
+      "id": "P855",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -8785,7 +9552,8 @@
       ],
       "difficulty": "easy",
       "batch": 21,
-      "id": "P856"
+      "id": "P856",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -8795,7 +9563,8 @@
       ],
       "difficulty": "easy",
       "batch": 21,
-      "id": "P857"
+      "id": "P857",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -8805,7 +9574,8 @@
       ],
       "difficulty": "easy",
       "batch": 21,
-      "id": "P858"
+      "id": "P858",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -8825,7 +9595,8 @@
       ],
       "difficulty": "variant",
       "batch": 21,
-      "id": "P860"
+      "id": "P860",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -8835,7 +9606,8 @@
       ],
       "difficulty": "variant",
       "batch": 21,
-      "id": "P861"
+      "id": "P861",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -8845,7 +9617,8 @@
       ],
       "difficulty": "variant",
       "batch": 21,
-      "id": "P862"
+      "id": "P862",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -8855,7 +9628,8 @@
       ],
       "difficulty": "variant",
       "batch": 21,
-      "id": "P863"
+      "id": "P863",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -8865,7 +9639,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 21,
-      "id": "P864"
+      "id": "P864",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -8875,7 +9650,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 21,
-      "id": "P865"
+      "id": "P865",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -8885,7 +9661,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 21,
-      "id": "P866"
+      "id": "P866",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -8895,7 +9672,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 21,
-      "id": "P867"
+      "id": "P867",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -8906,7 +9684,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 21,
-      "id": "P868"
+      "id": "P868",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -8917,7 +9696,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 21,
-      "id": "P869"
+      "id": "P869",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -8928,7 +9708,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 21,
-      "id": "P870"
+      "id": "P870",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -8939,7 +9720,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 21,
-      "id": "P871"
+      "id": "P871",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -8949,7 +9731,8 @@
       ],
       "difficulty": "resource",
       "batch": 21,
-      "id": "P872"
+      "id": "P872",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -8959,7 +9742,8 @@
       ],
       "difficulty": "resource",
       "batch": 21,
-      "id": "P873"
+      "id": "P873",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -8969,7 +9753,8 @@
       ],
       "difficulty": "resource",
       "batch": 21,
-      "id": "P874"
+      "id": "P874",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -8977,7 +9762,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 21,
-      "id": "P875"
+      "id": "P875",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -8985,7 +9771,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 21,
-      "id": "P876"
+      "id": "P876",
+      "expect_branch": "tech_next"
     },
     {
       "group": "utterance",
@@ -8993,7 +9780,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 21,
-      "id": "P877"
+      "id": "P877",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -9009,7 +9797,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 21,
-      "id": "P879"
+      "id": "P879",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -9017,7 +9806,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 21,
-      "id": "P880"
+      "id": "P880",
+      "expect_branch": "tech_next"
     },
     {
       "group": "utterance",
@@ -9027,7 +9817,8 @@
       ],
       "difficulty": "hard",
       "batch": 22,
-      "id": "P881"
+      "id": "P881",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -9037,7 +9828,8 @@
       ],
       "difficulty": "hard",
       "batch": 22,
-      "id": "P882"
+      "id": "P882",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -9057,7 +9849,8 @@
       ],
       "difficulty": "hard",
       "batch": 22,
-      "id": "P884"
+      "id": "P884",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -9067,7 +9860,8 @@
       ],
       "difficulty": "hard",
       "batch": 22,
-      "id": "P885"
+      "id": "P885",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -9077,7 +9871,8 @@
       ],
       "difficulty": "hard",
       "batch": 22,
-      "id": "P886"
+      "id": "P886",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -9087,7 +9882,8 @@
       ],
       "difficulty": "hard",
       "batch": 22,
-      "id": "P887"
+      "id": "P887",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -9097,7 +9893,8 @@
       ],
       "difficulty": "hard",
       "batch": 22,
-      "id": "P888"
+      "id": "P888",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -9107,7 +9904,8 @@
       ],
       "difficulty": "hard",
       "batch": 22,
-      "id": "P889"
+      "id": "P889",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -9117,7 +9915,8 @@
       ],
       "difficulty": "medium",
       "batch": 22,
-      "id": "P890"
+      "id": "P890",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -9127,7 +9926,8 @@
       ],
       "difficulty": "medium",
       "batch": 22,
-      "id": "P891"
+      "id": "P891",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -9137,7 +9937,8 @@
       ],
       "difficulty": "medium",
       "batch": 22,
-      "id": "P892"
+      "id": "P892",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -9147,7 +9948,8 @@
       ],
       "difficulty": "medium",
       "batch": 22,
-      "id": "P893"
+      "id": "P893",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -9157,7 +9959,8 @@
       ],
       "difficulty": "medium",
       "batch": 22,
-      "id": "P894"
+      "id": "P894",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -9167,7 +9970,8 @@
       ],
       "difficulty": "medium",
       "batch": 22,
-      "id": "P895"
+      "id": "P895",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -9177,7 +9981,8 @@
       ],
       "difficulty": "easy",
       "batch": 22,
-      "id": "P896"
+      "id": "P896",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -9187,7 +9992,8 @@
       ],
       "difficulty": "easy",
       "batch": 22,
-      "id": "P897"
+      "id": "P897",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -9197,7 +10003,8 @@
       ],
       "difficulty": "easy",
       "batch": 22,
-      "id": "P898"
+      "id": "P898",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -9217,7 +10024,8 @@
       ],
       "difficulty": "variant",
       "batch": 22,
-      "id": "P900"
+      "id": "P900",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -9227,7 +10035,8 @@
       ],
       "difficulty": "variant",
       "batch": 22,
-      "id": "P901"
+      "id": "P901",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -9247,7 +10056,8 @@
       ],
       "difficulty": "variant",
       "batch": 22,
-      "id": "P903"
+      "id": "P903",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -9257,7 +10067,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 22,
-      "id": "P904"
+      "id": "P904",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -9267,7 +10078,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 22,
-      "id": "P905"
+      "id": "P905",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -9277,7 +10089,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 22,
-      "id": "P906"
+      "id": "P906",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -9287,7 +10100,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 22,
-      "id": "P907"
+      "id": "P907",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -9298,7 +10112,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 22,
-      "id": "P908"
+      "id": "P908",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -9309,7 +10124,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 22,
-      "id": "P909"
+      "id": "P909",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -9320,7 +10136,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 22,
-      "id": "P910"
+      "id": "P910",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -9331,7 +10148,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 22,
-      "id": "P911"
+      "id": "P911",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -9341,7 +10159,8 @@
       ],
       "difficulty": "resource",
       "batch": 22,
-      "id": "P912"
+      "id": "P912",
+      "expect_branch": "base_site"
     },
     {
       "group": "utterance",
@@ -9351,7 +10170,8 @@
       ],
       "difficulty": "resource",
       "batch": 22,
-      "id": "P913"
+      "id": "P913",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -9361,7 +10181,8 @@
       ],
       "difficulty": "resource",
       "batch": 22,
-      "id": "P914"
+      "id": "P914",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -9369,7 +10190,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 22,
-      "id": "P915"
+      "id": "P915",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -9377,7 +10199,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 22,
-      "id": "P916"
+      "id": "P916",
+      "expect_branch": "base_site"
     },
     {
       "group": "utterance",
@@ -9385,7 +10208,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 22,
-      "id": "P917"
+      "id": "P917",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -9393,7 +10217,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 22,
-      "id": "P918"
+      "id": "P918",
+      "expect_branch": "base_site"
     },
     {
       "group": "utterance",
@@ -9401,7 +10226,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 22,
-      "id": "P919"
+      "id": "P919",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -9409,7 +10235,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 22,
-      "id": "P920"
+      "id": "P920",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -9419,7 +10246,8 @@
       ],
       "difficulty": "hard",
       "batch": 23,
-      "id": "P921"
+      "id": "P921",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -9429,7 +10257,8 @@
       ],
       "difficulty": "hard",
       "batch": 23,
-      "id": "P922"
+      "id": "P922",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -9439,7 +10268,8 @@
       ],
       "difficulty": "hard",
       "batch": 23,
-      "id": "P923"
+      "id": "P923",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -9449,7 +10279,8 @@
       ],
       "difficulty": "hard",
       "batch": 23,
-      "id": "P924"
+      "id": "P924",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -9469,7 +10300,8 @@
       ],
       "difficulty": "hard",
       "batch": 23,
-      "id": "P926"
+      "id": "P926",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -9479,7 +10311,8 @@
       ],
       "difficulty": "hard",
       "batch": 23,
-      "id": "P927"
+      "id": "P927",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -9489,7 +10322,8 @@
       ],
       "difficulty": "hard",
       "batch": 23,
-      "id": "P928"
+      "id": "P928",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -9499,7 +10333,8 @@
       ],
       "difficulty": "hard",
       "batch": 23,
-      "id": "P929"
+      "id": "P929",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -9509,7 +10344,8 @@
       ],
       "difficulty": "medium",
       "batch": 23,
-      "id": "P930"
+      "id": "P930",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -9519,7 +10355,8 @@
       ],
       "difficulty": "medium",
       "batch": 23,
-      "id": "P931"
+      "id": "P931",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -9529,7 +10366,8 @@
       ],
       "difficulty": "medium",
       "batch": 23,
-      "id": "P932"
+      "id": "P932",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -9539,7 +10377,8 @@
       ],
       "difficulty": "medium",
       "batch": 23,
-      "id": "P933"
+      "id": "P933",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -9549,7 +10388,8 @@
       ],
       "difficulty": "medium",
       "batch": 23,
-      "id": "P934"
+      "id": "P934",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -9559,7 +10399,8 @@
       ],
       "difficulty": "medium",
       "batch": 23,
-      "id": "P935"
+      "id": "P935",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -9569,7 +10410,8 @@
       ],
       "difficulty": "easy",
       "batch": 23,
-      "id": "P936"
+      "id": "P936",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -9579,7 +10421,8 @@
       ],
       "difficulty": "easy",
       "batch": 23,
-      "id": "P937"
+      "id": "P937",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -9599,7 +10442,8 @@
       ],
       "difficulty": "variant",
       "batch": 23,
-      "id": "P939"
+      "id": "P939",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -9609,7 +10453,8 @@
       ],
       "difficulty": "variant",
       "batch": 23,
-      "id": "P940"
+      "id": "P940",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -9619,7 +10464,8 @@
       ],
       "difficulty": "variant",
       "batch": 23,
-      "id": "P941"
+      "id": "P941",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -9639,7 +10485,8 @@
       ],
       "difficulty": "variant",
       "batch": 23,
-      "id": "P943"
+      "id": "P943",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -9649,7 +10496,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 23,
-      "id": "P944"
+      "id": "P944",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -9669,7 +10517,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 23,
-      "id": "P946"
+      "id": "P946",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -9679,7 +10528,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 23,
-      "id": "P947"
+      "id": "P947",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -9690,7 +10540,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 23,
-      "id": "P948"
+      "id": "P948",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -9701,7 +10552,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 23,
-      "id": "P949"
+      "id": "P949",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -9712,7 +10564,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 23,
-      "id": "P950"
+      "id": "P950",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -9723,7 +10576,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 23,
-      "id": "P951"
+      "id": "P951",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -9733,7 +10587,8 @@
       ],
       "difficulty": "resource",
       "batch": 23,
-      "id": "P952"
+      "id": "P952",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -9743,7 +10598,8 @@
       ],
       "difficulty": "resource",
       "batch": 23,
-      "id": "P953"
+      "id": "P953",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -9753,7 +10609,8 @@
       ],
       "difficulty": "resource",
       "batch": 23,
-      "id": "P954"
+      "id": "P954",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -9761,7 +10618,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 23,
-      "id": "P955"
+      "id": "P955",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -9769,7 +10627,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 23,
-      "id": "P956"
+      "id": "P956",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -9777,7 +10636,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 23,
-      "id": "P957"
+      "id": "P957",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -9785,7 +10645,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 23,
-      "id": "P958"
+      "id": "P958",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -9793,7 +10654,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 23,
-      "id": "P959"
+      "id": "P959",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -9801,7 +10663,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 23,
-      "id": "P960"
+      "id": "P960",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -9811,7 +10674,8 @@
       ],
       "difficulty": "hard",
       "batch": 24,
-      "id": "P961"
+      "id": "P961",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -9821,7 +10685,8 @@
       ],
       "difficulty": "hard",
       "batch": 24,
-      "id": "P962"
+      "id": "P962",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -9841,7 +10706,8 @@
       ],
       "difficulty": "hard",
       "batch": 24,
-      "id": "P964"
+      "id": "P964",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -9851,7 +10717,8 @@
       ],
       "difficulty": "hard",
       "batch": 24,
-      "id": "P965"
+      "id": "P965",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -9861,7 +10728,8 @@
       ],
       "difficulty": "hard",
       "batch": 24,
-      "id": "P966"
+      "id": "P966",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -9871,7 +10739,8 @@
       ],
       "difficulty": "hard",
       "batch": 24,
-      "id": "P967"
+      "id": "P967",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -9881,7 +10750,8 @@
       ],
       "difficulty": "hard",
       "batch": 24,
-      "id": "P968"
+      "id": "P968",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -9891,7 +10761,8 @@
       ],
       "difficulty": "hard",
       "batch": 24,
-      "id": "P969"
+      "id": "P969",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -9911,7 +10782,8 @@
       ],
       "difficulty": "medium",
       "batch": 24,
-      "id": "P971"
+      "id": "P971",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -9931,7 +10803,8 @@
       ],
       "difficulty": "medium",
       "batch": 24,
-      "id": "P973"
+      "id": "P973",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -9941,7 +10814,8 @@
       ],
       "difficulty": "medium",
       "batch": 24,
-      "id": "P974"
+      "id": "P974",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -9951,7 +10825,8 @@
       ],
       "difficulty": "medium",
       "batch": 24,
-      "id": "P975"
+      "id": "P975",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -9961,7 +10836,8 @@
       ],
       "difficulty": "easy",
       "batch": 24,
-      "id": "P976"
+      "id": "P976",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -9971,7 +10847,8 @@
       ],
       "difficulty": "easy",
       "batch": 24,
-      "id": "P977"
+      "id": "P977",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -9981,7 +10858,8 @@
       ],
       "difficulty": "easy",
       "batch": 24,
-      "id": "P978"
+      "id": "P978",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -9991,7 +10869,8 @@
       ],
       "difficulty": "variant",
       "batch": 24,
-      "id": "P979"
+      "id": "P979",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -10011,7 +10890,8 @@
       ],
       "difficulty": "variant",
       "batch": 24,
-      "id": "P981"
+      "id": "P981",
+      "expect_branch": "pal_drops"
     },
     {
       "group": "utterance",
@@ -10021,7 +10901,8 @@
       ],
       "difficulty": "variant",
       "batch": 24,
-      "id": "P982"
+      "id": "P982",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -10031,7 +10912,8 @@
       ],
       "difficulty": "variant",
       "batch": 24,
-      "id": "P983"
+      "id": "P983",
+      "expect_branch": "pal_info"
     },
     {
       "group": "utterance",
@@ -10041,7 +10923,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 24,
-      "id": "P984"
+      "id": "P984",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -10051,7 +10934,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 24,
-      "id": "P985"
+      "id": "P985",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -10061,7 +10945,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 24,
-      "id": "P986"
+      "id": "P986",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -10071,7 +10956,8 @@
       ],
       "difficulty": "frame_word",
       "batch": 24,
-      "id": "P987"
+      "id": "P987",
+      "expect_branch": "pal_location"
     },
     {
       "group": "utterance",
@@ -10082,7 +10968,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 24,
-      "id": "P988"
+      "id": "P988",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -10093,7 +10980,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 24,
-      "id": "P989"
+      "id": "P989",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -10104,7 +10992,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 24,
-      "id": "P990"
+      "id": "P990",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -10115,7 +11004,8 @@
       ],
       "difficulty": "two_entity",
       "batch": 24,
-      "id": "P991"
+      "id": "P991",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -10125,7 +11015,8 @@
       ],
       "difficulty": "resource",
       "batch": 24,
-      "id": "P992"
+      "id": "P992",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -10135,7 +11026,8 @@
       ],
       "difficulty": "resource",
       "batch": 24,
-      "id": "P993"
+      "id": "P993",
+      "expect_branch": "unsupported"
     },
     {
       "group": "utterance",
@@ -10145,7 +11037,8 @@
       ],
       "difficulty": "resource",
       "batch": 24,
-      "id": "P994"
+      "id": "P994",
+      "expect_branch": "resource_location"
     },
     {
       "group": "utterance",
@@ -10153,7 +11046,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 24,
-      "id": "P995"
+      "id": "P995",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -10161,7 +11055,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 24,
-      "id": "P996"
+      "id": "P996",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -10169,7 +11064,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 24,
-      "id": "P997"
+      "id": "P997",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -10177,7 +11073,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 24,
-      "id": "P998"
+      "id": "P998",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -10185,7 +11082,8 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 24,
-      "id": "P999"
+      "id": "P999",
+      "expect_branch": "general_knowledge"
     },
     {
       "group": "utterance",
@@ -10193,8 +11091,343 @@
       "expect_entities": [],
       "difficulty": "no_entity",
       "batch": 24,
-      "id": "P1000"
+      "id": "P1000",
+      "expect_branch": "general_knowledge"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal which technology should I get next",
+      "expect_entities": [],
+      "expect_branch": "tech_next",
+      "difficulty": "class_coverage",
+      "batch": -2,
+      "id": "C01"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what can I unlock at level fifty",
+      "expect_entities": [],
+      "expect_branch": "tech_next",
+      "difficulty": "class_coverage",
+      "batch": -2,
+      "id": "C02"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what's worth unlocking right now",
+      "expect_entities": [],
+      "expect_branch": "tech_next",
+      "difficulty": "class_coverage",
+      "batch": -2,
+      "id": "C03"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what weapon should I research next",
+      "expect_entities": [],
+      "expect_branch": "tech_next",
+      "difficulty": "class_coverage",
+      "batch": -2,
+      "id": "C04"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what should I research for my base",
+      "expect_entities": [],
+      "expect_branch": "tech_next",
+      "difficulty": "class_coverage",
+      "batch": -2,
+      "id": "C05"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what should I spend my ancient points on",
+      "expect_entities": [],
+      "expect_branch": "tech_next",
+      "difficulty": "class_coverage",
+      "batch": -2,
+      "id": "C06"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal best base spot for paldium fragment",
+      "expect_entities": [
+        "paldium_fragment"
+      ],
+      "expect_branch": "base_site",
+      "difficulty": "class_coverage",
+      "batch": -2,
+      "id": "C07"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where's a good place for a base with chromite",
+      "expect_entities": [],
+      "expect_branch": "base_site",
+      "difficulty": "class_coverage",
+      "batch": -2,
+      "id": "C08"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where should I put a base for chromite",
+      "expect_entities": [
+        "chromite"
+      ],
+      "expect_branch": "base_site",
+      "difficulty": "class_coverage",
+      "batch": -2,
+      "id": "C09"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where should I build my base for wood",
+      "expect_entities": [
+        "wood"
+      ],
+      "expect_branch": "base_site",
+      "difficulty": "class_coverage",
+      "batch": -2,
+      "id": "C10"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal find me a base site near ancient bone",
+      "expect_entities": [],
+      "expect_branch": "base_site",
+      "difficulty": "class_coverage",
+      "batch": -2,
+      "id": "C11"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal where should I set up a soralite base",
+      "expect_entities": [],
+      "expect_branch": "base_site",
+      "difficulty": "class_coverage",
+      "batch": -2,
+      "id": "C12"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what do you think of this base location",
+      "expect_entities": [],
+      "expect_branch": "base_rating",
+      "difficulty": "class_coverage",
+      "batch": -2,
+      "id": "C13"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal rate this base location",
+      "expect_entities": [],
+      "expect_branch": "base_rating",
+      "difficulty": "class_coverage",
+      "batch": -2,
+      "id": "C14"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal how good is my base location",
+      "expect_entities": [],
+      "expect_branch": "base_rating",
+      "difficulty": "class_coverage",
+      "batch": -2,
+      "id": "C15"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal is this a good spot for a red berries base",
+      "expect_entities": [
+        "red_berries"
+      ],
+      "expect_branch": "base_rating",
+      "difficulty": "class_coverage",
+      "batch": -2,
+      "id": "C16"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal is this a good spot for a base",
+      "expect_entities": [],
+      "expect_branch": "base_rating",
+      "difficulty": "class_coverage",
+      "batch": -2,
+      "id": "C17"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal rate my base",
+      "expect_entities": [],
+      "expect_branch": "base_rating",
+      "difficulty": "class_coverage",
+      "batch": -2,
+      "id": "C18"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal how do I choose a base location",
+      "expect_entities": [],
+      "expect_branch": "base_criteria",
+      "difficulty": "class_coverage",
+      "batch": -2,
+      "id": "C19"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what makes a good base location",
+      "expect_entities": [],
+      "expect_branch": "base_criteria",
+      "difficulty": "class_coverage",
+      "batch": -2,
+      "id": "C20"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what makes a good base",
+      "expect_entities": [],
+      "expect_branch": "base_criteria",
+      "difficulty": "class_coverage",
+      "batch": -2,
+      "id": "C21"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what do you check for a base spot",
+      "expect_entities": [],
+      "expect_branch": "base_criteria",
+      "difficulty": "class_coverage",
+      "batch": -2,
+      "id": "C22"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what should I look for in a base location",
+      "expect_entities": [],
+      "expect_branch": "base_criteria",
+      "difficulty": "class_coverage",
+      "batch": -2,
+      "id": "C23"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what matters when picking a base site",
+      "expect_entities": [],
+      "expect_branch": "base_criteria",
+      "difficulty": "class_coverage",
+      "batch": -2,
+      "id": "C24"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what is item rot",
+      "expect_entities": [],
+      "expect_branch": "general_knowledge",
+      "difficulty": "class_coverage",
+      "batch": -2,
+      "id": "C25"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal how does fishing work",
+      "expect_entities": [],
+      "expect_branch": "general_knowledge",
+      "difficulty": "class_coverage",
+      "batch": -2,
+      "id": "C26"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what are pal effigies",
+      "expect_entities": [],
+      "expect_branch": "general_knowledge",
+      "difficulty": "class_coverage",
+      "batch": -2,
+      "id": "C27"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal how does the breeding farm work",
+      "expect_entities": [],
+      "expect_branch": "general_knowledge",
+      "difficulty": "class_coverage",
+      "batch": -2,
+      "id": "C28"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal how do elements work",
+      "expect_entities": [],
+      "expect_branch": "general_knowledge",
+      "difficulty": "class_coverage",
+      "batch": -2,
+      "id": "C29"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what are predator pals",
+      "expect_entities": [],
+      "expect_branch": "general_knowledge",
+      "difficulty": "class_coverage",
+      "batch": -2,
+      "id": "C30"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal I need a new logging pal",
+      "expect_entities": [],
+      "expect_branch": "pal_search",
+      "difficulty": "class_coverage",
+      "batch": -2,
+      "id": "C31"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal give me a water pal at level forty",
+      "expect_entities": [],
+      "expect_branch": "pal_search",
+      "difficulty": "class_coverage",
+      "batch": -2,
+      "id": "C32"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what electric pals are around level fifty",
+      "expect_entities": [],
+      "expect_branch": "pal_search",
+      "difficulty": "class_coverage",
+      "batch": -2,
+      "id": "C33"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal what pal is best at mining",
+      "expect_entities": [],
+      "expect_branch": "pal_search",
+      "difficulty": "class_coverage",
+      "batch": -2,
+      "id": "C34"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal which pals can ranch",
+      "expect_entities": [],
+      "expect_branch": "pal_search",
+      "difficulty": "class_coverage",
+      "batch": -2,
+      "id": "C35"
+    },
+    {
+      "group": "utterance",
+      "text": "hey pal I need a mining pal",
+      "expect_entities": [],
+      "expect_branch": "pal_search",
+      "difficulty": "class_coverage",
+      "batch": -2,
+      "id": "C36"
     }
   ],
-  "branch_batch_note": "Batch -1 covers counters and item_source, which no P## prompt does: the original set predates both classes. Numbered -1 so record_stt.py takes it first without renumbering anything already recorded."
+  "branch_batch_note": "Batch -1 covers counters and item_source, which no P## prompt does: the original set predates both classes. Numbered -1 so record_stt.py takes it first without renumbering anything already recorded.",
+  "class_labelled": 966,
+  "class_note": "expect_branch is the query class the router should choose. Added 2026-08-12, because score_router.py measures ENTITY resolution and six of the twelve production classes name no entity - so on that scorer they are indistinguishable from each other and from an honest decline. Prompts whose class is genuinely ambiguous carry no expect_branch and stay unscored on that axis; 'unsupported' means the product has no class for the question, which separates a wrong class from a correct decline."
 }

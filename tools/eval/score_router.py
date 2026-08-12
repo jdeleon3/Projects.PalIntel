@@ -16,12 +16,32 @@ by construction.
 
     python tools/eval/score_router.py --condition quiet [--model claude-opus-5]
 """
+# ---------------------------------------------------------------- the class axis
+#
+# **The decision rule for the 2026-08-12 run, written before it was paid for**, as
+# CLAUDE.md requires. The run is `--sample 60 --model gemini-3.6-flash --unified`,
+# ~$0.22, and it exists to answer one question: does the class axis measure anything, or
+# is the harness broken?
+#
+#   * The entity numbers must land within a few points of the recorded 88.8% exact /
+#     3.9% wrong. A large move means the SAMPLE or the schema changed something, not the
+#     router, and nothing about the class axis should be believed until that is explained.
+#   * A class figure of exactly 100% or exactly 0% is a broken harness, not a result.
+#   * Anything else is a first reading and is reported as one. n=60 across ten classes is
+#     six per class at best, so no per-class number below n=10 is a measurement - the
+#     output marks those "thin" rather than letting them be quoted.
+#
+# What would justify a full run afterwards: a wrong-class rate above ~10%, or any class
+# scoring under 50% on n>=10. Neither is a tuning trigger on its own; both are reasons to
+# spend $1.40 to find out whether the sample was noise.
+
 from __future__ import annotations
 
 import argparse
 import json
 import sys
 import time
+from collections import Counter
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -38,7 +58,8 @@ EVAL = REPO / "data" / "stt_eval"
 
 
 def build_router(model: str, kb: KnowledgeBase, think: bool = False,
-                 thinking_level: str | None = None, unified: bool = False):
+                 thinking_level: str | None = None, unified: bool = False,
+                 class_set: str = "production"):
     """Construct the backend `model` names, plus its tool-name list.
 
     One place, so score_router.py and repeat_router.py cannot drift into scoring
@@ -64,19 +85,82 @@ def build_router(model: str, kb: KnowledgeBase, think: bool = False,
     if model.startswith("gemini"):
         from palintel.routing_gemini import TIMEOUT_S, GeminiRouter
         from palintel.routing_unified import CLASS_TO_TOOL
+        from palintel.routing_unified import PRODUCTION_CLASSES
+
+        # **Which classes the run offers, and the default changed 2026-08-12.**
+        #
+        # It used to be all of `CLASS_TO_TOOL`, so the consolidated run offered exactly
+        # what the per-class registry did - the right call when the question was
+        # "consolidated versus per-class". It is the wrong call for measuring the router
+        # the bot actually runs, and the first class-axis run showed why: **5 of 13
+        # over-answers were the model picking `compare_pals` and `get_breeding_combo`,
+        # classes this harness registers and the dispatcher does not have.** Those are
+        # not router failures, they are the harness measuring a system that does not
+        # exist - the mistake `unified_schema`'s own docstring warns about.
+        offered = (PRODUCTION_CLASSES if class_set == "production"
+                   else tuple(CLASS_TO_TOOL))
         r = GeminiRouter(kb.lexicon, locatable, model=model, extra_tools=extra,
                          thinking_level=thinking_level, timeout_s=TIMEOUT_S,
                          unified=unified,
-                         # All seven, so the consolidated run offers exactly the classes
-                         # the per-class run did. Fewer would measure the registry.
-                         classes=tuple(CLASS_TO_TOOL) if unified else None)
+                         classes=offered if unified else None)
         return r, r.tool_names
     r = ClaudeRouter(kb.lexicon, locatable, model=model, extra_tools=extra,
                      timeout_s=None)
     return r, [t["name"] for t in r._tools]
 
 
-def score_one(router, row: dict, kb: KnowledgeBase, entities: set[str]) -> dict:
+# query class -> the tool that answers it, for the class axis. Read from the router's own
+# translation table rather than restated, so a class that gains or renames a tool cannot
+# leave this scorer quietly measuring the old one.
+def _tool_for_class() -> dict[str, str]:
+    from palintel.routing_unified import CLASS_TO_TOOL
+
+    mapping = dict(CLASS_TO_TOOL)
+    # The branch batch (`add_branch_batch.py`, ids B##) predates the consolidated tool
+    # and labels its prompts with its own shorter words. Both vocabularies are alive in
+    # `prompts.json`, so both are accepted here rather than one being rewritten - those
+    # 31 prompts are already recorded, and renaming a field they carry would make
+    # `score_branches.py` and this file disagree about the same file.
+    mapping.update({
+        "counter": "plan_counters",
+        "drops": "find_pal_drops",
+        # A question carrying BOTH a counter cue and a location cue. The fast path
+        # chains, so the counter is the head of the call and that is what is scored -
+        # matching score_branches.py, which checks the chained spawn call separately.
+        "ambiguous": "plan_counters",
+    })
+    return mapping
+
+
+def score_class(row: dict, kind: str, tool_for: dict[str, str]) -> str | None:
+    """Whether the router picked the right CLASS. None when the prompt does not say.
+
+    **A second axis, reported beside the entity number and never folded into it**, so
+    every figure recorded in STATUS and the roadmap stays the number it was.
+
+    It exists because the entity axis cannot see class selection at all: `expected` is a
+    set of names, and six of the twelve production classes name nothing - so
+    `base_rating`, `general_knowledge` and an honest decline are the same event to it.
+
+    `unsupported` is its own verdict rather than a failure. The corpus was written for
+    assumption A5, which measured entity recognition and did not care whether a question
+    was answerable, so a third of it asks for breeding combos and stamina numbers. For
+    those, **declining is correct** and answering is the failure - which is the opposite
+    of every other row, and collapsing the two would have scored the router's best
+    behaviour as its worst.
+    """
+    want = row.get("expect_branch")
+    if not want:
+        return None
+    if want == "unsupported":
+        return "ok" if kind == "decline" else "over"
+    if kind == "decline":
+        return "declined"
+    return "ok" if kind == tool_for.get(want) else "wrong"
+
+
+def score_one(router, row: dict, kb: KnowledgeBase, entities: set[str],
+              tool_for: dict[str, str] | None = None) -> dict:
     """Route one transcript and score it. The scoring rules live here only."""
     heard = row["boosted_text"]
     expected = set(row["expected"])
@@ -119,6 +203,8 @@ def score_one(router, row: dict, kb: KnowledgeBase, entities: set[str]) -> dict:
     u = router.last_usage
     return {"id": row["id"], "heard": heard, "group": row.get("group", "?"),
             "expected": sorted(expected), "got": sorted(got), "kind": kind,
+            "expect_branch": row.get("expect_branch"),
+            "class_verdict": score_class(row, kind, tool_for or {}),
             # A transport failure is not a routing decision. Carried so the summary can
             # refuse to score a run that hit them rather than reporting a rate limit as
             # a bad router - which it did once, quietly, at 76.7%.
@@ -152,6 +238,11 @@ def main() -> None:
     # evaluation on cost grounds. Make the caller name the model they are paying for.
     ap.add_argument("--model", required=True,
                     help="claude-haiku-4-5 | gemini-3.6-flash | local:qwen3:8b | ...")
+    ap.add_argument("--classes", default="production", choices=["production", "all"],
+                    help="which query classes the unified tool offers. `production` "
+                         "is what the bot dispatches and is the default since "
+                         "2026-08-12; `all` reproduces the pre-2026-08-12 runs, "
+                         "which offered classes the dispatcher does not have.")
     ap.add_argument("--limit", type=int, default=0, help="score only the first N")
     ap.add_argument("--sample", type=int, default=0,
                     help="score a stratified slice of N, proportional across the "
@@ -176,6 +267,22 @@ def main() -> None:
                  f"  Run tools/eval/score_stt.py --condition {args.condition} first.")
 
     rows = json.loads(results_path.read_text(encoding="utf-8"))
+
+    # `expect_branch` lives on the PROMPT and results.json predates it, so it is joined
+    # by id rather than re-recorded. Recordings on disk stay valid - nothing about the
+    # audio or the transcript changes - and a prompt set labelled after a recording
+    # session still scores the session it describes.
+    prompts_path = EVAL / "prompts.json"
+    if prompts_path.exists():
+        by_id = {p["id"]: p.get("expect_branch")
+                 for p in json.loads(prompts_path.read_text(encoding="utf-8"))["prompts"]}
+        for r in rows:
+            if by_id.get(r["id"]):
+                r["expect_branch"] = by_id[r["id"]]
+        labelled = sum(1 for r in rows if r.get("expect_branch"))
+        print(f"  class labels: {labelled} of {len(rows)} transcripts carry one "
+              f"(run tools/eval/add_class_batch.py to widen)\n")
+
     # The no-entity prompts ("what should I research next") are kept, not filtered: they
     # are the false-positive test. Naming any entity there is a hallucinated entity.
     if args.limit:
@@ -200,7 +307,8 @@ def main() -> None:
     entities = set(kb.lexicon.canonical_names)
     router, tool_names = build_router(args.model, kb, think=args.think,
                                       thinking_level=args.thinking_level,
-                                      unified=args.unified)
+                                      unified=args.unified,
+                                      class_set=args.classes)
 
     # A prompt asking for an entity no registered tool can name is unanswerable by
     # construction, and the router is right to decline it. Scoring it as a miss measures
@@ -226,10 +334,11 @@ def main() -> None:
     if hasattr(router, "warmup"):
         print(f"warmup: model loaded in {router.warmup():.1f}s\n")
 
+    tool_for = _tool_for_class()
     scored = []
     t0 = time.perf_counter()
     for r in rows:
-        s = score_one(router, r, kb, entities)
+        s = score_one(router, r, kb, entities, tool_for)
         scored.append(s)
 
         mark = ("WRONG" if s["wrong"] else "OK  " if s["exact"]
@@ -285,6 +394,38 @@ def main() -> None:
               f"WRONG above, and scored as a hit before this run)")
     print(f"  lenient accuracy {hits}/{total} = {hits / total * 100:5.1f}%   "
           f"(any overlap with expected; the pre-v4 headline, kept for comparison)")
+
+    # ----------------------------------------------------- the class axis
+    #
+    # A SECOND number, printed beneath the first and never folded into it, so everything
+    # recorded in STATUS and the roadmap stays the figure it was. It measures what the
+    # entity axis structurally cannot: six of the twelve classes name nothing, so on that
+    # axis `base_rating`, `general_knowledge` and an honest decline are the same event.
+    classed = [s for s in scored if s["class_verdict"]]
+    if classed:
+        verdicts = Counter(s["class_verdict"] for s in classed)
+        ok = verdicts["ok"]
+        print("\n" + "-" * 68)
+        print(f"  correct CLASS    {ok}/{len(classed)} = {ok / len(classed) * 100:5.1f}%"
+              f"   (the tool it chose, not the entity it named)")
+        print(f"  wrong class      {verdicts['wrong']:4}   "
+              f"(answered, with the wrong tool)")
+        print(f"  declined         {verdicts['declined']:4}   "
+              f"(a class we HAVE, refused - an honest miss, not a wrong card)")
+        print(f"  over-answered    {verdicts['over']:4}   "
+              f"(answered something marked `unsupported`, where declining is correct)")
+        print(f"  unscored         {len(scored) - len(classed):4}   "
+              f"(no expect_branch: ambiguous by construction)")
+
+        per_class = {}
+        for s in classed:
+            b = per_class.setdefault(s["expect_branch"], [0, 0])
+            b[1] += 1
+            b[0] += s["class_verdict"] == "ok"
+        print("\n  by class:")
+        for cls, (right, n) in sorted(per_class.items(), key=lambda kv: -kv[1][1]):
+            flag = "  <- thin" if n < 10 else ""
+            print(f"    {cls:20}{right:4}/{n:<4} = {right / n * 100:5.1f}%{flag}")
     print(f"\n  latency  median {lat[len(lat) // 2]}ms   p95 {lat[int(len(lat) * 0.95) - 1]}ms"
           f"   total {time.perf_counter() - t0:.0f}s")
     # Cost covers every request the run billed, not the scored subset: the controls and
