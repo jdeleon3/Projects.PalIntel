@@ -4,8 +4,9 @@
 any line.** This file is the two-minute orientation; the roadmap is the record of how each
 number was arrived at.
 
-*Last updated 2026-08-11. `main` was current as of the previous session; the leader
-mapping and attribute search are on `design-and-phase0` and not yet promoted.*
+*Last updated 2026-08-11. **`main` is current** — everything described below is promoted,
+via PR #3 on 2026-08-11. `git log origin/main..HEAD` was 0 commits at the time of writing,
+which is the check worth re-running rather than trusting this line.*
 
 ---
 
@@ -226,7 +227,7 @@ markers on each card were walked too, outside the base, with deposits standing t
 | **Coal coverage** | 552 → 308 clusters. Cave coal is most of Palworld's coal and can no longer be asked for. Accept, or promote the dungeon feature? |
 | `maps` and `icons` | One flag pair, two features with very different risk. Separable. |
 | Card density | Resource cards gained "Also drops from", Pal cards gained "Ranch:". Editorial. |
-| ~~`main` is 101 commits behind~~ | **Resolved 2026-08-11.** It also turned out to have been promoted once already, via PR #1 on GitHub, which no local branch recorded — the "never promoted" line above was wrong from the day it was written. Worth knowing that this file can be confidently wrong about the repo itself, not only about the data. |
+| ~~`main` is 101 commits behind~~ | **Resolved 2026-08-11, and again the same day via PR #3** — `origin/main..HEAD` is 0. It also turned out to have been promoted once already, via PR #1 on GitHub, which no local branch recorded — the "never promoted" line above was wrong from the day it was written. **And the local `main` ref was stale by 37 commits after PR #3**, so `git branch -vv` said "behind" about a branch that was in fact ahead of everything local; fast-forwarded. Worth knowing that this file can be confidently wrong about the repo itself, not only about the data — and that the local ref is a cache, not the answer. Compare against `origin/main`. |
 
 ## Backlog
 
