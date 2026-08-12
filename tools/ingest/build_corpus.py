@@ -32,6 +32,30 @@ the best base layout"*, and the second is a real question players ask. That is a
 narrowing against the roadmap's Q7, and the honest trade for a corpus with no licence
 question attached and a citation on every line.
 
+## The source list was drawn from a survey, not from what happened to be extracted
+
+Worth recording, because the first version of this file was built from the 81 tables
+already sitting in `data/raw/tables/` — and the pak has 532. "I searched for it" is only
+as strong as the term searched for, which this project has written down twice.
+
+`dotnet run -- tables` lists every one. Filtered to anything named `*Text*` or `*Desc*`,
+there are 55, and all but three are either already used below, a **name table** this file
+reads as a resolver rather than as prose (item, Pal, skill, map-object, technology, UI),
+or a rich-text style definition.
+
+The three that were neither were exported and measured rather than assumed:
+
+| table | rows | verdict |
+|---|---|---|
+| `DT_PalShortDescriptionText` | 113 | **Japanese only** — no `/L10N/en/` copy exists in the pak |
+| `DT_BaseCampWorkerEventText` | 9 | **Japanese only**, same |
+| `DT_SystemLocalize` | 4 | **Japanese only**, and "Yes"/"No"/"OK" regardless |
+
+So nothing usable was missing. They are not left in `data/raw/tables/` afterwards: a
+Japanese `DT_*Text` sitting beside an English `en_DT_*Text` is exactly the collision that
+once published every item name in Japanese, and three files' worth of that trap is not
+worth keeping as evidence when one command re-derives it.
+
 ## Two exclusions worth stating
 
 * **NPC dialogue is left out** - 832 entries and 179k characters of it. It is in-character
@@ -230,9 +254,25 @@ def build(version: str) -> dict:
 
     # (table, key prefix, section label, how to title an entry).
     #
+    # **This is the source list**, and it is the whole of it - eight tables, every one
+    # from the pak, drawn from the full 532-table survey recorded in the docstring rather
+    # than from whatever was already extracted.
+    #
     # The section label is what a citation says out loud, so it is the player's word for
     # where this came from and not the table's: "Help guide", not
     # "en_DT_HelpGuideDescText".
+    #
+    # Kept counts against raw, measured 2026-08-12 (the gap is short entries, unresolved
+    # markup and untitled rows, all dropped rather than published):
+    #
+    #   Help guide      43 / 47      median 323 chars   <- the mechanics half
+    #   Journal note    48 / 64      median 629         <- the longest prose in the game
+    #   Paldeck        291 / 310     median 184         long description
+    #   Paldeck        299 / 305     median 216         first-activation / partner skill
+    #   Technology     265 / 381     median 115
+    #   Structure      403 / 501     median 103
+    #   Item         1,383 / 1,831   median 134         <- the bulk, and the thinnest
+    #   Skill          371 / 432     median 104
     SOURCES = [
         ("en_DT_HelpGuideDescText", "", "Help guide", first_line),
         ("en_DT_NoteDescText", "", "Journal note", first_line),
