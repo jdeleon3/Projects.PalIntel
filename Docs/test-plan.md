@@ -137,6 +137,8 @@ is `BaseCampAreaRange`, 3500 world units = 7.63 map units, read from the pak.
 | C8 | rate this base location | the other reading — where you are *standing*, not where you built | A card for your current position. **If it rates your base instead, the two readings are the wrong way round** |
 | C9 | *stand somewhere you think is bad and ask C8* | whether the criteria track your own judgement | Does 1-of-4 feel like a bad spot? This is the only check on whether the rating means anything |
 | C10 | *compare the card for base 2 with how it plays* | the marked-area signal | Base 2 scores 2 of 4 and is 76 units from any marked area. Does it in fact feel worse to run than base 1? |
+| C11 | what makes a good base | the general question — **no place, no save needed** | The four criteria with the source of every bar, then three things it says it **cannot** check. **The failure to watch for is the game's own *Base* help page instead**: that explains the Palbox and says nothing about siting, and it scores well on the words |
+| C12 | *read C11's "what I can't check" list* | whether the honesty is useful or is an apology | Buildability, raid safety, how it plays. Does naming them help you trust the other four, or does it just read as excuses? |
 
 ---
 

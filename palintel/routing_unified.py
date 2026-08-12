@@ -51,6 +51,7 @@ CLASS_TO_TOOL: dict[str, str] = {
     "base_site": "suggest_base_sites",
     "general_knowledge": "lookup_corpus",
     "base_rating": "rate_base_site",
+    "base_criteria": "explain_base_criteria",
 }
 
 # What the per-tool descriptions used to say, compressed into one line each. This is the
@@ -86,6 +87,10 @@ CLASS_HELP: dict[str, str] = {
                    "location\", \"rate this spot\". Set own_base true when they say MY "
                    "base, false when they mean where they are standing. The mirror of "
                    "base_site: that one searches for places, this one judges one",
+    "base_criteria": "what makes a base site good IN GENERAL, naming no place - \"what "
+                     "makes a good base\", \"what should I look for\". Needs no slots. "
+                     "NOT general_knowledge: the game's help text explains the Palbox "
+                     "and says nothing about choosing where to put one",
 }
 
 # What the dispatcher can actually answer. `boss_counter` joined on 2026-08-11: the
@@ -95,7 +100,7 @@ CLASS_HELP: dict[str, str] = {
 PRODUCTION_CLASSES = ("resource_location", "pal_location", "pal_drops",
                       "item_source", "boss_counter", "pal_search", "pal_info",
                       "tech_next", "base_site", "general_knowledge",
-                      "base_rating")
+                      "base_rating", "base_criteria")
 
 # The pak's element enum. Nine values, so the cost of carrying it is nothing beside the
 # 313-name Pal enum this module exists to stop duplicating. Written out rather than read
@@ -329,6 +334,9 @@ _ARGS: dict[str, tuple[str, ...]] = {
     # dispatcher resolves it from the save, because a coordinate a model produced would
     # be the one thing this project never lets one produce.
     "rate_base_site": (),
+    # Nothing at all: it names no place, no entity and takes no options. The one class
+    # here that answers with no player state whatsoever.
+    "explain_base_criteria": (),
 }
 
 
