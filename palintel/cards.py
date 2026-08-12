@@ -1015,6 +1015,51 @@ _BLOCKER_LINE = {key: f"{singular} {tail}"
 _CURRENCY_WORD = {"ancient": "ancient pt", "technology": "pt"}
 
 
+def technology_card(tech, requirements: list, unlocked: bool,
+                    match_score: float) -> Card:
+    """What one named technology needs. **Tier 2, amber, and every line is stated.**
+
+    Amber rather than green even though nothing here is computed advice: the *level* is a
+    floor inferred from what you have already unlocked, and one gate — lab research —
+    cannot be checked at all. A card carrying two things the save could not settle is not
+    the same kind of claim as a coordinate.
+
+    **Every gate is listed, not just the first one missing.** `_blocker` collapses to the
+    most fundamental failure because a ranked list needs one reason; "what do I still
+    need" is a different question, and naming only the first would send somebody to beat
+    a tower without mentioning they are also nine levels short.
+    """
+    if unlocked:
+        return Card(
+            title=f"You already have {tech.name}",
+            lines=[f"**{tech.name}** is unlocked in your save."
+                   + (f" It gives you {', '.join(tech.unlocks[:3])}."
+                      if tech.unlocks else "")],
+            colour=TIER_FACT,
+            footer=f"matched {match_score:.0%}")
+
+    outstanding = [r for r in requirements if r.met is False]
+    unknown = [r for r in requirements if r.met is None]
+    if not outstanding:
+        head = ("**You can research this now.**" if not unknown
+                else "**Everything I can check is met.**")
+    else:
+        head = (f"**Not yet** — {len(outstanding)} thing"
+                f"{'s' if len(outstanding) != 1 else ''} still in the way.")
+
+    lines = [head, ""]
+    for r in requirements:
+        lines.append(f"{_MARK[r.met]} {r.name}{SEP}_{r.detail}_")
+    if tech.unlocks:
+        lines += ["", f"Gives you: {', '.join(tech.unlocks[:3])}"]
+
+    footer = f"{tech.category}{SEP}matched {match_score:.0%}"
+    if any(r.met is None for r in requirements):
+        footer += f"{SEP}a ❔ is something the save can't tell me"
+    return Card(title=f"How to unlock {tech.name}", lines=lines,
+                colour=TIER_ADVICE, footer=footer)
+
+
 def progression_card(result: "ProgressionResult") -> Card:
     """What to research next. **Tier 2, amber, and the colour is the honest part.**
 

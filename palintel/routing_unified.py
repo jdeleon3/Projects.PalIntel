@@ -52,6 +52,7 @@ CLASS_TO_TOOL: dict[str, str] = {
     "general_knowledge": "lookup_corpus",
     "base_rating": "rate_base_site",
     "base_criteria": "explain_base_criteria",
+    "technology_lookup": "find_technology",
 }
 
 # What the per-tool descriptions used to say, compressed into one line each. This is the
@@ -93,6 +94,10 @@ CLASS_HELP: dict[str, str] = {
                      "makes a good base\", \"what should I look for\". Needs no slots. "
                      "NOT general_knowledge: the game's help text explains the Palbox "
                      "and says nothing about choosing where to put one",
+    "technology_lookup": "what ONE NAMED technology needs - \"how do I unlock the "
+                         "breeding farm\", \"how do I get the egg incubator\". Put the "
+                         "name in `technology` VERBATIM as spoken; it is matched here, "
+                         "not by you. Use tech_next instead when no technology is named",
 }
 
 # What the dispatcher can actually answer. `boss_counter` joined on 2026-08-11: the
@@ -102,7 +107,7 @@ CLASS_HELP: dict[str, str] = {
 PRODUCTION_CLASSES = ("resource_location", "pal_location", "pal_drops",
                       "item_source", "boss_counter", "pal_search", "pal_info",
                       "tech_next", "base_site", "general_knowledge",
-                      "base_rating", "base_criteria")
+                      "base_rating", "base_criteria", "technology_lookup")
 
 # The pak's element enum. Nine values, so the cost of carrying it is nothing beside the
 # 313-name Pal enum this module exists to stop duplicating. Written out rather than read
@@ -257,6 +262,18 @@ def unified_schema(resources: list[str], pals: list[str],
                         "player does NOT have yet. False otherwise."
                     ),
                 },
+                "technology": {
+                    "type": ["string", "null"],
+                    "description": (
+                        "technology_lookup only: the technology the question names, "
+                        "VERBATIM as spoken - \"the breeding farm\", \"egg "
+                        "incubator\". NOT resolved to an internal name: the dispatcher "
+                        "matches it against all 588. There is no enum here on purpose, "
+                        "because 588 names would cost more schema than the class is "
+                        "worth and 46 of them are ordinary English words. Null when no "
+                        "technology is named."
+                    ),
+                },
                 "own_base": {
                     "type": "boolean",
                     "description": (
@@ -291,7 +308,7 @@ def unified_schema(resources: list[str], pals: list[str],
                          "max_player_level", "pal_elements", "pal_work", "pal_level",
                          "mount_query", "mount_medium", "mount_unlock_level",
                          "mount_unowned", "tech_goal", "tech_ancient_only",
-                         "own_base"],
+                         "own_base", "technology"],
             "additionalProperties": False,
         },
     }
@@ -339,6 +356,9 @@ _ARGS: dict[str, tuple[str, ...]] = {
     # Nothing at all: it names no place, no entity and takes no options. The one class
     # here that answers with no player state whatsoever.
     "explain_base_criteria": (),
+    # Its name arrives as free text and is resolved by the dispatcher, so nothing is
+    # positional. See the `technology` slot for why there is no enum.
+    "find_technology": (),
 }
 
 
@@ -412,6 +432,9 @@ def unpack(name: str, args: dict[str, Any]) -> tuple[str, dict[str, Any]]:
             # mount question with Pals that happen to spawn at 60.
             if "level" in out and unlock is None:
                 out["player_level"] = out.pop("level")
+    if tool == "find_technology" and args.get("technology"):
+        out["technology"] = args["technology"]
+
     if tool == "rate_base_site":
         if args.get("own_base"):
             out["own_base"] = True

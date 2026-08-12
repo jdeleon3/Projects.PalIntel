@@ -2662,6 +2662,7 @@ own router.
 | Q6 progression | 3 | **0** |
 | Q4 base siting | 0 | **0** |
 | Q7 corpus lookup | 1 | **0** |
+| Q6 named lookup (later the same day) | 0 | **0** |
 
 `score_fast_path.py` is unchanged across the whole phase — 14/18 Q1, 43/49 Q2, zero wrong
 — and `score_branches.py` is unchanged at 16/16 written.
@@ -2675,6 +2676,50 @@ is not an intent" lesson read the other way: the opener has to name what is *wan
 And then the two branches composed: *"can you explain technology points"* is the single
 utterance the Q7 sweep claims, and it comes back with the game's own Ancient Technology
 help page.
+
+### Naming a technology — 588 names matched in exactly one place (2026-08-12)
+
+The test plan shipped with this written down as a **known gap**: *"naming a technology does
+not work — technology names are ordinary English and are deliberately out of the lexicon,
+the same call `item_source` made for items."* That reasoning was sound about the lexicon
+and wrong about the conclusion, and the difference is worth recording because it is a
+general shape, not a one-off.
+
+**The lexicon ranks globally.** Anything in it competes for every utterance, which is why
+151 item names are kept out — and technologies are worse: 46 have single-word names and
+twelve are ordinary English (`Mine`, `Ranch`, `Mill`, `Sword`, `Sign`). *"Where can I go
+mining"* would rank against the `Mine` technology on every query forever.
+
+**A branch-local matcher is not the lexicon.** It only ever sees the object of an unlock
+verb, so `Mine` is compared against *"a mine"* and against nothing else. The same names
+that are unusable globally are unambiguous in that one position. `item_source` reached the
+same capability by a different route — a 151-value enum in the schema, paid for on every
+request — and this costs nothing, because the name never enters the schema at all.
+
+**The verb alone was too broad, and the sweep caught it.** The first frame keyed on
+`unlock | research | get | build | make | craft`, and `get` made the branch claim *"where
+do I get high quality pal oil"* — an item question answered with a technology card, the
+well-formed-and-wrong failure this project refuses. The fix is a frame rather than a
+verb: *"how do I …"* or *"what do I need …"*. **"Where" asks for a place; "how" asks what
+it takes.** After it, the sweep over the 271 A5 transcripts claims zero.
+
+**Ties decline.** `squash` deletes digits on purpose — ASR splits invented words and the
+digits are noise — so all five tiers of `GrapplingGun`..`GrapplingGun5` collapse to one
+string and score 1.00 together. Several cakes do the same. The second-best-within-0.02
+guard sends those to the corpus rather than guessing a tier, which is the rule
+ROUTING_POLICY states for entities applied for the same reason: **a card cannot ask which
+one you meant.**
+
+**The card lists every gate, not the first missing one.** `_blocker` collapses to the most
+fundamental failure because a ranked list needs a single reason; *"what do I still need"*
+is a different question, and naming only the first gate would send someone to beat a tower
+without mentioning they are also nine levels short. Each gate is ✅ / ❌ / **❔** — lab
+research and an unread save are *unknown*, never *unmet*.
+
+Verified against the live save: *"how do I unlock the breeding farm"* → **You can research
+this now**, ✅ level 19 · ✅ 2 ancient technology points · ✅ ForestBoss tower defeated.
+*"How do I get the egg incubator"* → **You already have Egg Incubator**, green, no
+shopping list.
 
 ### One thing that was built in Phase 3, tested, and never connected
 

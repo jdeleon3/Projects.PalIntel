@@ -51,7 +51,9 @@ player they can afford something they cannot.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 from enum import Enum
 from functools import lru_cache
 from pathlib import Path
@@ -180,6 +182,113 @@ def load(version: str = "1.0.2") -> dict[str, Technology]:
         category=e["category"], unlocks=tuple(e["unlocks"]),
         name_is_id=e["name_source"] == "tech_id",
     ) for e in raw["entries"]}
+
+
+# How well a phrase must match a technology's name to be acted on.
+#
+# **High, and it can afford to be**, because this matcher is scoped to a branch rather
+# than global. The lexicon ranks against every utterance, which is why 151 item names are
+# kept out of it - `Arrow`, `Bone` and `Leather` would pull spurious candidates into
+# questions that name no item. Forty-six technologies have single-word names and twelve
+# are ordinary English (`Mine`, `Ranch`, `Mill`, `Sword`, `Sign`), so the same argument
+# applies with force.
+#
+# The difference is that this only ever runs on the object of an unlock verb - "how do I
+# unlock the X" - so `Mine` cannot be reached by "where can I go mining". A branch-local
+# matcher is safe where a global one is not, which is what lets these names be matched at
+# all without a 588-value enum on every request.
+NAME_MATCH = 0.80
+
+# Words that carry no part of a technology's name and are in the way of matching one.
+_LEADING = re.compile(r"^(?:the|a|an|my|some)\s+", re.I)
+
+
+def find(query: str, version: str = "1.0.2") -> tuple[Technology, float] | None:
+    """The technology a phrase names, with how well it matched. None below the floor.
+
+    Returns the score so a caller can report it and a card can be honest about a near
+    miss, in the same spirit as the lexicon returning candidates rather than a verdict.
+    """
+    from .knowledge import squash
+
+    wanted = squash(_LEADING.sub("", query.strip()))
+    if not wanted:
+        return None
+    scored = []
+    for tech in load(version).values():
+        # Match on the display name, and on the tech id too - eleven names fall back to
+        # their id, and "grappling gun" should still find `GrapplingGun`.
+        scored.append((tech, round(max(
+            SequenceMatcher(None, wanted, squash(tech.name)).ratio(),
+            SequenceMatcher(None, wanted, squash(tech.tech_id)).ratio()), 3)))
+    scored.sort(key=lambda s: (-s[1], s[0].name))
+    best = scored[0]
+    if best[1] < NAME_MATCH:
+        return None
+    # **Two plausible readings and nothing to separate them is a decline**, which is the
+    # rule ROUTING_POLICY states for entities and applies here for the same reason: the
+    # answer is a card, and a card cannot ask which one you meant. No two technologies
+    # share a display name today, so this fires only on a vague phrase - which is exactly
+    # when picking the first would be a coin flip.
+    if len(scored) > 1 and scored[1][1] >= best[1] - 0.02:
+        return None
+    return best
+
+
+@dataclass(frozen=True)
+class Requirement:
+    """One gate on a technology, and whether this save clears it."""
+    name: str
+    met: bool | None            # None when the save cannot say
+    detail: str
+
+
+def requirements(tech: Technology, state: PlayerTech,
+                 version: str = "1.0.2") -> list[Requirement]:
+    """Every stated gate on one technology, checked against the save.
+
+    The same four `_blocker` reads, spelled out one per line instead of collapsed to the
+    first failure - because "what do I still need" is a different question from "can I
+    research this", and a card that named only the first missing gate would send someone
+    to beat a tower without mentioning they are also nine levels short.
+    """
+    by_id = load(version)
+    unlocked = state.unlocked or frozenset()
+    level = state.level_floor(by_id)
+    pool = state.ancient_points if tech.currency == ANCIENT else state.points
+
+    out = [Requirement(
+        name=f"level {tech.required_level}",
+        met=None if level is None else tech.required_level <= level,
+        detail=("no player level known" if level is None
+                else f"you are at least {level}"),
+    ), Requirement(
+        name=f"{tech.cost} {'ancient ' if tech.currency == ANCIENT else ''}"
+             f"technology point{'s' if tech.cost != 1 else ''}",
+        met=None if pool is None else pool >= tech.cost,
+        detail="balance unknown" if pool is None else f"you have {pool}",
+    )]
+    for prereq in tech.prerequisites:
+        out.append(Requirement(
+            name=by_id[prereq].name if prereq in by_id else prereq,
+            met=prereq in unlocked,
+            detail="an earlier technology in the same chain",
+        ))
+    if tech.requires_tower:
+        beaten = state.towers_defeated
+        out.append(Requirement(
+            name=f"the {tech.requires_tower} tower defeated",
+            met=None if beaten is None else tech.requires_tower in beaten,
+            detail=("no save read" if beaten is None
+                    else "the game's own name for that fight"),
+        ))
+    if tech.requires_research:
+        # Lab research is a separate system this project cannot read from the save.
+        # Neither filtered on nor hidden - naming it is the only honest move.
+        out.append(Requirement(
+            name=f"lab research {tech.requires_research}",
+            met=None, detail="I can't read lab research from the save"))
+    return out
 
 
 def categories(version: str = "1.0.2") -> list[str]:

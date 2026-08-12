@@ -89,11 +89,16 @@ two currencies, and a **derived** player level.
   recommendation you would act on, or as an arbitrary slice?
 - The card ends with what it did *not* show — *"329 of 471 still locked are researchable
   now"*. Useful, or a wall of arithmetic?
-- **Known gap:** naming a technology does not work. *"How do I unlock the breeding farm"*
-  is not a class — technology names are ordinary English and are deliberately out of the
-  lexicon, the same call `item_source` made for items. Ask it anyway and see how it
-  behaves; if it is the phrasing you reach for naturally, that is the evidence for building
-  it.
+- **Naming a technology is now its own class** (`find_technology`, built after this plan's
+  first draft). It is the one place 588 names are matched, and they are matched *only* to
+  the object of an unlock verb — because twelve technologies are named ordinary English
+  (`Mine`, `Ranch`, `Mill`, `Sword`, `Sign`) and would wreck the lexicon if they ranked
+  globally. **The thing to probe is theft in both directions**: does it grab a question
+  that was about an item or a Pal, and does it decline one you meant for it?
+- **Ambiguity is a decline, and it will look like a bug.** Five tiers of grappling gun and
+  several cakes exist, and speech normalisation deletes the digits that separate them, so
+  those defer to the corpus rather than guess a tier. Judge whether the fallback answer is
+  useful or whether the silence is just annoying.
 
 | # | Say | Tests | Expect |
 |---|---|---|---|
@@ -103,7 +108,12 @@ two currencies, and a **derived** player level.
 | B4 | what weapon should I research next | goal filter → the game's own category | title *"— Weapon"*, Advanced Bow / Beam Sword / Guided Missile Launcher |
 | B5 | what should I research for my base | the player's word for `BuildObject` | title *"— BuildObject"*, structures |
 | B6 | what tech should I research for my mining pals | the one real collision — this says "pal" *and* a job word | a **technology** card, not a roster of mining Pals |
-| B7 | how do I unlock the breeding farm | the known gap above | probably a decline or a wrong class — **note what you would have wanted** |
+| B7 | how do I unlock the breeding farm | the named lookup, against your own save | **How to unlock Breeding Farm** — *"You can research this now"*, ✅ level 19, ✅ 2 ancient technology points, ✅ ForestBoss tower defeated |
+| B7a | how do I get the egg incubator | something you already have | *"You already have Egg Incubator"* — a green card, no shopping list |
+| B7b | what do I need for the breeding farm | the second frame, same class | the same card as B7 |
+| B7c | how do I unlock a grappling gun | ambiguity between five tiers | **not** a technology card — it should fall through to the corpus or decline. A confident tier here is the bug |
+| B7d | where do I get high quality pal oil | the theft this class already committed once | an **item** answer, never a technology card |
+| B7e | how do I unlock Anubis | a Pal wearing an unlock verb | a Pal answer or a decline — the species guard runs before the name matcher |
 | B8 | can you explain technology points | Q6 refusing a question it cannot answer | **not** a shopping list — this should reach Q7 (see D1) |
 
 ---
