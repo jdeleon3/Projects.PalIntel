@@ -48,6 +48,64 @@ def show(pipe: Pipeline, text: str, state: PlayerState, verbose: bool) -> None:
     print()
 
 
+def _configured_save_dir() -> str:
+    """`game.save_dir` out of config.local.toml, without loading the whole config.
+
+    `Config.load` raises when there is no Discord token, and this harness exists
+    precisely so the pipeline can be driven with no bot wiring at all - so reaching for
+    it here would make `--save` depend on a credential it has no use for.
+    """
+    import tomllib
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[1] / "config.local.toml"
+    if not path.exists():
+        return ""
+    try:
+        raw = tomllib.loads(path.read_text(encoding="utf-8"))
+    except tomllib.TOMLDecodeError:
+        return ""
+    return (raw.get("game", {}) or {}).get("save_dir", "").strip()
+
+
+def _state(args) -> PlayerState:
+    """Player state from a real save, from the flags, or empty.
+
+    Q5's counter filter and the whole of Q6 need save state, and before this the harness
+    had no way to supply any - so the two classes that most depend on it were the two
+    that could only be exercised through Discord. `--level` and `--at` still win over the
+    save, because they exist to reproduce a specific reading.
+    """
+    coords = tuple(float(v) for v in args.at.split(",")) if args.at else None
+    if not (args.save or args.save_dir):
+        return PlayerState(player_level=args.level, player_coords=coords)
+
+    from pathlib import Path
+
+    from .saves import SaveWatcher
+
+    save_dir = args.save_dir or _configured_save_dir()
+    if not save_dir:
+        sys.exit("--save needs game.save_dir in config.local.toml, or pass --save-dir")
+    watcher = SaveWatcher(Path(save_dir))
+    if not watcher.poll():
+        sys.exit(f"could not read a player save: {watcher.error}")
+    # Synchronously, and it takes seconds. Fine here and emphatically not on the bot's
+    # query path, which is why the bot polls it on a timer instead.
+    watcher.poll_roster()
+    if watcher.roster is None:
+        print(f"  (no roster: {watcher.roster_error})", file=sys.stderr)
+    snapshot = watcher.snapshot
+    print(f"  save: {watcher.describe()}{'' if watcher.roster is None else ', ' + watcher.describe_roster()}"
+          f", {len(snapshot.technologies)} technologies", file=sys.stderr)
+    return PlayerState(
+        player_level=args.level,
+        player_coords=coords or watcher.player_coords(),
+        owned_species=watcher.roster,
+        tech=watcher.player_tech(),
+    )
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("utterance", nargs="*", help="one-shot query; omit for interactive")
@@ -64,6 +122,14 @@ def main() -> None:
     ap.add_argument("--status", action="store_true", help="print loaded data and exit")
     ap.add_argument("--level", type=int, help="simulate player level")
     ap.add_argument("--at", help="simulate position as 'x,y'")
+    # A flag rather than an optional-value option: `--save` with `nargs="?"` swallows the
+    # first word of the utterance, because the positional is `nargs="*"` and argparse
+    # resolves that ambiguity the wrong way round for this harness.
+    ap.add_argument("--save", action="store_true",
+                    help="read config.local.toml's save for position, roster and "
+                         "technologies")
+    ap.add_argument("--save-dir", metavar="DIR",
+                    help="read this save directory instead of the configured one")
     ap.add_argument("-v", "--verbose", action="store_true",
                     help="show routing and candidate ranking")
     args = ap.parse_args()
@@ -84,10 +150,7 @@ def main() -> None:
         print(json.dumps(pipe.kb.summary(), indent=2))
         return
 
-    state = PlayerState(
-        player_level=args.level,
-        player_coords=tuple(float(v) for v in args.at.split(",")) if args.at else None,
-    )
+    state = _state(args)
 
     if args.utterance:
         show(pipe, " ".join(args.utterance), state, args.verbose)
