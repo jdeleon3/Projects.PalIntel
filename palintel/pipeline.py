@@ -716,6 +716,37 @@ class Pipeline:
                     state.player_coords)
             return Outcome([card], call, candidates, illustrate=draw)
 
+        if call.name == "find_technology":
+            from . import progression
+
+            # The fast path resolves the name and passes an id; a model passes the words
+            # it heard, VERBATIM, and the resolving happens here. Same shape as a counter
+            # target: the constrained lookup belongs on this side of the boundary, and it
+            # is what lets 588 ordinary-English names be matched with no enum on the wire.
+            try:
+                tech = progression.load().get(call.args.get("tech_id") or "")
+                score = 1.0
+                if tech is None and call.args.get("technology"):
+                    found = progression.find(call.args["technology"])
+                    tech, score = found if found else (None, 0.0)
+            except progression.ProgressionError:
+                return self._decline(
+                    Decline(reason="I don't have the technology table loaded"),
+                    candidates)
+            if tech is None:
+                return self._decline(
+                    Decline(reason="I don't know that technology"), candidates)
+
+            state_tech = state.tech or progression.PlayerTech()
+            unlocked = tech.tech_id in (state_tech.unlocked or frozenset())
+            reqs = progression.requirements(tech, state_tech)
+            log.info("find_technology(%s) -> unlocked=%s, %d requirements",
+                     tech.tech_id, unlocked, len(reqs))
+            self._remember(who, call, {"technology": tech.name}, "requirements",
+                           enabled=remember)
+            return Outcome([cards.technology_card(tech, reqs, unlocked, score)],
+                           call, candidates)
+
         if call.name == "suggest_next_unlock":
             from . import progression
 

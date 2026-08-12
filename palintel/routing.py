@@ -457,6 +457,27 @@ _TECH_CUES = re.compile(
 # opener has to name what is wanted, and here what is wanted is advice about what to do
 # next. The two explanatory prompts have no frame and go to the model, which can read
 # them; the three that survive are all answerable by the card.
+# "How do I unlock the breeding farm" - a NAMED technology, which is a different question
+# from "what should I research next" and was declining until 2026-08-12.
+#
+# The verb has to take an object, and the object is captured rather than matched here:
+# 588 technology names include `Mine`, `Ranch`, `Mill`, `Sword` and `Sign`, so the words
+# are far too ordinary to go anywhere global. `progression.find` matches them, scoped to
+# this branch, which is what makes ordinary words safe - "where can I go mining" never
+# reaches it.
+# **The frame has to be HOW, not WHERE**, and the sweep is what settled that. With the
+# verb alone the branch claimed *"where do I get high quality pal oil?"* - an item-source
+# question, answered with a technology. "Where do I get X" asks for a place or a source;
+# "how do I get X" asks what it takes. `get`, `build`, `make` and `craft` are all too
+# broad to stand without it, and `unlock` and `research` are only safe because nothing
+# else in the product uses those words about a named thing.
+_TECH_NAMED = re.compile(
+    r"\bhow (?:do|can) i\b[^.?!]{0,20}?"
+    r"\b(?:unlock|research|get|build|make|craft)\s+(?:the\s+|a\s+|an\s+)?"
+    r"(?P<name>[a-z0-9' -]{3,40}?)\s*[?.!]?$"
+    r"|\bwhat do i need (?:for|to unlock|to research|to build)\s+"
+    r"(?:the\s+|a\s+|an\s+)?(?P<name2>[a-z0-9' -]{3,40}?)\s*[?.!]?$", re.I)
+
 _TECH_ASK = re.compile(
     r"\bshould i\b|\bwhat (?:can|could) i\b|\bwhat to\b|\bwhat's next\b"
     r"|\bnext\b|\bworth\b|\bspend\b|\brecommend\w*\b|\bpriorit\w*\b", re.I)
@@ -1207,6 +1228,47 @@ class StubRouter:
                         rationale=f"base rating cue ({where})"
                                   + (f", for {', '.join(wanted)}" if wanted else ""))
 
+    def _tech_named_call(self, utterance: str,
+                         candidates: list[Candidate]) -> "ToolCall | None":
+        """`find_technology` when the utterance names one and asks how to get it.
+
+        Checked before `_tech_call`, which asks what to research *next*: "how do I unlock
+        the breeding farm" carries the word `unlock` and would otherwise fall to a
+        recommendation frame it does not have, and decline - which is what it did until
+        this branch existed.
+
+        **The name is resolved here rather than in the lexicon**, and that is the whole
+        design. Forty-six technologies have single-word names and twelve are ordinary
+        English (`Mine`, `Ranch`, `Mill`, `Sword`); in the lexicon they would rank against
+        every utterance, which is exactly why 151 item names are kept out of it. Scoped to
+        the object of an unlock verb they are safe, and it costs no schema tokens at all -
+        unlike `item_source`, which pays a 151-value enum on every request for the same
+        capability.
+        """
+        if not self._progression:
+            return None
+        body = _ADDRESS.sub("", utterance)
+        m = _TECH_NAMED.search(body)
+        if not m:
+            return None
+        # A Pal named confidently means this is not a technology question - "how do I
+        # unlock Anubis" is about catching one. Checked before the name matcher runs, so
+        # a species can never be matched against a technology.
+        top = candidates[0] if candidates else None
+        if top is not None and top.kind == "pal" and top.score >= self._pal_floor:
+            return None
+
+        from . import progression
+        try:
+            found = progression.find(m.group("name") or m.group("name2") or "")
+        except progression.ProgressionError:
+            return None
+        if found is None:
+            return None
+        tech, score = found
+        return ToolCall(name="find_technology", args={"tech_id": tech.tech_id},
+                        rationale=f"named technology {tech.name!r} at {score:.2f}")
+
     def _tech_call(self, utterance: str,
                    candidates: list[Candidate]) -> "ToolCall | None":
         """`suggest_next_unlock` when the utterance asks what to research.
@@ -1376,6 +1438,12 @@ class StubRouter:
         # research for my mining pals" carries a job word AND the word "pal", so the
         # attribute branch would claim it and answer a technology question with a roster.
         # Nothing goes the other way: no attribute cue mentions research or unlocking.
+        # A NAMED technology first: "how do I unlock the breeding farm" carries `unlock`
+        # and no recommendation frame, so the branch below would leave it to decline.
+        named_tech = self._tech_named_call(utterance, candidates)
+        if named_tech is not None:
+            return named_tech
+
         tech = self._tech_call(utterance, candidates)
         if tech is not None:
             return tech
