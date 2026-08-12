@@ -2468,6 +2468,12 @@ phase containing it reported as blocked.
 datasets are new, and the exit criteria below are met by construction rather than by
 observation — the same state Q5 was in after Phase 3, and the same warning applies.
 
+**Three further classes landed later the same day**, taking `PRODUCTION_CLASSES` to 13:
+base rating, base criteria, and the named technology lookup. Two pieces of instrumentation
+landed with them — a per-query spend ledger and the session analyser that finally reads
+the capture files. All five are recorded in their own subsections below. **None of it has
+been played either**, and every subsection says so.
+
 **Q6 progression (Tier 2)** — **built.**
 - Tech tree ingest; validate the prerequisite graph
 - `suggest_next_unlock` — deterministic candidate set, advisory ranking against a goal
@@ -2659,10 +2665,24 @@ own router.
 
 | branch | claimed | stolen from another class |
 |---|---|---|
-| Q6 progression | 3 | **0** |
-| Q4 base siting | 0 | **0** |
-| Q7 corpus lookup | 1 | **0** |
-| Q6 named lookup (later the same day) | 0 | **0** |
+| Q6 progression (`suggest_next_unlock`) | 3 | **0** |
+| Q4 base siting (`suggest_base_sites`) | 0 | **0** |
+| Q7 corpus lookup (`lookup_corpus`) | 1 | **0** |
+| Base rating (`rate_base_site`) | 0 | **0** |
+| Base criteria (`describe_base_criteria`) | 0 | **0** |
+| Q6 named lookup (`find_technology`) | 0 | **0** |
+
+The last three branches landed after the first three and the whole table was **re-swept on
+the shipping configuration** rather than carried forward, so every row is one run of the
+same router: `find_pal_spawns` 43, `find_resource_nodes` 14, `find_pal_drops` 12, plus the
+four above. The three progression claims are *"what should I research next"*, *"what should
+I do about technology points"* and *"is it worth worrying about my next research?"* — all
+three name a recommendation, which is what the cue was narrowed to require.
+
+**Zero claims is a weaker result for the four newest branches than it looks**, and it is
+worth saying so: the A5 corpus was recorded before any of them existed, so nothing in it
+asks about a base site or names a technology. The sweep proves they do not *steal*. It
+proves nothing at all about whether they *fire*.
 
 `score_fast_path.py` is unchanged across the whole phase — 14/18 Q1, 43/49 Q2, zero wrong
 — and `score_branches.py` is unchanged at 16/16 written.
@@ -2676,6 +2696,196 @@ is not an intent" lesson read the other way: the opener has to name what is *wan
 And then the two branches composed: *"can you explain technology points"* is the single
 utterance the Q7 sweep claims, and it comes back with the game's own Ancient Technology
 help page.
+
+### Rating a place instead of searching for one (2026-08-12)
+
+Q4 as shipped answers *"where should I put a base for ore and coal"* — it ranks candidates
+against each other. The question that came back was the mirror of it: *"how good is my base
+location"*, *"rate this base location"*. Same data, opposite direction, and a genuinely
+different class rather than a re-phrasing of the first: one searches, the other judges a
+coordinate the player already cares about.
+
+**No invented score, and that is the whole design.** `min_player_level` has shipped
+uncalibrated since Phase 1 and STATUS has listed it as a known defect ever since, so a
+1-10 base score was never on the table. Instead each criterion is **pass / fail /
+unknown** against a bar taken from the game, and the headline is a **count of criteria
+met** — never a weighted total. A count claims four things were checked and three held. A
+weighted score would claim flatness is worth 0.3 of a base site, which nobody has measured.
+
+**Three reference sets, and picking the wrong one produces a confident, useless answer.**
+
+| criterion | scored against | why that set |
+|---|---|---|
+| Flat ground, water | the **32 areas the game marks** `BP_BaseCampPopularArea_C` | measured, they hold a median of three deposits and a median roughness of 24 cm — the designers are marking flat ground near water |
+| Resources, nothing named | **every node cluster on the map** | "better than half the places you could build" |
+| Resources, one named | **clusters of that resource only** | the median site holds three deposits of anything; the median coal site holds one coal. Nine coal is unremarkable against the first distribution and the best there is against the second |
+
+That last row is the resource-narrowed variant — *"is this a good spot for a quartz
+base"* — and it is the **one place a named entity is a filter rather than a reason to
+abstain**, which is worth flagging against ROUTING_POLICY's usual direction. The card still
+lists *everything* in range whatever was asked for: a spot chosen for quartz that also sits
+on 30 stone is information the player wants and did not think to ask for. Only the
+criterion narrows. Several named resources fall back to the map-wide distribution, because
+a "quartz and coal" reference set does not exist and inventing one by summing two
+percentiles would be arithmetic on ranks.
+
+**Two things the build got wrong first.**
+
+- **The ranking put marked areas above deposits** and returned 2-coal sites over 9-coal
+  ones. Flat ground is a *precondition*, not a ranking term, and the marked-area flag is a
+  *tie-break*, not a reason. Order is now `(missing resources, flat, deposits, marked,
+  distance)`.
+- **The water bar contradicted itself on the card** — ❌ beside *"better than 78% of
+  them"*. The bar was one base radius; the marked areas sit a **median of 23 units** from
+  water, three times that. A bar stricter than the standard the designers build to fails
+  spots they picked themselves. The bar is now theirs.
+
+**Coordinates are accepted directly** — *"rate (185, -475)"* — and that path needs no save
+at all, which makes it the only base class anyone can exercise without a running game.
+**Off-map coordinates decline** rather than scoring 0 of 4: no resources, no water, no
+marked area reads as a judgement about a bad spot instead of *"that is not on my map"*.
+
+**And a third class came out of the same question.** *"What makes a good base"* is about no
+place at all, and it could be answered two ways — *"these are the four things that make a
+good base"*, which is a claim about how Palworld works and would publish somebody's opinion
+as fact, or *"these are the things I check, here is each bar, here is where the bar came
+from, and here is what I cannot check"*, which is a claim about this system's own method.
+Only the second has a source behind every line, and it is what makes every rating card
+interpretable. It names three gaps explicitly — buildability, raid safety, and anything
+about how a base *plays* — because a list of four criteria reads as a complete account of
+the problem and is not one. The in-game help guide has a *Base* entry and it explains the
+Palbox; it says nothing about choosing where to put one, which is why the corpus lookup
+declines this question rather than quoting it.
+
+**The honest limit:** n=32 is a small yardstick. Percentiles move in steps of about three
+points and only 15 of the 32 have a measurable roughness at all. It is a calibration taken
+from the game rather than invented, and it is still not a large sample. Listed under
+Known-uncalibrated in STATUS.
+
+### The router picks a CLASS, and nothing had ever measured that (2026-08-12, $0.29)
+
+`score_router.py` has always scored **entity resolution** — `expected` is a set of names.
+Six of the then-twelve production classes name no entity at all, so on that axis
+`base_rating`, `general_knowledge` and an honest decline are the same event. **The 88.8%
+headline was a number about naming things**, and it had been read as a number about routing
+for months.
+
+| | |
+|---|---|
+| Correct entity, `--sample 60` | 89.7% exact, 3.4% wrong — matching the recorded 88.8% / 3.9%, which is what validated the harness |
+| **Correct class** | **69.2%** (36 of 52) |
+| Over-answered | 13 |
+| Prompts now class-labelled | 930 of 1,031 |
+
+**The first thing it found was about the harness, not the router.** Five of the thirteen
+over-answers were the model choosing `compare_pals` and `get_breeding_combo` — classes
+`score_router.py` registers and **the dispatcher does not have**. That is precisely the
+mistake `unified_schema`'s own docstring warns about, committed in the file that warns
+about it, and it is the fourth appearance of *"I searched for it is only as strong as the
+term searched for"* wearing different clothes: offering fifteen classes measures the
+registry, not the router. `--classes` now defaults to `production`.
+
+**The remaining eight are real and they are one shape:** `pal_info` absorbing any question
+that names a Pal and does not fit a narrower class — *"how much stamina does Rinjishi
+have"*, *"is loopmoon worth levelling up"*. Whether a summary beats a decline there is a
+judgement, now a measured one, and it is in front of the user as an open decision.
+
+**A third of the eval corpus asks for something the product cannot do** — 344 prompts about
+breeding combos, stamina and whether a Pal is worth levelling, labelled `unsupported`,
+**where declining is correct and answering is the failure.** That is the opposite of every
+other row and was invisible before the class axis existed. `unsupported` at 7% is the one
+result that meets the written bar for spending the full ~$1.40 run, and it is a
+decline-policy question rather than a routing bug.
+
+**The decision rule is now written into `score_router.py`'s header** rather than left to
+judgement after the fact: a wrong-class rate above ~10%, or any class under 50% on n≥10.
+That ordering — rule first, run second — is the habit CLAUDE.md asks for and this is the
+first run to follow it.
+
+### What gameplay costs, logged per query (2026-08-12)
+
+**Only the router costs money.** STT is local and free since ADR-0015, map crops and icons
+are local CPU, every card is templated. So one ledger over one caller covers the whole bill.
+
+The reason it exists is a specific past failure: **the roadmap records an eval that reported
+a 13-point router regression which was in fact a depleted prepaid balance.** Every HTTP 429
+arrived as a `Decline` and scored as an honest miss. A number on `/palintel status` is what
+turns that from a mystery into a line item.
+
+One row per query in `data/sessions/<session>/costs.jsonl`, beside the capture clips.
+**Every query is logged, billed or not**, so the fast-path share falls out of the same file
+rather than needing a second one — and `billed` is stored explicitly rather than inferred
+from `usd == 0.0`, because an unpriced model also costs nothing and the two are different
+facts. Evals write there too, under an `eval-<date>` session, since they are the dominant
+spend and a balance that ignored them would be wrong in the direction that matters.
+
+**No cached total.** Totals are computed by scanning the session files, which are a few
+kilobytes each. This project has been bitten repeatedly by a recorded number going stale —
+`main` being behind, the breeding gate, the roster — and a spend total is exactly the kind
+of thing that would quietly drift from the rows it claims to summarise.
+
+It never raises into the answer path, the rule `capture.py` and `saves.py` already follow.
+
+**The balance is configured and currently 0**, so nothing is deducted and no warning can
+fire. That is an open decision in STATUS, not an oversight: only the user knows what was
+loaded onto the key.
+
+### Reading the capture sessions — the rephrase label is not free (2026-08-12)
+
+`capture.py` has written clips and a log since 2026-08-11 and **nothing had ever read
+them.** The findings STATUS reports from that session were extracted by hand, and it
+showed: of the ten manglings the session produced, **three reached the lexicon** — the one
+failure run somebody worked through — and seven were still sitting in the log.
+
+**The capture design called a rephrase "a free negative label"**: a failed query followed
+within ~60s by a similar one that succeeds gives `(bad audio → correct entity)` at no
+interaction cost. Measured against the only session that exists, it is not free.
+
+| pair | frame similarity | verdict |
+|---|---|---|
+| "beat Exo" → "beat Axel" | 0.81 | real |
+| "about Lening" → "about Leneen" | 0.88 | real |
+| "Gilderoy…drop" → "Gidra…drop" | 0.72 | real |
+| "against Majoran" → "against Bjorn" | **0.76** | **not a pair** |
+| "about Lani" → "about Orserk" | 0.69 | not a pair |
+
+**The worst false positive scores higher than the best true positive.** Frame similarity
+cannot separate them, and neither can similarity to the resolved entity (real pairs
+0.29–0.50, false ones up to 0.44). Nothing in the feature set does, at n=1 session. So the
+analyser **proposes and does not decide** — the same posture `harvest_aliases.py` already
+takes, for the same stated reason: which manglings deserve permanence is a judgement about
+one speaker's voice.
+
+**The human feedback is the anchor, not the inference.** Nine feedback rows exist in that
+session — 6 `misheard`, 2 `wrong_entity`, 1 `wrong_class` — and they are ground truth
+rather than the router's opinion of itself. A `misheard` row says *this transcript was
+wrong* with no guessing at all, narrowing the candidate set from 41 utterances to 6 before a
+single similarity is computed. That inverts the design's emphasis and is worth stating
+plainly: **the free label is the button press, and the rephrase is the hypothesis it makes
+checkable.**
+
+The window is **90s, from the data rather than the design's ~60s** — the clearest rephrase
+in the session is 64s apart, and a 60s window would have discarded it.
+
+**Failure runs are counted once.** Several attempts at one hard name, none answered, is
+worth *more* than a single miss — it is several pronunciations of one word — and must not
+skew the corpus by being counted several times. A run emits `expected: null` unless a later
+success resolves it; guessing the name from a run of failures is writing fiction.
+
+**Two defects in `harvest_aliases.py` surfaced immediately.**
+
+- **It auto-accepted `majoran → Bjorn`, which is wrong.** Its four checks validate the
+  *surface form* — length, edit distance, collision against the lexicon — and say nothing
+  about whether the target is the right entity. Gameplay candidates are now always held for
+  review, whatever they score.
+- **The `review` pile was computed and never printed.** Pre-existing, and invisible for as
+  long as nothing populated it.
+
+**One reading of the session log was mine and it was wrong.** I first reported zero human
+feedback because I looked for a `kind` key; the rows carry `feedback`. Nine rows were there
+the whole time. Worth recording next to the rest, because it is the same shape as the
+`patchnotes` tag and the three actor prefixes: the search term was wrong and the empty
+result read as an answer.
 
 ### Naming a technology — 588 names matched in exactly one place (2026-08-12)
 

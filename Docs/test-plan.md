@@ -6,10 +6,12 @@ criterion has already been measured and failed. This document is the inventory o
 everything that is **untested, or was tested under conditions that invalidate the
 reading** — and it is the larger of the two lists.*
 
-**Why there is so much.** Three classes shipped on 2026-08-12 and none has answered a real
-question. Four more shipped on 2026-08-11 *after* the session that was supposed to exercise
-them. And every counter answer in that session was produced with the owned-Pal roster
-disconnected, so those readings measured something other than what they appeared to.
+**Why there is so much.** **Six** classes shipped on 2026-08-12 and none has answered a real
+question — Q6 progression, Q4 base siting, Q7 corpus, base rating, base criteria and the
+named technology lookup. Four more shipped on 2026-08-11 *after* the session that was
+supposed to exercise them. And every counter answer in that session was produced with the
+owned-Pal roster disconnected, so those readings measured something other than what they
+appeared to.
 
 ---
 
@@ -118,15 +120,28 @@ two currencies, and a **derived** player level.
 
 ---
 
-## Block C — Q4 base siting, never played, and one item needs your legs
+## Block C — Q4 base siting *and* the two rating classes, never played, and one item needs your legs
 
-**What is being tested:** where to put a base so named resources fall inside it. The radius
-is `BaseCampAreaRange`, 3500 world units = 7.63 map units, read from the pak.
+**What is being tested:** three classes over one dataset. **Siting** searches for a place
+(*"where should I put a base for ore and coal"*), **rating** judges one you name (*"how good
+is my base location"*, *"rate (185, −475)"*, *"is this a good spot for a quartz base"*), and
+**criteria** describes the method with no place involved (*"what makes a good base"*). The
+radius is `BaseCampAreaRange`, 3500 world units = 7.63 map units, read from the pak.
 
 **Known issues / watch for:**
-- **The card cannot tell you if the ground is buildable.** Nothing in the game files says
-  whether a spot is flat, underwater, or in a no-build zone. Every card says so. **C5 is
-  the test that decides whether this class is worth having.**
+- **Buildability is the one thing none of them can check**, and it is now the *whole*
+  caveat rather than half of it. Flatness **is** measured — the height spread of every
+  placed actor inside the radius, against a bar set at the 75th percentile of the 32 spots
+  the game marks itself — but nothing extracted says whether a coordinate sits in a
+  no-build zone. **C5 is the test that decides whether this class is worth having.**
+- **The flatness figure is a proxy for terrain, not terrain.** It measures the ground where
+  objects were *placed*, so a genuinely empty stretch reads as "nothing near enough to
+  measure" rather than flat. Walk to a suggested coordinate before trusting it.
+- **A rating is relative and the yardstick is 32 spots.** Percentiles move in steps of
+  about three points and only 15 of the 32 have a measurable roughness at all. A
+  percentile that looks suspiciously round probably is.
+- **The score is a count, never a weighted total.** *"3 of 4"* means three checks passed,
+  not that the site is 75% good. If a card reads like a rating out of ten, say so.
 - Near-duplicate sites are collapsed — deposits cluster tightly, so the raw top three were
   coordinates five map units apart. If you see two suggestions that are obviously the same
   place, the deduplication is too loose.
@@ -290,7 +305,7 @@ observed.
 text over ≥ 30 answered queries of **each** kind, and it was measured on 2026-08-11 at
 **6.5s voice p95** with route p50 2.83s — 71% of the total.
 
-Phase 4 added three fast-pathable classes, which should move it in the right direction, but
+Phase 4 added six fast-pathable classes, which should move it in the right direction, but
 the roadmap's arithmetic still holds: p95 needs under 5% of queries reaching the model, and
 `item_source` cannot be fast-pathed while items stay out of the lexicon. **The structural
 blocker is unchanged**, so expect this to fail again unless the mix has shifted a lot.
@@ -303,10 +318,18 @@ is what clears the text half; `/palintel status` shows `⏳ n/30` per kind.
 ## Afterwards
 
 - `/palintel status` — and check the **Roster:** line specifically. It is new, and it is
-  the thing whose absence made Block A necessary.
+  the thing whose absence made Block A necessary. The **spend** line is new too; it will
+  read `$0.0000` of a `$0.00` balance unless `cost.balance_usd` is set, which is a decision
+  waiting on you rather than a bug.
 - `/palintel recent` — the last 12 queries with routing time. `~0.1s` is the fast path.
 - **Press the feedback buttons in the same session.** The view does not survive a restart.
+  These are worth more than any other output of the session: `analyse_session.py` treats a
+  button press as ground truth and everything else as a hypothesis, so six labels narrow 40
+  utterances to 6 before a single similarity is computed.
 - Note verbatim anything mis-heard. The transcript is worth more than the fact of the miss.
+- Afterwards, run `python tools/eval/analyse_session.py` — failure runs, rephrase pairs and
+  alias candidates, all held for review rather than applied. The last session's log sat
+  unread for a day and seven of its ten manglings never reached the lexicon.
 
 **What this session should produce, in order of value:**
 

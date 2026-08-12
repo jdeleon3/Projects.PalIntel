@@ -124,7 +124,7 @@ phrases that name what is being asked for.
 
 | | |
 |---|---|
-| Fast-path theft, all three new branches | **0** stolen over the 271 A5 transcripts, swept against the same config with each branch off |
+| Fast-path theft, all **six** new branches | **0** stolen over the 271 A5 transcripts, re-swept on the shipping config after the last one landed. Note what this does *not* say: the A5 set predates these classes, so nothing in it asks about a base site or names a technology. It proves they do not steal, not that they fire |
 | `score_fast_path.py` across the phase | unchanged — 14/18 Q1, 43/49 Q2, zero wrong |
 | Tier 3 retrieval, n=33 | 17 right, 11/11 out-of-corpus declined, **0 wrong**, 5 missed |
 | Save join | 117 of 118 unlocked technologies join the table; the one that does not is `PalBox`, which is granted rather than researched |
@@ -154,8 +154,8 @@ have to beat.
 ### The router picks a CLASS, and nothing had ever measured that
 
 **Measured 2026-08-12 for the first time, at a cost of $0.29.** `score_router.py` has
-always scored *entity resolution* — `expected` is a set of names — and six of the twelve
-production classes name no entity at all, so on that axis `base_rating`,
+always scored *entity resolution* — `expected` is a set of names — and six of the
+then-twelve production classes name no entity at all, so on that axis `base_rating`,
 `general_knowledge` and an honest decline are the same event. The 88.8% headline is a
 number about naming things.
 
@@ -170,7 +170,7 @@ number about naming things.
 over-answers were the model picking `compare_pals` and `get_breeding_combo` — classes
 `score_router.py` registers and **the dispatcher does not have**. That is the mistake
 `unified_schema`'s own docstring warns about, in the file that warns about it. `--classes`
-now defaults to `production` (12) rather than all (15).
+now defaults to `production` — 12 at the time of the run, 13 today — rather than all (15).
 
 **The remaining eight are real and they are one shape:** `pal_info` absorbing any question
 that names a Pal and does not fit a narrower class — *"how much stamina does Rinjishi
@@ -183,7 +183,10 @@ breeding combos, stamina and whether a Pal is worth levelling. They are labelled
 opposite of every other row and was previously invisible.
 
 *Not yet measured:* `base_rating`, `base_criteria` and `pal_search` have prompts (batch
-`C##`) and no recordings. They need a session.
+`C##`) and no recordings. They need a session. **`technology_lookup` has neither** — it
+landed after this run, taking production to **13** classes, so `--classes production` now
+offers a class the corpus has no prompts for. Next class batch should cover it; the
+deterministic sweep over the 271 A5 transcripts is all it has today.
 
 ### Not measured — and cannot be, without you
 
