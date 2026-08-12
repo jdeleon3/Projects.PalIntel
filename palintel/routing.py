@@ -1167,19 +1167,45 @@ class StubRouter:
         # answers, so it is exactly what a follow-up to that card looks like.
         if not (_RATE_SUBJECT.search(body) or coordinates(body)):
             return None
-        if self._subject(candidates) is not None:
+
+        # **A named RESOURCE is allowed here, unlike every other no-entity branch**, and
+        # it is the filter rather than a reason to abstain: "is this a good spot for a
+        # quartz base" is this question with a subject. A named PAL still abstains -
+        # "how good is Anubis" is an info question and always was.
+        wanted, weak = [], False
+        for c in candidates:
+            if c.score < self._floor:
+                continue
+            if c.kind == "resource":
+                if c.canonical in set(self._locatable):
+                    if c.canonical not in wanted:
+                        wanted.append(c.canonical)
+                else:
+                    # Crude oil: named, recognised, and with no placed nodes to count.
+                    # Answering about the rest of the sentence would drop a filter the
+                    # player stated, which is the failure the mount work found.
+                    weak = True
+            elif c.kind == "pal" and c.score >= self._pal_floor:
+                return None
+        if weak or len(wanted) > MAX_BASE_RESOURCES:
             return None
+
         # A stated coordinate wins over "my base", so the flag is not set when one is
         # present. The dispatcher enforces the same precedence anyway - the model path
         # can set `own_base` on an utterance that also names a coordinate - but a
         # ToolCall should say what it means rather than leave the reader of a log to
         # work out that one field silently overrides another.
         stated = coordinates(body)
-        args = {"own_base": True} if _OWN_BASE.search(body) and not stated else {}
+        args: dict[str, object] = {}
+        if _OWN_BASE.search(body) and not stated:
+            args["own_base"] = True
+        if wanted:
+            args["resources"] = wanted
         where = ("that coordinate" if stated
-                 else "their own base" if args else "where they are")
+                 else "their own base" if args.get("own_base") else "where they are")
         return ToolCall(name="rate_base_site", args=args,
-                        rationale=f"base rating cue, no named entity ({where})")
+                        rationale=f"base rating cue ({where})"
+                                  + (f", for {', '.join(wanted)}" if wanted else ""))
 
     def _tech_call(self, utterance: str,
                    candidates: list[Candidate]) -> "ToolCall | None":

@@ -321,6 +321,61 @@ def test_percentiles_use_two_different_yardsticks_on_purpose():
     assert raw["site_deciles"]["deposits"][-1] > 20      # the map has far richer spots
 
 
+def test_a_named_resource_narrows_the_criterion_and_nothing_else(featured):
+    """Flat ground and water do not care what you are mining."""
+    from palintel.execution import rate_base_site
+
+    general = rate_base_site(featured, 0, 0)
+    quartz = rate_base_site(featured, 0, 0, resources=["coal"])
+    assert [c.met for c in general.criteria if c.name != "resources in range"] == \
+           [c.met for c in quartz.criteria if not c.name.endswith("in range")]
+    assert any(c.name == "coal in range" for c in quartz.criteria)
+
+
+def test_a_named_resource_is_scored_against_that_resource_only(featured):
+    """**The third yardstick, and the map-wide one is wrong without it.**
+
+    The median site holds three deposits of anything while the median coal site holds
+    one coal, so nine coal is unremarkable against the first distribution and near the
+    top against the second. Scoring a resource question with the general reference is a
+    confident answer to a question nobody asked.
+    """
+    from palintel.knowledge import BaseFeatures
+    from palintel.execution import rate_base_site
+
+    featured.base_features = BaseFeatures(
+        roughness={"0,0": 30}, flat_cm=336, radius=10.0, popular_areas=(), water=(),
+        deposit_deciles=(1, 2, 3, 5, 8, 13, 20, 30, 45, 60, 80),
+        resource_deciles={"coal": (1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 9)})
+    coal = next(c for c in rate_base_site(featured, 0, 0, resources=["coal"]).criteria
+                if c.name == "coal in range")
+    general = next(c for c in rate_base_site(featured, 0, 0).criteria
+                   if c.name == "resources in range")
+    # Five coal is near the top of the coal distribution and near the bottom of the
+    # map-wide one. Same deposits, opposite verdicts, and only one of them answers the
+    # question that was asked.
+    assert coal.percentile > general.percentile
+
+
+def test_the_card_lists_everything_in_range_not_only_what_was_asked(featured):
+    """A spot chosen for coal that also sits on 4 ore is information the player wants and
+    did not think to ask for."""
+    from palintel.execution import rate_base_site
+
+    text = cards.base_rating_card(
+        rate_base_site(featured, 0, 0, resources=["coal"])).to_text()
+    assert "coal" in text and "ore" in text
+    assert "for coal" in text          # and the title says what it was judged for
+
+
+def test_a_resource_with_none_in_range_says_which_one(featured):
+    from palintel.execution import rate_base_site
+
+    rating = rate_base_site(featured, 0, 0, resources=["stone"])
+    stone = next(c for c in rating.criteria if c.name == "stone in range")
+    assert stone.met is False and "no stone in range" in stone.detail
+
+
 def test_a_coordinate_off_the_map_declines_rather_than_scoring_zero(featured):
     """**0 of 4 is a judgement about a bad base site. "Off my map" is the truth.**
 

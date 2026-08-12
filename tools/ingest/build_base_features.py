@@ -156,11 +156,15 @@ def build(version: str) -> dict:
     node_cells = _grid(nodes["nodes"], radius)
     water_cells = _grid(water, radius)
 
-    def coverage(x: float, y: float) -> tuple[int, int]:
-        by_res: dict[str, int] = {}
+    def by_resource(x: float, y: float) -> dict[str, int]:
+        out: dict[str, int] = {}
         for n in _within(node_cells, x, y, radius):
-            by_res[n["resource"]] = by_res.get(n["resource"], 0) + n["node_count"]
-        return sum(by_res.values()), len(by_res)
+            out[n["resource"]] = out.get(n["resource"], 0) + n["node_count"]
+        return out
+
+    def coverage(x: float, y: float) -> tuple[int, int]:
+        counts = by_resource(x, y)
+        return sum(counts.values()), len(counts)
 
     def water_distance(x: float, y: float) -> float | None:
         # Only the nine surrounding cells, so this is a NEAR-water distance and is None
@@ -204,6 +208,23 @@ def build(version: str) -> dict:
         values = sorted(values)
         return [values[min(int(q / 10 * len(values)), len(values) - 1)]
                 for q in range(11)]
+
+    # **A third reference, per resource, and the map-wide one is wrong without it.**
+    #
+    # "Is this a good spot for a quartz base" is a question about quartz, and scoring 12
+    # quartz against the all-resources distribution - where the median site holds 3 of
+    # ANYTHING and stone alone reaches 77 - measures the wrong thing twice over. The
+    # comparison a player means is against other places you would go for quartz, so each
+    # resource gets its own deciles taken over the clusters OF that resource.
+    #
+    # Sites with none of it are excluded from its distribution on purpose: "more quartz
+    # than 90% of places" would be true of almost anywhere if the 2,500 sites holding no
+    # quartz counted, and it would be a compliment about nothing.
+    per_resource: dict[str, list[int]] = {}
+    for n in nodes["nodes"]:
+        counts = by_resource(n["map_x"], n["map_y"])
+        for resource, total in counts.items():
+            per_resource.setdefault(resource, []).append(total)
 
     def water_kind(cls: str) -> str:
         if "River" in cls:
@@ -275,6 +296,7 @@ def build(version: str) -> dict:
         "flat_cm": flat_cm,
         "site_deciles": {"deposits": deciles(site_deposits),
                          "resource_kinds": deciles(site_kinds)},
+        "resource_deciles": {r: deciles(v) for r, v in sorted(per_resource.items())},
         "marked_area_profile": sorted(profile, key=lambda p: (p["map_x"], p["map_y"])),
         "popular_areas": [{"map_x": a["map_x"], "map_y": a["map_y"]}
                           for a in sorted(areas, key=lambda a: (a["map_x"], a["map_y"]))],

@@ -86,7 +86,9 @@ CLASS_HELP: dict[str, str] = {
     "base_rating": "how good a place ALREADY IS for a base - \"how good is my base "
                    "location\", \"rate this spot\". Set own_base true when they say MY "
                    "base, false when they mean where they are standing. The mirror of "
-                   "base_site: that one searches for places, this one judges one",
+                   "base_site: that one searches for places, this one judges one. Fill "
+                   "`resources` when the question names what the base is FOR - \"is "
+                   "this a good spot for a quartz base\"",
     "base_criteria": "what makes a base site good IN GENERAL, naming no place - \"what "
                      "makes a good base\", \"what should I look for\". Needs no slots. "
                      "NOT general_knowledge: the game's help text explains the Palbox "
@@ -410,8 +412,14 @@ def unpack(name: str, args: dict[str, Any]) -> tuple[str, dict[str, Any]]:
             # mount question with Pals that happen to spawn at 60.
             if "level" in out and unlock is None:
                 out["player_level"] = out.pop("level")
-    if tool == "rate_base_site" and args.get("own_base"):
-        out["own_base"] = True
+    if tool == "rate_base_site":
+        if args.get("own_base"):
+            out["own_base"] = True
+        # Reuses the shared `resources` slot rather than adding one: for base_site it is
+        # what the base is for, and for base_rating it is the same thing narrowed to a
+        # place the player already named. Same meaning, same enum, no extra tokens.
+        if args.get("resources"):
+            out["resources"] = list(args["resources"])
 
     if tool == "suggest_base_sites":
         out["resources"] = list(args.get("resources") or [])

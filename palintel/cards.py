@@ -1222,7 +1222,13 @@ def base_rating_card(result: "BaseRating") -> Card:
                    "−1990 to 940 across and −2010 to 1640 down._"],
             colour=TIER_DECLINE)
 
-    title = f"{result.label} — {result.score} of {result.checkable}"
+    title = result.label
+    if result.resources:
+        # What the base is FOR belongs in the title: the same coordinate scores
+        # differently for quartz than in general, and two cards that differ only in a
+        # criterion line would be indistinguishable in scrollback.
+        title += " for " + " + ".join(_resource_word(r) for r in result.resources)
+    title += f" — {result.score} of {result.checkable}"
     if result.checkable < len(result.criteria):
         title += f" ({len(result.criteria) - result.checkable} unknown)"
 
@@ -1236,9 +1242,16 @@ def base_rating_card(result: "BaseRating") -> Card:
         lines.append(SEP.join(bits))
 
     if result.covered:
-        lines += ["", "In range: " + SEP.join(
-            f"{n} {_resource_word(r)}"
-            for r, n in sorted(result.covered.items(), key=lambda kv: (-kv[1], kv[0]))[:5])]
+        # **Everything in range, not just what was asked about.** A spot chosen for
+        # quartz that also sits on 30 stone and a river is information the player wants
+        # and did not think to ask for - and it is the difference between a verdict and
+        # something they can act on. Ordered by count, with the asked-for resource
+        # marked so it is findable in a long line.
+        listed = sorted(result.covered.items(), key=lambda kv: (-kv[1], kv[0]))
+        lines += ["", "**In range:** " + SEP.join(
+            (f"**{n} {_resource_word(r)}**" if r in result.resources
+             else f"{n} {_resource_word(r)}")
+            for r, n in listed)]
 
     if result.wild_levels:
         low, high = result.wild_levels

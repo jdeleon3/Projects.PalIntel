@@ -485,6 +485,13 @@ class BaseFeatures:
     # anything is excellent.
     deposit_deciles: tuple[int, ...] = ()
     kind_deciles: tuple[int, ...] = ()
+    # Per resource, the same deciles taken over the clusters OF that resource. A third
+    # yardstick, and the map-wide one is wrong without it: the median site holds 3
+    # deposits of ANYTHING while the median coal site holds 1 coal, so scoring 9 coal
+    # against the all-resources distribution measures the wrong thing. Sites holding none
+    # of a resource are excluded from its distribution - "more quartz than 90% of places"
+    # would otherwise be true almost everywhere and a compliment about nothing.
+    resource_deciles: dict[str, tuple[int, ...]] = field(default_factory=dict)
 
     @staticmethod
     def _percentile(value: float, sorted_values, higher_is_better: bool) -> int | None:
@@ -524,6 +531,16 @@ class BaseFeatures:
 
     def deposit_percentile(self, value: int) -> int | None:
         return self._percentile(value, self.deposit_deciles, higher_is_better=True)
+
+    def resource_percentile(self, resource: str, value: int) -> int | None:
+        """How much of ONE resource, against other places that have any of it.
+
+        Returns None rather than falling back to the map-wide distribution when a
+        resource has no deciles: an answer given against the wrong yardstick reads
+        exactly like one given against the right one.
+        """
+        return self._percentile(value, self.resource_deciles.get(resource, ()),
+                                higher_is_better=True)
 
     def roughness_at(self, x: float, y: float) -> int | None:
         """Ground roughness in cm, or None where too few actors stand to say.
@@ -764,6 +781,8 @@ class KnowledgeBase:
                     raw_f.get("site_deciles", {}).get("deposits", ())),
                 kind_deciles=tuple(
                     raw_f.get("site_deciles", {}).get("resource_kinds", ())),
+                resource_deciles={r: tuple(v) for r, v in
+                                  raw_f.get("resource_deciles", {}).items()},
             )
 
         return cls(game_version=raw["game_version"], lexicon=lexicon, nodes=nodes,

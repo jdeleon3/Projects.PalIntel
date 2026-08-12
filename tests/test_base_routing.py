@@ -191,6 +191,44 @@ def test_a_stated_coordinate_beats_my_base(router):
     assert not c.args.get("own_base")
 
 
+# --------------------------------------------------------- a rating with a resource
+
+def test_a_named_resource_becomes_the_filter_rather_than_a_reason_to_abstain(router):
+    """**The one place a named entity does not make this branch stand down.**
+
+    Every other no-entity branch abstains the moment something resolves, because a named
+    entity means another class owns the question. Here a named RESOURCE is the question:
+    "is this a good spot for a quartz base" is the rating with a subject.
+    """
+    c = call(router, "is this a good spot for a quartz base")
+    assert name(c) == "rate_base_site"
+    assert c.args["resources"] == ["quartz"]
+
+
+def test_a_named_pal_still_makes_it_abstain(router):
+    """A Pal is not a filter. "How good is Anubis" is an info question and always was."""
+    assert name(call(router, "how good is Anubis")) != "rate_base_site"
+
+
+def test_a_resource_and_a_coordinate_together(router):
+    c = call(router, "how good is (321, 500) for a coal base")
+    assert name(c) == "rate_base_site" and c.args["resources"] == ["coal"]
+
+
+def test_a_resource_with_no_placed_nodes_defers(router):
+    """Crude oil is in the lexicon and has none. Answering about the rest of the sentence
+    would silently drop a filter the player stated."""
+    assert name(call(router, "is this a good spot for a crude oil base")) \
+        != "rate_base_site"
+
+
+def test_a_siting_question_naming_a_resource_is_still_siting(router):
+    """The two are told apart by the verb, and adding a resource to the rating branch
+    must not have blurred that."""
+    assert name(call(router, "where should I build my base for quartz")) \
+        == "suggest_base_sites"
+
+
 # ------------------------------------------------- the general question, about no place
 
 @pytest.mark.parametrize("text", [
