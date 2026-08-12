@@ -60,7 +60,7 @@ at all.
 |---|---|
 | Router accuracy | 88.8% exact, 3.9% wrong entity, on the shipping config |
 | Consolidated vs per-class tools | Indistinguishable, McNemar p = 0.73; 21% faster median |
-| Cost | $0.0036/request — 75% thinking tokens, 12% schema |
+| Cost | $0.0048/request on the 2026-08-12 sample — 77% thinking tokens, 14% schema cache. **Now logged per query** to `data/sessions/<session>/costs.jsonl` and totalled on `/palintel status`, evals included |
 | Map render | 7.8 ms p50, 25.5 ms p95, ~65 KB, entirely off the graded path |
 | Icon coverage | 285 of 286 Paldeck entries |
 
@@ -149,6 +149,40 @@ the player's words rather than the game's ("die" against a *Death* entry), and t
 inside the band the unanswerable questions occupy. **No threshold separates them.** That is
 a ceiling on lexical retrieval, not a floor to tune, and it is the number embeddings would
 have to beat.
+
+### The router picks a CLASS, and nothing had ever measured that
+
+**Measured 2026-08-12 for the first time, at a cost of $0.29.** `score_router.py` has
+always scored *entity resolution* — `expected` is a set of names — and six of the twelve
+production classes name no entity at all, so on that axis `base_rating`,
+`general_knowledge` and an honest decline are the same event. The 88.8% headline is a
+number about naming things.
+
+| | |
+|---|---|
+| Correct entity, `--sample 60` | 89.7% exact, 3.4% wrong — matching the recorded 88.8% / 3.9%, which is what validated the harness |
+| **Correct class** | **69.2%** (36 of 52) |
+| Over-answered | 13 — answered something the product has no class for |
+| Prompts now class-labelled | 930 of 1,031, the rest ambiguous by construction |
+
+**The first thing it found was about the harness, not the router.** Five of the thirteen
+over-answers were the model picking `compare_pals` and `get_breeding_combo` — classes
+`score_router.py` registers and **the dispatcher does not have**. That is the mistake
+`unified_schema`'s own docstring warns about, in the file that warns about it. `--classes`
+now defaults to `production` (12) rather than all (15).
+
+**The remaining eight are real and they are one shape:** `pal_info` absorbing any question
+that names a Pal and does not fit a narrower class — *"how much stamina does Rinjishi
+have"*, *"is loopmoon worth levelling up"*. Whether a summary beats a decline there is a
+judgement, and it is now a measured one rather than an impression.
+
+**A third of the corpus asks for something the product cannot do** — 344 prompts about
+breeding combos, stamina and whether a Pal is worth levelling. They are labelled
+`unsupported`, where **declining is correct and answering is the failure**, which is the
+opposite of every other row and was previously invisible.
+
+*Not yet measured:* `base_rating`, `base_criteria` and `pal_search` have prompts (batch
+`C##`) and no recordings. They need a session.
 
 ### Not measured — and cannot be, without you
 
@@ -299,7 +333,16 @@ is the same list at a glance:
    designed and unbuilt, and `harvest_aliases.py` still reads `data/stt_eval/` rather than
    `data/sessions/`. Deliberately in this order: capture is the irreversible part, and the
    analysis can be written any time against clips already collected.
-6. **Re-measure the router when an eval run is next worth its cost.** `pal_search` joined
+6. ~~**Re-measure the router when an eval run is next worth its cost.**~~ — **done in
+   part, 2026-08-12.** A `--sample 60` run validated the harness and added the class axis
+   above; the entity numbers held. What would justify the full ~$1.40 run is now written
+   down as a rule in `score_router.py`'s header rather than left to judgement: a
+   wrong-class rate above ~10%, or any class under 50% on n≥10. **`unsupported` at 7% is
+   the one that qualifies**, and it is a decline-policy question rather than a routing bug.
+
+   The original note, still true of what it described:
+
+   **Re-measure the router when an eval run is next worth its cost.** `pal_search` joined
    `PRODUCTION_CLASSES`, so the model now picks between six classes rather than five and
    the schema carries two small enums it did not. The deterministic scorers show no
    regression — `score_fast_path.py` is unchanged at 14/18 Q1, 43/49 Q2, zero wrong, and
@@ -316,6 +359,8 @@ is the same list at a glance:
 | **Q7: should a decline fall through to the corpus?** | Not built, deliberately. `general_knowledge` is a class the router may *choose*, not a catch-all. The roadmap calls the fallback "the change that makes the system a chatbot", and it is the largest change to this project's risk posture available — worth your explicit yes rather than my inference. |
 | **Q7: synthesis, or keep quoting?** | Today a Tier 3 card quotes the game verbatim, so no model touches the text and ADR-0011's drift failure cannot occur. Synthesis earns its place only when an answer needs two chunks combined; nothing has shown that yet. |
 | **Q4: is the computed version enough?** | The roadmap's Q4 was twenty curated sites with prose rationale; what shipped is "what falls inside a base's radius", because the curated version needed invented flatness scores and community prose. If you want the curated half, it needs a source you trust and a way to verify it. |
+| **Should `pal_info` answer questions it cannot answer?** | Measured 2026-08-12: it absorbs *"how much stamina does Rinjishi have"* and *"is loopmoon worth levelling up"* — questions with no class, where a summary is arguably better than a decline and arguably the wrong-class failure the first play session named. The decline policy was rebalanced on 2026-08-11 toward answering, on the finding that declining an answerable query is also a failure; this is the same trade seen from the other side. **Your call, and the first play session is where it will feel wrong or fine.** |
+| **Set `cost.balance_usd`** | Spend is now logged per query and totalled, but the balance is 0 so nothing is deducted. Put what you actually loaded onto the key in `config.local.toml` and `/palintel status` will warn before a depleted balance turns into a wall of declines. |
 | **Coal coverage** | 552 → 308 clusters. Cave coal is most of Palworld's coal and can no longer be asked for. Accept, or promote the dungeon feature? |
 | `maps` and `icons` | One flag pair, two features with very different risk. Separable. |
 | Card density | Resource cards gained "Also drops from", Pal cards gained "Ranch:". Editorial. |
