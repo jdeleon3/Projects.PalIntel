@@ -13,8 +13,8 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .execution import (AttributeResult, DropsResult, ItemSourceResult,
-                        PalInfoResult, ResourceResult, SpawnResult)
+from .execution import (AttributeResult, BaseSiteResult, DropsResult,
+                        ItemSourceResult, PalInfoResult, ResourceResult, SpawnResult)
 from .tools import Decline
 
 # Tier colours, so a reader can tell fact from recommendation from reference at a glance
@@ -318,7 +318,8 @@ def plain(text: str) -> str:
 
 
 def status_card(log, *, voice: str, save: str = "not configured",
-                router: str = "", artwork: str = "", window_label: str = "last hour") -> Card:
+                roster: str = "", router: str = "", artwork: str = "",
+                window_label: str = "last hour") -> Card:
     """Report what the pipeline has actually seen, stage by stage.
 
     The breakdown is the whole point. ADR-0004 flags wake-word false negatives as silent
@@ -337,6 +338,11 @@ def status_card(log, *, voice: str, save: str = "not configured",
              # "nearest" silently falls back to ranking by cluster size and still returns
              # a confident-looking coordinate.
              f"**Save:** {plain(save)}",
+             # Its own line rather than folded into Save, because it fails separately and
+             # silently: a counter card that says "I haven't read your Pals" looks like a
+             # deliberate caveat rather than a roster read that never happened, which is
+             # exactly how it went unnoticed through a whole play session.
+             *([f"**Roster:** {plain(roster)}"] if roster else []),
              # The router's full name carries the cue width and the backstop floor, so
              # this line answers "is the change I just made actually running" - which a
              # long-lived process and a fast edit loop otherwise make unanswerable from
@@ -987,3 +993,258 @@ def _leader_note(result: "CounterResult") -> str:
         return ""
     return (f"{SEP}the {result.leader}/{result.boss_name or result.boss_id} pairing has "
             f"only one source in the game files")
+
+
+# What each blocker is called on a card, and the order the summary lists them in - the
+# gate the player can do least about first, which is the same order `progression._blocker`
+# resolves them in.
+_BLOCKER_LABELS = (
+    ("level", ("needs", "need", "a higher level")),
+    ("prerequisite", ("needs", "need", "an earlier technology")),
+    ("tower", ("needs", "need", "a tower boss beaten")),
+    ("points", ("costs", "cost", "more points than you have")),
+)
+# The per-line form, which is always singular - it labels one technology.
+_BLOCKER_LINE = {key: f"{singular} {tail}"
+                 for key, (singular, _, tail) in _BLOCKER_LABELS}
+
+_CURRENCY_WORD = {"ancient": "ancient pt", "technology": "pt"}
+
+
+def progression_card(result: "ProgressionResult") -> Card:
+    """What to research next. **Tier 2, amber, and the colour is the honest part.**
+
+    Every value on it is stated by the game - a required level, a cost, a currency, a
+    prerequisite - so it would be tempting to call this Tier 1 the way the attribute card
+    is. It is not, and the difference is the same one that makes the counter card amber:
+    the *selection and the order* are a recommendation. "What should I unlock next" asks
+    for a judgement, and the judgement being computed rather than generated does not make
+    it a fact.
+
+    Three things are said out loud rather than assumed away:
+
+    * **The level may be inferred, and only downward.** With no player level readable
+      from the save, the filter uses the highest `required_level` among the technologies
+      already unlocked. That is a floor, not a level: it can hide something available and
+      can never offer something that is not. The card says which one it used.
+    * **The two point pools are never summed.** Each line names its own currency, because
+      an ancient technology is bought with a different number and a card that added them
+      would say you can afford something you cannot.
+    * **Order is a proxy.** Most advanced first, which is not "best" - the same caveat the
+      attribute card carries, for the same reason: the data supports "unlocks later" and
+      nothing else.
+    """
+    goal = result.goal
+    title = "What to research next"
+    if result.currency == "ancient":
+        # The pool has to be in the title, because every line below prints a cost and
+        # only the currency word tells the reader which of their two balances it comes
+        # out of. A list filtered to one pool that does not say so is the same silently
+        # dropped filter the mount work found.
+        title = "What to spend ancient points on"
+    if goal:
+        title += f" - {goal}"
+
+    if not result.save_known:
+        # NOT the same card as "you have researched everything". Reading the save is what
+        # makes this class answerable at all, and asserting a next step against a set
+        # nobody looked at is the confidently-wrong answer this project refuses.
+        return Card(
+            title="I haven't read your save",
+            lines=["I can't tell you what to research next without seeing which "
+                   "technologies you already have.",
+                   "", "_Point me at a save directory and ask again._"],
+            colour=TIER_DECLINE)
+
+    if not result.candidates:
+        # Two very different empties, and the player acts differently on each.
+        if result.total_locked:
+            return Card(
+                title=title,
+                lines=[f"**Nothing is researchable right now.** "
+                       f"{result.total_locked} technolog"
+                       f"{'y is' if result.total_locked == 1 else 'ies are'} still "
+                       f"locked{f' under {goal}' if goal else ''}, and "
+                       f"{_blocked_phrase(result)}."],
+                colour=TIER_ADVICE, footer=_progression_footer(result))
+        return Card(
+            title=title,
+            lines=[f"**You have researched everything"
+                   f"{f' under {goal}' if goal else ''}.**"],
+            colour=TIER_ADVICE, footer=_progression_footer(result))
+
+    lines = []
+    for i, c in enumerate(result.candidates, 1):
+        t = c.tech
+        bits = [f"**{i}. {t.name}**",
+                f"lvl {t.required_level}",
+                f"{t.cost} {_CURRENCY_WORD[t.currency]}"]
+        if not c.researchable:
+            # Every line says whether it is actually available. A mixed list without this
+            # reads as five things to go and do, and some of them cannot be done.
+            bits.append(f"_{_BLOCKER_LINE[c.blocked_by.value]}_")
+        if t.requires_research:
+            # Lab research is a separate system this project cannot read from the save,
+            # so it is neither filtered on nor hidden. Naming it is the only honest move.
+            bits.append(f"_also needs lab research {t.requires_research}_")
+        lines.append(SEP.join(bits))
+        if t.unlocks and t.unlocks != (t.name,):
+            # What you actually get, when the technology's name does not already say it.
+            lines.append(f"    {', '.join(t.unlocks[:3])}")
+
+    # The count that is actually actionable, first. "Of 471 locked, 134 need a higher
+    # level" leaves the reader to subtract, and the number they wanted was how many they
+    # could go and buy right now.
+    ready = result.total_locked - sum(result.blocked.values())
+    tail = _blocked_phrase(result)
+    lines += ["", f"_{ready} of {result.total_locked} still locked "
+                  f"{'are' if ready != 1 else 'is'} researchable now"
+                  + (f"; {tail}" if tail else "") + "._"]
+
+    return Card(title=title, lines=lines, colour=TIER_ADVICE,
+                footer=_progression_footer(result))
+
+
+def corpus_card(result: "LookupResult") -> Card:
+    """The game's own explanation, quoted. **Tier 3, blue, and every line has a source.**
+
+    Blue rather than green or amber because this is reference: not a fact computed from a
+    table and not advice computed from one, but a passage from a document. The reader
+    should be able to tell at a glance that they are looking at something the game says
+    rather than something this project worked out.
+
+    **Nothing here is generated.** ADR-0011 describes grounded *synthesis* with a
+    citation; this quotes the chunk verbatim instead, which is a smaller promise and a
+    much easier one to keep - there is no model in the path, so a summary cannot drift
+    from the text it summarises. See palintel/corpus.py for why that trade was taken.
+
+    A decline is a first-class outcome and not a failure: ADR-0011 makes "not in my
+    sources" mandatory when nothing clears the relevance bar, and the corpus is the game's
+    own text, so a great many reasonable Palworld questions are genuinely not in it.
+    """
+    if not result.grounded:
+        return Card(
+            title="Not in my sources",
+            lines=["I only quote what the game itself says, and nothing in there "
+                   "answers that.",
+                   "",
+                   f"_Closest match scored {result.best_score:.2f} against a "
+                   f"{result.floor:.2f} bar, over {result.chunks_searched} passages._"],
+            colour=TIER_DECLINE)
+
+    top = result.passages[0]
+    lines = [top.chunk.text, "", f"— *{top.chunk.citation}*"]
+    for extra in result.passages[1:]:
+        # A second passage is shown compressed. Two full quotes is a wall, and the second
+        # is a "you may also want" rather than part of the answer.
+        first = extra.chunk.text.split("\n")[0]
+        lines += ["", f"**Also:** {first}", f"— *{extra.chunk.citation}*"]
+    return Card(title=top.chunk.title, lines=lines, colour=TIER_REFERENCE,
+                footer=f"quoted from the game's own text{SEP}"
+                       f"match {top.score:.2f}{SEP}nothing here was rewritten")
+
+
+def _resource_word(resource: str) -> str:
+    return resource.replace("_", " ")
+
+
+def base_site_card(result: BaseSiteResult) -> Card:
+    """Where to put a base. **Tier 2, amber, and the caveat is load-bearing.**
+
+    Every number here is stated by the game - a coordinate from the node dataset, a
+    deposit count, a radius read out of `BaseCampAreaRange`. What makes it advice rather
+    than fact is the word "should": the card selects a coordinate and calls it a good
+    place to build.
+
+    **And it must never let that read as "you can build here."** Nothing found in the pak
+    says whether ground is flat, whether a spot is underwater, or whether it sits in a
+    no-build zone. A card that omitted this would produce the project's signature failure
+    in a new place: a well-formed, in-bounds, correctly transformed coordinate pointing at
+    a cliff face. The footer says it every time, not only when the site looks suspect,
+    because the card cannot tell which ones look suspect.
+    """
+    named = " + ".join(_resource_word(r) for r in result.resources)
+    title = f"Base sites for {named}"
+
+    if not result.sites:
+        return Card(
+            title=f"No base site for {named}",
+            lines=["I don't have node clusters for that."],
+            colour=TIER_DECLINE)
+
+    lines = []
+    if result.complete_sites == 0 and len(result.resources) > 1:
+        # Leading, not a footnote. "Nothing reaches both" is the answer to the question
+        # actually asked, and burying it under three partial sites reads as though one of
+        # them covered everything.
+        lines.append(f"_No single base reaches all of {named}. "
+                     f"These cover the most of it._")
+
+    for i, s in enumerate(result.sites, 1):
+        bits = [f"**{i}. ({s.map_x:.0f}, {s.map_y:.0f})**"]
+        bits += [f"{n} {_resource_word(r)}"
+                 for r, n in sorted(s.covered.items(), key=lambda kv: (-kv[1], kv[0]))]
+        if s.distance is not None:
+            bits.append(f"{s.distance:.0f} units away")
+        lines.append(SEP.join(bits))
+        if s.missing:
+            lines.append(f"    _no {', '.join(_resource_word(r) for r in s.missing)} "
+                         f"in range_")
+        if s.also:
+            # Free information, and often the deciding one. Capped at three: past that it
+            # is a list of everything on the map near a popular spot.
+            lines.append("    also in range: "
+                         + ", ".join(f"{_resource_word(r)} {n}" for r, n in s.also[:3]))
+
+    footer = f"within {result.radius:.1f} map units, which is a base's own reach"
+    if len(result.resources) > 1:
+        # Only meaningful for a multi-resource question. With one named resource every
+        # candidate covers it by construction, so "327 of 327" is a tautology dressed as
+        # a statistic.
+        footer += (f"{SEP}{result.complete_sites} of {result.considered} spots reach "
+                   f"all of it")
+    # The sentence the whole card exists to be honest about, on every card and not only
+    # the suspect ones - the card cannot tell which ones are suspect.
+    footer += (f"{SEP}I can't tell you if the ground is flat or buildable - "
+               f"nothing in the game files says")
+    return Card(title=title, lines=lines, footer=footer, colour=TIER_ADVICE)
+
+
+def _blocked_phrase(result: "ProgressionResult") -> str:
+    """"40 need a higher level, 3 need a tower boss beaten".
+
+    Present so a card showing five rows out of a hundred cannot read as though a hundred
+    were considered and ninety-five rejected on merit.
+    """
+    counts = {b.value: n for b, n in result.blocked.items()}
+    parts = [f"{counts[key]} {singular if counts[key] == 1 else plural} {tail}"
+             for key, (singular, plural, tail) in _BLOCKER_LABELS if counts.get(key)]
+    return ", ".join(parts)
+
+
+def _progression_footer(result: "ProgressionResult") -> str:
+    bits = []
+    if result.level is not None:
+        if result.level_is_a_floor:
+            # The one derived number on this card, and it is named as one. It is a floor
+            # from the technologies already unlocked, so anything gated between it and
+            # the player's real level is being wrongly shown as out of reach - which is
+            # the safe direction, and the sentence says which direction it is.
+            bits.append(f"assuming you're at least level {result.level}, from what "
+                        f"you've already unlocked - say your level for a sharper answer")
+        else:
+            bits.append(f"player level {result.level}")
+    else:
+        # Neither stated nor inferable. The level gate did not run, and a list that looks
+        # filtered but is not is worse than one that says so.
+        bits.append("no level known, so nothing is filtered by level")
+
+    have = []
+    if result.points is not None:
+        have.append(f"{result.points} pt")
+    if result.ancient_points is not None:
+        have.append(f"{result.ancient_points} ancient pt")
+    if have:
+        bits.append("you have " + " and ".join(have))
+    bits.append("most advanced first, which is not a ranking")
+    return SEP.join(bits)

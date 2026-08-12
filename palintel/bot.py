@@ -202,8 +202,20 @@ async def _answer(channel, pipe: Pipeline, text: str, who: str,
     a choice: see the multi-speaker item in Phase 2.
     """
     # Read at answer time, not cached at startup: the player moves, and "nearest" is
-    # only worth answering against where they are now.
-    state = PlayerState(player_coords=watcher.player_coords() if watcher else None)
+    # only worth answering against where they are now. The roster and the technology
+    # state come off the watcher's own slower cadence - both are already-parsed values
+    # here, so reading them costs an attribute access, not a parse.
+    #
+    # **`owned_species` was absent from this call until Phase 4**, which meant every
+    # counter card in the 2026-08-11 play session said "I haven't read your Pals" while
+    # `saves.owned_species` sat working and unreferenced. The roster was built, tested
+    # and never connected - the same failure shape as the counter fast path being dark
+    # for a day, and worth naming here rather than only in STATUS.
+    state = PlayerState(
+        player_coords=watcher.player_coords() if watcher else None,
+        owned_species=watcher.roster if watcher else None,
+        tech=watcher.player_tech() if watcher else None,
+    )
 
     loop = asyncio.get_running_loop()
     t_route = time.monotonic()
@@ -395,6 +407,7 @@ def run() -> None:
                 activity,
                 voice=_voice_status(cfg, listener["mic"]),
                 save=watcher.describe() if watcher else "not configured",
+                roster=watcher.describe_roster() if watcher else "not configured",
                 router=pipe.router.name,
                 artwork=_artwork_status(cfg, pipe))))
             return
@@ -446,6 +459,10 @@ def run() -> None:
             await asyncio.sleep(watcher.interval)
             try:
                 await loop.run_in_executor(None, watcher.poll)
+                # The roster read decides its own cadence - it is a multi-megabyte parse
+                # against the player save's few kilobytes - so this calls it every tick
+                # and `poll_roster` returns immediately until it is due.
+                await loop.run_in_executor(None, watcher.poll_roster)
             except Exception:
                 # poll() swallows its own failures; this catches anything above it, so a
                 # bad save can never end the polling task and silently freeze "nearest"

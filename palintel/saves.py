@@ -77,6 +77,13 @@ class Transform:
                 (world_x - self.offset_x) / self.scale)
 
 
+# How the save records a defeated tower boss. The value under each key is a bool, and
+# only defeated towers were observed present - but absence is read as "not defeated"
+# rather than "unknown", which is the conservative direction: it can hold a technology
+# back, never offer one that is still locked.
+TOWER_FLAG_PREFIX = "BOSS_BATTLE_NAME_"
+
+
 @dataclass(frozen=True)
 class PlayerSnapshot:
     uid: str
@@ -85,6 +92,17 @@ class PlayerSnapshot:
     technologies: frozenset[str]
     transform_id: str
     read_at: float
+    # The two technology-point pools, which are separate currencies and must never be
+    # added: `points` buys ordinary technologies and `ancient_points` buys the 51 the
+    # table marks `IsBossTechnology`. Both are plain IntProperties in the player save, so
+    # unlike the player's level they need no blob decoding at all.
+    points: int | None = None
+    ancient_points: int | None = None
+    # Tower boss suffixes (`ForestBoss`), stripped of TOWER_FLAG_PREFIX so they join
+    # straight to the technology table's `EPalBossType::` suffix. **That join is an
+    # inference on a key name** - see tech.json's tower_join_note - and it is made here
+    # rather than at the point of use so there is one place to correct it.
+    towers_defeated: frozenset[str] = frozenset()
 
 
 def decompress(raw: bytes) -> bytes:
@@ -145,10 +163,23 @@ def read_player(path: Path, transform: Transform | None = None) -> PlayerSnapsho
         t = sd["LastTransform"]["value"]["Translation"]["value"]
         uid = str(sd["PlayerUId"]["value"])
         tech = sd.get("UnlockedRecipeTechnologyNames", {}).get("value", {})
+        # Every field below is optional with `.get`, deliberately. They are read for Q6
+        # and nothing else needs them, so a save that stops carrying one must degrade
+        # that class rather than take "nearest" down with it - the same posture
+        # ADR-0005 takes about the file as a whole.
+        points = sd.get("TechnologyPoint", {}).get("value")
+        ancient = sd.get("bossTechnologyPoint", {}).get("value")
+        record = sd.get("RecordData", {}).get("value", {})
+        flags = record.get("TowerBossDefeatFlag", {}).get("value", []) or []
     except (KeyError, TypeError) as e:
         # A schema change lands here. Name the missing path: "KeyError: LastTransform"
         # is a fixable report, "save parsing failed" is not.
         raise SaveError(f"save schema not as expected: {e!r}") from e
+
+    towers = frozenset(
+        str(f["key"])[len(TOWER_FLAG_PREFIX):] for f in flags
+        if isinstance(f, dict) and f.get("value")
+        and str(f.get("key", "")).startswith(TOWER_FLAG_PREFIX))
 
     return PlayerSnapshot(
         uid=uid,
@@ -157,6 +188,9 @@ def read_player(path: Path, transform: Transform | None = None) -> PlayerSnapsho
         technologies=frozenset(tech.get("values", ())),
         transform_id=transform.transform_id,
         read_at=time.time(),
+        points=points,
+        ancient_points=ancient,
+        towers_defeated=towers,
     )
 
 
@@ -276,13 +310,39 @@ class SaveWatcher:
     `snapshot` therefore lags the player by up to one autosave interval. That is inherent
     to reading a save file rather than the game's memory, and it is acceptable for the
     question being asked: "nearest" is answered against a region, not a footstep.
+
+    **The owned-Pal roster is polled separately and much less often**, because it is a
+    different order of cost: the player save is a few kilobytes and `Level.sav` is
+    megabytes with a full GVAS walk behind it. It has its own interval, its own error
+    field and its own last-good value, so a roster read that fails cannot take position
+    down with it.
+
+    That roster was built in Phase 3 and **never wired to anything**, which meant every
+    counter card in the 2026-08-11 play session said "I haven't read your Pals" while
+    `owned_species` sat working and unused. Same class of failure as the counter fast
+    path being dark for a day: measured in isolation, never connected. It is polled here
+    rather than at query time because a full parse is seconds, not milliseconds.
     """
 
-    def __init__(self, save_dir: Path, interval: float = 20.0):
+    # The roster changes when the player catches something, which is minutes apart at
+    # best and costs a multi-megabyte parse to observe. Five minutes is far below the
+    # rate at which a stale roster could mislead a counter card - the failure it prevents
+    # is "you own nothing that works" about a Pal caught an hour ago - and far above the
+    # rate at which the parse would cost anything.
+    ROSTER_INTERVAL = 300.0
+
+    def __init__(self, save_dir: Path, interval: float = 20.0,
+                 roster_interval: float | None = None):
         self.save_dir = Path(save_dir)
         self.interval = interval
+        self.roster_interval = (self.ROSTER_INTERVAL if roster_interval is None
+                                else roster_interval)
         self.snapshot: PlayerSnapshot | None = None
         self.error: str | None = None
+        # None means NOT READ, all the way to the card. See PlayerState.owned_species.
+        self.roster: frozenset[str] | None = None
+        self.roster_error: str | None = None
+        self.roster_read_at: float = 0.0
         self._mtime = 0.0
         self._transform = Transform.load()
 
@@ -326,8 +386,70 @@ class SaveWatcher:
                  x, y, len(self.snapshot.technologies))
         return True
 
+    def poll_roster(self, now: float | None = None) -> bool:
+        """Re-read the owned-Pal roster if it is due. True when a new one was taken.
+
+        Failures are recorded and never raised, for the same reason `poll` swallows its
+        own: this runs on a timer, and an exception would end the polling task and leave
+        both position and roster frozen with nothing on any card to say so.
+
+        A failure keeps the previous roster rather than clearing it. A stale roster is a
+        much smaller error than an absent one - it may miss a Pal caught in the last few
+        minutes, where None makes every counter card say it never looked.
+        """
+        now = time.time() if now is None else now
+        if now - self.roster_read_at < self.roster_interval:
+            return False
+        level = self.save_dir / "Level.sav"
+        if not level.exists():
+            self.roster_error = f"no Level.sav under {self.save_dir}"
+            # Stamped even on failure, so a missing file is not re-checked every tick.
+            self.roster_read_at = now
+            return False
+        try:
+            self.roster = owned_species(level)
+            self.roster_error = None
+        except Exception as e:
+            log.warning("roster read failed (%s: %s); keeping previous", type(e).__name__, e)
+            self.roster_error = f"{type(e).__name__}: {e}"
+            self.roster_read_at = now
+            return False
+        self.roster_read_at = now
+        return True
+
     def player_coords(self) -> tuple[float, float] | None:
         return self.snapshot.map_coords if self.snapshot else None
+
+    def player_tech(self):
+        """The Q6 half of the save state, or an empty reading when nothing was read.
+
+        Returns a `progression.PlayerTech`. Imported inside the method because saves.py
+        is imported by the config path and progression.py loads a dataset - the same
+        reason `counters` is imported inside the dispatcher rather than at module scope.
+        """
+        from .progression import PlayerTech
+
+        if self.snapshot is None:
+            return PlayerTech()
+        return PlayerTech(
+            unlocked=self.snapshot.technologies,
+            points=self.snapshot.points,
+            ancient_points=self.snapshot.ancient_points,
+            towers_defeated=self.snapshot.towers_defeated,
+        )
+
+    def describe_roster(self) -> str:
+        """One line for `/palintel status`, beside `describe`."""
+        if self.roster is None:
+            return f"unavailable - {self.roster_error}" if self.roster_error \
+                else "not read yet"
+        age = int(time.time() - self.roster_read_at)
+        out = f"{len(self.roster)} owned characters, read {age}s ago"
+        if self.roster_error:
+            # A stale roster is kept rather than cleared, so the line has to say both:
+            # the count is real and the last attempt to refresh it did not land.
+            out += f" (last refresh failed: {self.roster_error})"
+        return out
 
     def describe(self) -> str:
         """One line for `/palintel status`."""
