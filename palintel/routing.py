@@ -492,6 +492,52 @@ _TECH_GOAL_CUE = re.compile(rf"\b({_TECH_GOAL_ALT})\b", re.I)
 # questions this branch exists for.
 _ANCIENT_CUE = re.compile(r"\bancient\b", re.I)
 
+# A coordinate pair the player read off the in-game map: "(185, -475)", "185, -475",
+# "at 185 -475". Both numbers are required and both may be negative.
+#
+# **Parsed from the utterance in the DISPATCHER, never taken from a model's arguments**,
+# and that is the whole reason it lives here rather than in the tool schema. CLAUDE.md's
+# invariant is that coordinates never originate from a model; a coordinate the PLAYER
+# stated does not, but one a model retyped might have been mangled on the way through.
+# A regex over what was actually said cannot mangle it, and it works identically whether
+# the fast path or the model claimed the query.
+_N = r"(-?\d{1,4})"
+
+# Three ways a pair can look like a position, most explicit first. **The context has to
+# sit on the pair itself**, not merely somewhere in the sentence: a first version
+# accepted any comma anywhere, which would have read "rate this base at level 20, 30
+# stone" as the coordinate (20, 30).
+_COORD_FORMS = (
+    # Bracketed: "(185, -475)", "[185 -475]".
+    re.compile(rf"[(\[]\s*{_N}\s*[, ]\s*{_N}\s*[)\]]"),
+    # Announced: "at 185, -475", "coords 185 -475", "position: 185,-475".
+    re.compile(rf"\b(?:at|coords?|coordinates?|position|spot)\b\s*:?\s*"
+               rf"{_N}\s*[, ]\s*{_N}(?![\d.])", re.I),
+    # A negative in the pair. **A general rule rather than a loosening**: Palworld's map
+    # coordinates are negative over most of the island, and the sentences this must not
+    # misread - "3 pals and 20 stone", "level 20, 30 stone" - never contain one. It is
+    # what makes the bare "rate this spot 185 -475" work without opening the door to
+    # every adjacent pair of numbers.
+    re.compile(rf"(?<![\d.]){_N}\s*[, ]\s*(-\d{{1,4}})(?![\d.])"),
+    re.compile(rf"(?<![\d.])(-\d{{1,4}})\s*[, ]\s*{_N}(?![\d.])"),
+)
+
+
+def coordinates(utterance: str) -> tuple[float, float] | None:
+    """A map coordinate the player named, or None.
+
+    Deliberately strict, and the asymmetry says why: missing a coordinate costs a
+    restatement, while reading a level and a Pal count as a position produces a confident
+    card about somewhere nobody mentioned. So two adjacent numbers are not enough - the
+    pair has to be bracketed, announced, or contain a negative.
+    """
+    for form in _COORD_FORMS:
+        m = form.search(utterance)
+        if m:
+            return float(m.group(1)), float(m.group(2))
+    return None
+
+
 # ------------------------------------------------------------------ Q7 corpus lookup
 #
 # "How does sanity work". The broadest branch here, and the last one consulted, because
@@ -1113,14 +1159,27 @@ class StubRouter:
         if not self._base_sites:
             return None
         body = _ADDRESS.sub("", utterance)
-        if not (_RATE_CUE.search(body) and _RATE_SUBJECT.search(body)):
+        if not _RATE_CUE.search(body):
+            return None
+        # A stated coordinate IS the subject. "How good is (185, -475)" names no base and
+        # no spot, and asking for the noun as well would decline the most precise way
+        # there is to point at a place - which is also the way `suggest_base_sites`
+        # answers, so it is exactly what a follow-up to that card looks like.
+        if not (_RATE_SUBJECT.search(body) or coordinates(body)):
             return None
         if self._subject(candidates) is not None:
             return None
-        args = {"own_base": True} if _OWN_BASE.search(body) else {}
+        # A stated coordinate wins over "my base", so the flag is not set when one is
+        # present. The dispatcher enforces the same precedence anyway - the model path
+        # can set `own_base` on an utterance that also names a coordinate - but a
+        # ToolCall should say what it means rather than leave the reader of a log to
+        # work out that one field silently overrides another.
+        stated = coordinates(body)
+        args = {"own_base": True} if _OWN_BASE.search(body) and not stated else {}
+        where = ("that coordinate" if stated
+                 else "their own base" if args else "where they are")
         return ToolCall(name="rate_base_site", args=args,
-                        rationale="base rating cue, no named entity"
-                                  + (" (their own base)" if args else " (where they are)"))
+                        rationale=f"base rating cue, no named entity ({where})")
 
     def _tech_call(self, utterance: str,
                    candidates: list[Candidate]) -> "ToolCall | None":

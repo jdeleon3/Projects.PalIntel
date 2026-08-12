@@ -14,7 +14,7 @@ from . import cards, execution
 from .cards import Card
 from .knowledge import REPO, Candidate, KnowledgeBase
 from .memory import Memory, Turn
-from .routing import RouterBackend
+from .routing import RouterBackend, coordinates
 from .tools import Decline, ToolCall
 
 if TYPE_CHECKING:  # config imports nothing from here; the runtime import is inside
@@ -620,13 +620,22 @@ class Pipeline:
                     Decline(reason="I don't have the terrain and water data loaded"),
                     candidates)
 
-            # Two readings of the same class, and they resolve to different places.
-            # "Rate this spot" means where the player is standing; "how good is my base"
-            # means where they built. Getting them the same way round matters - a player
-            # asking about their base while standing somewhere else would otherwise be
-            # rated on the wrong ground and never know.
-            want_base = bool(call.args.get("own_base"))
-            if want_base:
+            # Three readings of the same class, and they resolve to different places.
+            # "Rate (185, -475)" means that coordinate; "how good is my base" means where
+            # they built; "rate this spot" means where they are standing. Getting them
+            # the same way round matters - a player asking about their base while
+            # standing somewhere else would otherwise be rated on the wrong ground and
+            # never know.
+            #
+            # A stated coordinate wins over both, because it is the only one of the three
+            # the player said out loud. It is read off the UTTERANCE rather than out of
+            # the call's arguments, so it cannot have come from a model whichever router
+            # claimed this - see `coordinates`.
+            named = coordinates(utterance)
+            want_base = bool(call.args.get("own_base")) and named is None
+            if named is not None:
+                spots = [(named[0], named[1], f"({named[0]:.0f}, {named[1]:.0f})")]
+            elif want_base:
                 if state.base_camps is None:
                     return self._decline(
                         Decline(reason="I haven't read your save, so I don't know "
@@ -643,8 +652,8 @@ class Pipeline:
                 spots = [(*state.player_coords, "Where you're standing")]
             else:
                 return self._decline(
-                    Decline(reason="I don't know where you are - I need your save to "
-                                   "rate the spot you're on"), candidates)
+                    Decline(reason="I don't know where you are - read your save, or "
+                                   "give me a coordinate like (185, -475)"), candidates)
 
             built = []
             for x, y, label in spots:

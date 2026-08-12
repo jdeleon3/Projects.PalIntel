@@ -663,6 +663,10 @@ class BaseRating:
     # the uncalibrated one; the levels themselves are extracted.
     wild_levels: tuple[int, int] | None = None
     nearest_marked: float | None = None
+    # False when the coordinate is outside everything this project has data for. A rating
+    # there would come back 0 of 4 - no resources, no water, no marked area - which reads
+    # as a judgement about a bad spot rather than as "that is not on my map".
+    on_the_map: bool = True
 
     @property
     def score(self) -> int:
@@ -772,6 +776,7 @@ def rate_base_site(kb: KnowledgeBase, x: float, y: float,
         raise ValueError("no base features loaded - run build_base_features.py")
 
     radius = kb.base_radius or f.radius
+    on_map = kb.within_known_map(x, y)
     covered: dict[str, int] = {}
     for n in kb.nodes:
         if n.distance_to(x, y) <= radius:
@@ -835,7 +840,7 @@ def rate_base_site(kb: KnowledgeBase, x: float, y: float,
 
     return BaseRating(map_x=x, map_y=y, label=label, criteria=criteria,
                       covered=covered, radius=radius, wild_levels=levels,
-                      nearest_marked=marked)
+                      nearest_marked=marked, on_the_map=on_map)
 
 
 def suggest_base_sites(

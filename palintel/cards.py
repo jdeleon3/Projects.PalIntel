@@ -1206,6 +1206,22 @@ def base_rating_card(result: "BaseRating") -> Card:
     A weighted score would be a better-looking card and a worse claim. It would assert
     that flat ground is worth some fraction of a base site, which nobody has measured.
     """
+    if not result.on_the_map:
+        # **Not a 0 of 4.** Outside the extent of everything extracted, every criterion
+        # fails for the same uninteresting reason, and a card reading "0 of 4" is a
+        # judgement about a bad base site rather than the truth - which is that the
+        # coordinate is not somewhere this can speak about at all. The two look identical
+        # to a reader and only one of them is worth acting on.
+        return Card(
+            title="That's off my map",
+            lines=[f"**({result.map_x:.0f}, {result.map_y:.0f})** is outside everything "
+                   f"I have data for, so anything I said about it would be a guess "
+                   f"dressed as a score.",
+                   "",
+                   "_Check the coordinate — the in-game map runs roughly "
+                   "−1990 to 940 across and −2010 to 1640 down._"],
+            colour=TIER_DECLINE)
+
     title = f"{result.label} — {result.score} of {result.checkable}"
     if result.checkable < len(result.criteria):
         title += f" ({len(result.criteria) - result.checkable} unknown)"
