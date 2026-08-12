@@ -141,12 +141,32 @@ class CaptureConfig:
 
 
 @dataclass(frozen=True)
+class CostConfig:
+    """The prepaid balance, and when to start warning about it.
+
+    **On by default, unlike capture**, because logging what a query cost records nothing
+    about the player and creates no privacy question - it is a number the process already
+    computed and then threw away.
+
+    `balance_usd` of 0 means "no balance configured": spend is still logged and totalled,
+    and nothing is deducted or warned about. Set it to what was actually loaded onto the
+    key, because the failure this guards against is silent - a depleted balance arrives
+    as HTTP 429, every 429 becomes a Decline, and the roadmap records one being read as a
+    13-point router regression before anyone checked.
+    """
+    enabled: bool = True
+    balance_usd: float = 0.0
+    warn_below_usd: float = 2.0
+
+
+@dataclass(frozen=True)
 class Config:
     discord: DiscordConfig
     voice: VoiceConfig = field(default_factory=VoiceConfig)
     router: RouterConfig = field(default_factory=RouterConfig)
     cards: CardsConfig = field(default_factory=CardsConfig)
     capture: CaptureConfig = field(default_factory=CaptureConfig)
+    cost: CostConfig = field(default_factory=CostConfig)
     data_version: str = "1.0.2"
     save_dir: Path | None = None
 
@@ -198,6 +218,7 @@ class Config:
 
         c = raw.get("cards", {}) or {}
         cap = raw.get("capture", {}) or {}
+        cst = raw.get("cost", {}) or {}
         save = (raw.get("game", {}) or {}).get("save_dir", "").strip()
         return cls(
             discord=DiscordConfig(token=token, channel_id=channel,
@@ -212,6 +233,9 @@ class Config:
                               icons=bool(c.get("icons", False))),
             capture=CaptureConfig(enabled=bool(cap.get("enabled", False)),
                                   feedback=bool(cap.get("feedback", False))),
+            cost=CostConfig(enabled=bool(cst.get("enabled", True)),
+                            balance_usd=float(cst.get("balance_usd", 0.0)),
+                            warn_below_usd=float(cst.get("warn_below_usd", 2.0))),
             data_version=os.environ.get(
                 "PALINTEL_DATA_VERSION", (raw.get("data", {}) or {}).get("version", "1.0.2")),
             save_dir=Path(save) if save else None,

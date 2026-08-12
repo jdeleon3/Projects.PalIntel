@@ -432,6 +432,25 @@ def main() -> None:
     # no-entity prompts are billed too. Reported per run because it was previously
     # estimated, and the estimate was out by 2.5x.
     spend = sum(s["usd"] for s in all_scored)
+
+    # **The eval writes to the same ledger gameplay does.** Eval runs are the dominant
+    # spend against the prepaid balance - $1.40 a full run against $0.005 a query - so a
+    # balance that counted only gameplay would be wrong in the direction that matters,
+    # and the failure it guards against is a depleted key arriving as a wall of declines.
+    #
+    # Its own session, prefixed so it never collides with a play session's timestamp and
+    # so "what did evals cost this month" is a filter rather than a reconstruction.
+    try:
+        from palintel import spend as spend_mod
+        ledger = spend_mod.SpendLog(f"eval-{time.strftime('%Y%m%d')}")
+        for s in all_scored:
+            ledger.record(spend_mod.Charge(
+                at=time.time(), tool=s["kind"], path="eval",
+                usd=s["usd"], model=args.model, billed=True,
+                who=f"score_router --sample {args.sample or len(all_scored)}"))
+        print(f"           logged to {ledger.path}")
+    except Exception as e:      # never let bookkeeping break a paid run's output
+        print(f"           (spend not logged: {e})")
     out_toks = sorted(s["out_tok"] for s in all_scored)
     schema_tok = max((s["cached_tok"] for s in all_scored), default=0)
     in_toks = sorted(s["in_tok"] for s in all_scored)

@@ -319,7 +319,7 @@ def plain(text: str) -> str:
 
 def status_card(log, *, voice: str, save: str = "not configured",
                 roster: str = "", router: str = "", artwork: str = "",
-                window_label: str = "last hour") -> Card:
+                spend: str = "", window_label: str = "last hour") -> Card:
     """Report what the pipeline has actually seen, stage by stage.
 
     The breakdown is the whole point. ADR-0004 flags wake-word false negatives as silent
@@ -352,6 +352,10 @@ def status_card(log, *, voice: str, save: str = "not configured",
              # identical from the channel: a card simply arrives without a picture. This
              # is the only place that distinction is visible.
              *([f"**Cards:** {plain(artwork)}"] if artwork else []),
+             # A prepaid balance running out is SILENT: every 429 arrives as a Decline,
+             # and the roadmap records one run reading that as a 13-point router
+             # regression. This line is what turns it into a number.
+             *([f"**Spend:** {spend}"] if spend else []),
              f"**Up:** {duration(log.uptime())}",
              "",
              f"__In the {window_label}__",
