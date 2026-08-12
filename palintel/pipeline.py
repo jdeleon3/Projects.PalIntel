@@ -601,6 +601,19 @@ class Pipeline:
             # "what about the alpha" to resolve against.
             return Outcome([cards.corpus_card(result)], call, candidates)
 
+        if call.name == "explain_base_criteria":
+            if self.kb.base_features is None:
+                return self._decline(
+                    Decline(reason="I don't have the terrain and water data loaded"),
+                    candidates)
+            # Needs no player state at all, which makes it the one base class that
+            # answers without a save. Worth noting: it is also the one that explains why
+            # the other two say what they say.
+            result = execution.describe_base_criteria(self.kb)
+            log.info("explain_base_criteria -> %d checks, %d gaps",
+                     len(result.checks), len(result.gaps))
+            return Outcome([cards.base_criteria_card(result)], call, candidates)
+
         if call.name == "rate_base_site":
             if self.kb.base_features is None:
                 return self._decline(

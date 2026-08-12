@@ -673,6 +673,84 @@ class BaseRating:
         return sum(1 for c in self.criteria if c.met is not None)
 
 
+@dataclass(frozen=True)
+class BaseCriteria:
+    """What this project checks about a base site, and where each bar came from.
+
+    **A claim about the tool, not about the game.** "What makes a good base" could be
+    answered two ways, and only one of them is ours to make:
+
+    * *"These are the four things that make a good base"* — a claim about how Palworld
+      works. The community names four levers and the game states none of them; asserting
+      them would be publishing somebody's opinion as fact.
+    * *"These are the things I check, here is each bar, here is where the bar came from,
+      and here is what I cannot check"* — a claim about this system's own method.
+
+    The second is true, it is useful, and it is what makes every rating card
+    interpretable. It is also the only one with a source behind every line.
+
+    The in-game help guide has a *Base* entry and it explains the Palbox — summoning
+    Pals, guild territory, base missions. It says nothing about choosing where to put
+    one, which is why the corpus lookup declines this question rather than quoting it.
+    """
+    # (name, the bar in words, where the bar came from).
+    checks: list[tuple[str, str, str]]
+    # What is deliberately not checked, and why. Named because a list of four criteria
+    # reads as a complete account of the problem, and it is not one.
+    gaps: list[tuple[str, str]]
+    marked_areas: int
+    radius: float
+
+
+def describe_base_criteria(kb: KnowledgeBase) -> BaseCriteria:
+    """The criteria a base rating uses, with their provenance. No place involved."""
+    f = kb.base_features
+    if f is None:
+        raise ValueError("no base features loaded - run build_base_features.py")
+    radius = kb.base_radius or f.radius
+    water_bar = f.water_bar
+
+    return BaseCriteria(
+        checks=[
+            ("Flat ground",
+             f"within ±{f.flat_cm / 100:.1f}m of level across the base's own reach",
+             f"the 75th percentile of the {len(f.popular_areas)} spots the game itself "
+             f"marks as base camp areas - measured from the height of every placed "
+             f"object, so it is a proxy for the terrain rather than the terrain"),
+            ("Resources in range",
+             "at least as many deposits as the median spot on the map",
+             "every node cluster in the game, so 'good' here means 'better than half "
+             "the places you could build'"),
+            ("Water nearby",
+             (f"within {water_bar:.0f} map units" if water_bar
+              else "no yardstick loaded"),
+             "the median distance from water of those same marked areas - they sit "
+             "further from it than a base's reach, so a stricter bar would fail spots "
+             "the designers themselves picked"),
+            ("The game marks the area",
+             f"a marked base camp area within {radius:.0f} map units",
+             f"{len(f.popular_areas)} of them exist and the name is the game's own. "
+             f"They are measurably flatter than random ground, and they hold a median "
+             f"of three deposits - so the designers are marking terrain, not resources"),
+        ],
+        gaps=[
+            ("Buildability",
+             "nothing extracted says whether a spot is inside a no-build zone, so a "
+             "flat, resource-rich coordinate can still be somewhere you cannot place a "
+             "Palbox"),
+            ("Raid safety",
+             "the community counts this as a fourth lever and usually means elevation "
+             "and approach. Nothing found in the game files supports the claim, so it "
+             "is not approximated"),
+            ("Anything about how it plays",
+             "pathfinding, whether Pals get stuck, how a layout feels to run. All real, "
+             "none of it in the files"),
+        ],
+        marked_areas=len(f.popular_areas),
+        radius=radius,
+    )
+
+
 def rate_base_site(kb: KnowledgeBase, x: float, y: float,
                    label: str = "here") -> BaseRating:
     """Judge one place, rather than search for places.

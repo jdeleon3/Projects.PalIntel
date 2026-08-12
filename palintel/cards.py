@@ -1154,6 +1154,39 @@ def _resource_word(resource: str) -> str:
 _MARK = {True: "✅", False: "❌", None: "❔"}
 
 
+def base_criteria_card(result: "BaseCriteria") -> Card:
+    """What this system checks about a base site. **Amber, and the colour is the point.**
+
+    The risk on this card is a reader taking it as *"Palworld says these four things
+    matter"*. It does not — the game states none of them, and the four levers are the
+    community's framing. Amber says this is the computation talking, which is exactly
+    what it is: the rating card's own rule, written out.
+
+    **Every bar names where it came from**, because a criterion with an unsourced
+    threshold is the `min_player_level` failure wearing a new coat — a number that looks
+    calibrated, is not, and gets believed. And the gaps are on the card rather than in a
+    docstring, because a list of four criteria reads as a complete account of the problem
+    and this one is not.
+    """
+    lines = []
+    for name, bar, source in result.checks:
+        lines.append(f"**{name}** — {bar}")
+        lines.append(f"    _{source}_")
+
+    lines += ["", "**What I can't check:**"]
+    for name, why in result.gaps:
+        lines.append(f"- **{name}** — {why}")
+
+    lines += ["", "_Ask \"where should I put a base for coal\" to search, or "
+                  "\"rate this spot\" to judge where you're standing._"]
+    return Card(
+        title="What I look for in a base site",
+        lines=lines, colour=TIER_ADVICE,
+        footer=f"my criteria, not the game's{SEP}"
+               f"every bar is calibrated against the {result.marked_areas} areas the "
+               f"game marks itself, or against the whole map")
+
+
 def base_rating_card(result: "BaseRating") -> Card:
     """How good one place is. **Tier 2, amber, and deliberately not a score out of ten.**
 

@@ -321,6 +321,43 @@ def test_percentiles_use_two_different_yardsticks_on_purpose():
     assert raw["site_deciles"]["deposits"][-1] > 20      # the map has far richer spots
 
 
+def test_the_criteria_card_sources_every_bar_and_names_its_gaps(featured):
+    """**A criterion with an unsourced threshold is the `min_player_level` failure in a
+    new coat** - a number that looks calibrated, is not, and gets believed. And the gaps
+    belong on the card, because a list of four criteria reads as a complete account of
+    the problem and this one is not."""
+    from palintel.execution import describe_base_criteria
+
+    result = describe_base_criteria(featured)
+    assert all(source for _, _, source in result.checks)
+    assert result.gaps
+
+    text = cards.base_criteria_card(result).to_text()
+    assert "my criteria, not the game's" in text
+    assert "no-build zone" in text and "Raid safety" in text
+
+
+def test_the_criteria_card_is_amber_not_reference(featured):
+    """The risk is a reader taking it as "Palworld says these four things matter". The
+    game states none of them. Amber says this is the computation talking."""
+    from palintel.execution import describe_base_criteria
+
+    assert cards.base_criteria_card(
+        describe_base_criteria(featured)).colour == cards.TIER_ADVICE
+
+
+def test_the_criteria_bars_match_what_a_rating_actually_uses(featured):
+    """The card explains the rating, so a bar that drifts from the rating's own would be
+    a plausible, well-formed lie about the system's behaviour."""
+    from palintel.execution import describe_base_criteria, rate_base_site
+
+    described = describe_base_criteria(featured)
+    rating = rate_base_site(featured, 0, 0)
+    assert f"{featured.base_features.flat_cm / 100:.1f}m" in described.checks[0][1]
+    assert f"{featured.base_features.flat_cm / 100:.1f}m" in \
+        next(c for c in rating.criteria if c.name == "flat ground").detail
+
+
 def test_the_rating_card_shows_the_margin_not_just_the_verdict(featured):
     from palintel.execution import rate_base_site
 

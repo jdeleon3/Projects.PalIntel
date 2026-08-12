@@ -136,6 +136,49 @@ def test_how_good_is_a_pal_is_not_a_base_rating(router):
     assert name(call(router, "how good is Anubis")) != "rate_base_site"
 
 
+# ------------------------------------------------- the general question, about no place
+
+@pytest.mark.parametrize("text", [
+    "what makes a good base",
+    "what makes a good base location",
+    "what should I look for in a base location",
+    "how do I choose a base location",
+    "what do you check for a base spot",
+])
+def test_the_general_question_is_claimed(router, text):
+    c = call(router, text)
+    assert name(c) == "explain_base_criteria" and c.args == {}
+
+
+def test_the_three_base_shapes_do_not_collide(router):
+    """Siting needs a placement verb and a resource, rating needs "how good" and a
+    subject, and criteria needs neither verb. Three questions about bases, three answers,
+    and none of them is the others."""
+    assert name(call(router, "where should I build my base for coal")) \
+        == "suggest_base_sites"
+    assert name(call(router, "how good is my base location")) == "rate_base_site"
+    assert name(call(router, "what makes a good base")) == "explain_base_criteria"
+
+
+def test_the_corpus_does_not_get_the_general_question(kb):
+    """**The wrong-class answer this branch exists to prevent.**
+
+    The game's own *Base* help entry explains the Palbox - summoning Pals, guild
+    territory, base missions - and says nothing about choosing where to put one. It
+    scores well on the words, so without this branch above it the corpus answers "what
+    makes a good base" with a passage that reads entirely correct and addresses a
+    different question.
+    """
+    from palintel.pipeline import _corpus_probe
+
+    probe = _corpus_probe("1.0.2")
+    if probe is None or kb.base_features is None:
+        pytest.skip("corpus.json or base_features.json not built")
+    both = StubRouter(kb.lexicon, sorted({n.resource for n in kb.nodes}), cues="wide",
+                      base_sites=True, corpus=probe)
+    assert name(call(both, "what makes a good base")) == "explain_base_criteria"
+
+
 # ------------------------------------------------------------------ the wiring
 
 def test_build_router_turns_the_branch_on_for_both_stubs(kb):

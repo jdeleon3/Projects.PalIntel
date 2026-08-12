@@ -561,6 +561,20 @@ _RATE_SUBJECT = re.compile(r"\bbase\b|\bcamp\b|\bspot\b|\blocation\b|\bsite\b|\b
 # beyond a position.
 _OWN_BASE = re.compile(r"\b(?:my|our)\s+(?:base|camp)s?\b", re.I)
 
+# "What makes a good base?" - the general question, about no place at all. A third shape
+# beside siting (where should I put one) and rating (how good is this one), and the one
+# that asks what the criteria even are.
+#
+# Disjoint from both by construction: siting needs a placement verb AND a resource, rating
+# needs "how good"/"rate" AND a subject noun, and neither pattern matches "what makes a
+# good base". Nothing here names a place, which is what makes it the general question.
+_CRITERIA_CUE = re.compile(
+    r"\bwhat makes a (?:good|great|nice)\b"
+    r"|\bwhat (?:should i|do i) look for\b"
+    r"|\bhow (?:do|should) i (?:choose|pick|decide on)\b"
+    r"|\bwhat matters (?:for|in|when)\b"
+    r"|\bwhat do you (?:check|look at|consider)\b", re.I)
+
 _LOCATION_CUES = re.compile(rf"\b({_CUE_SETS[DEFAULT_CUES]})\b", re.I)
 _LEVEL = re.compile(r"\b(?:level|lvl)\s*(\d{1,2})\b", re.I)
 _LEVEL_WORDS = {
@@ -1060,6 +1074,30 @@ class StubRouter:
                         rationale=f"base placement cue + {len(wanted)} resource(s): "
                                   f"{', '.join(wanted)}")
 
+    def _criteria_call(self, utterance: str,
+                       candidates: list[Candidate]) -> "ToolCall | None":
+        """`explain_base_criteria` when the utterance asks what makes a base good.
+
+        The third base shape, and the one with no place in it at all. Checked before the
+        other two because it is the most specific: "what makes a good base" carries the
+        noun both of them look for and neither of their verbs.
+
+        **The corpus must not get this one**, which is why it sits above that branch too.
+        The game's own *Base* help entry explains the Palbox - summoning Pals, guild
+        territory, base missions - and says nothing about choosing where to put one. It
+        scores well on the words and would be a wrong-class answer that reads entirely
+        correct.
+        """
+        if not self._base_sites:
+            return None
+        body = _ADDRESS.sub("", utterance)
+        if not (_CRITERIA_CUE.search(body) and _RATE_SUBJECT.search(body)):
+            return None
+        if self._subject(candidates) is not None:
+            return None
+        return ToolCall(name="explain_base_criteria", args={},
+                        rationale="base criteria cue, no place and no named entity")
+
     def _rate_call(self, utterance: str,
                    candidates: list[Candidate]) -> "ToolCall | None":
         """`rate_base_site` when the utterance asks how good a place is.
@@ -1261,6 +1299,13 @@ class StubRouter:
         # `where` and a confident `coal`, so the gate would pass it straight to the
         # resource branch and answer a siting question with a list of coal spots. The one
         # branch here whose safety is the cue alone - see `_base_call`.
+        # The most specific of the three base shapes goes first: "what makes a good base"
+        # carries the noun the other two look for and neither of their verbs, and the
+        # corpus would otherwise answer it with the Palbox help entry.
+        criteria = self._criteria_call(utterance, candidates)
+        if criteria is not None:
+            return criteria
+
         # Ahead of siting: "how good is this base spot" carries a word siting looks for,
         # and nothing in siting's vocabulary asks how good anything is.
         rating = self._rate_call(utterance, candidates)
