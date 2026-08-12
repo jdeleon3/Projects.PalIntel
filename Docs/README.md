@@ -35,6 +35,7 @@ from a model.**
 | [03-data-ingestion.md](03-data-ingestion.md) | Sourcing, normalizing, embedding, and validating the datasets |
 | [04-roadmap.md](04-roadmap.md) | Phased build plan with exit criteria |
 | [test-plan.md](test-plan.md) | **What is untested or needs retaking in game**, with the wording to say and what to expect |
+| [corpus-sources.md](corpus-sources.md) | Register of community sources for the Q7 corpus — scored, licence and robots recorded, **nothing ingested**, awaiting review |
 | [play-session-protocol.md](play-session-protocol.md) | The latency-grading script and the ground-truth walk record. Superseded for everyday use by `test-plan.md` |
 | [breeding-verification.md](breeding-verification.md) | The ADR-0008 sheet, generated and waiting on hatched eggs |
 | [adr/](adr/) | Architecture Decision Records, including the amendment chain |
