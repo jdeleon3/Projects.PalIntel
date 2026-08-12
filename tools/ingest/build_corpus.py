@@ -328,6 +328,20 @@ def build(version: str) -> dict:
                 "source_table": table,
             })
 
+    # Patch notes, from the Steam news API rather than the pak - see
+    # build_patch_notes.py. Folded in here so there is ONE retrieval index rather than
+    # two, and carrying their own provenance so a card and a reader can tell that this
+    # part of the corpus came from somewhere else.
+    #
+    # Optional in exactly the way every other dataset here is: absent, the corpus is the
+    # pak's text and nothing else, which is what it was.
+    patch_path = REPO / "data" / version / "patch_notes.json"
+    patch_chunks = 0
+    if patch_path.exists():
+        for c in json.loads(patch_path.read_text(encoding="utf-8"))["chunks"]:
+            chunks.append(c | {"provenance": "steam_news"})
+            patch_chunks += 1
+
     # Entity tags, from the same canonical names the lexicon gives the router. This is
     # the "entity boost" half of ADR-0011's hybrid retrieval, and it has to use the same
     # vocabulary or a boost will fire on a name the query could never produce.
@@ -340,17 +354,23 @@ def build(version: str) -> dict:
     for chunk in chunks:
         haystack = f"{chunk['title']}\n{chunk['text']}"
         chunk["entities"] = sorted(c for c, p in patterns if p.search(haystack))
+        chunk.setdefault("provenance", "pak")
 
     by_section: dict[str, int] = {}
     for c in chunks:
         by_section[c["section"]] = by_section.get(c["section"], 0) + 1
 
     return {
-        "dataset_version": 1,
+        "dataset_version": 2,
         "game_version": version,
-        "provenance": "pak",
+        # Two now, not one, and each chunk carries its own. Both are first-party - the
+        # developers' text tables and the developers' Steam posts - but they arrive by
+        # different roads and one of them needed the network, so collapsing them to a
+        # single word would hide something a reader should be able to see.
+        "provenance": "pak + steam_news",
         "source": "the game's own English text tables - help guide, Paldeck, journal "
-                  "notes, technology, structure, item and skill descriptions",
+                  "notes, technology, structure, item and skill descriptions - plus "
+                  "first-party patch notes from the Steam news API",
         "licence_note": "A7's remaining licensing risk was the Q7 prose corpus, which "
                         "ADR-0014 expected to come from licensed community writing. It "
                         "does not: this corpus is the game's own text, extracted from a "
@@ -372,6 +392,8 @@ def build(version: str) -> dict:
             "chunks": len(chunks),
             "characters": sum(len(c["text"]) for c in chunks),
             "by_section": dict(sorted(by_section.items())),
+            "by_provenance": {"pak": len(chunks) - patch_chunks,
+                              "steam_news": patch_chunks},
             "with_entities": sum(1 for c in chunks if c["entities"]),
             "skipped_too_short": skipped_short,
             "skipped_unresolved_markup": skipped_markup,
