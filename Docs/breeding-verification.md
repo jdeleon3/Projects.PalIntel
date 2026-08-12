@@ -107,7 +107,9 @@ _99 of the 258 exception rows are omitted, on two grounds. Some name a Pal with 
 
 Fill the **Actual** column with what hatched. A wrong prediction is worth more than a right one and should be recorded verbatim rather than corrected — if a pattern is going to show up, it will show up in the misses.
 
-Priority if there is not time for all of it: **Block 1, then Block 2.** Block 1 decides whether the model works at all and Block 2 settles a question nothing else can. Blocks 3 and 4 refine it.
+Priority if there is not time for all of it: **Block 1, then Block 3, then Block 4.** Block 1 decides whether the model works at all — a failure there stops the sheet. Block 3 tests the rule we derived ourselves, which is the likeliest of the three to be wrong. Block 4 refines the exception table.
+
+*This line used to say "Block 1, then Block 2", written before Block 2 was closed. Block 2 costs no eggs at all — all 260 ranks are multiples of 10, so the two rounding conventions are the same function on this dataset and no pair can separate them. A tester following the old priority would have spent a session on a question that was already answered.*
 
 Then run `python tools/eval/score_breeding.py --version 1.0.2` with the results to close the ADR-0008 gate, and move the ADR from Provisional to Accepted — or to the `TableBasedBreedingModel` fallback it already names.
 

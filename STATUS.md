@@ -17,7 +17,7 @@ mapping and attribute search are on `design-and-phase0` and not yet promoted.*
 | 1 — Q1 resource lookup | **Closed 2026-08-10.** Latency accepted at measured behaviour, carried forward |
 | 2 — Q2 Pal spawns + memory | **Closed 2026-08-10** |
 | Card artwork + drops | **Shipped.** [ADR-0017](Docs/adr/0017-card-artwork-from-game-assets.md) Accepted |
-| 3 — Q3 breeding + Q5 counters | **Order swapped 2026-08-11. Q5 built end to end, unplayed.** Data, candidate set, Tier 2 guard, card, fast path and model path all land; nothing has answered a counter question in real play. **Q3 is blocked** — the ADR-0008 gate needs in-game breeding, not yet unlocked |
+| 3 — Q3 breeding + Q5 counters | **Order swapped 2026-08-11. Q5 built end to end, unplayed.** Data, candidate set, Tier 2 guard, card, fast path and model path all land; nothing has answered a counter question in real play. **Q3 is blocked on hatching eggs, not on code** — see below |
 | Pal search by attribute | **Shipped, unplayed.** The first new query class since the roadmap. Work-suitability ingest, three-axis filter, card, fast path and model path |
 | Mount search | **Shipped and PLAYED 2026-08-11.** Landed 19:13, exercised four minutes later — *"which dragons can I ride at level 60"*, *"which swimming mounts are available"*, *"the fastest ground mount at level 60"*, three of the four on the fast path. **Speed ordering confirmed correct by the player.** The unowned set-difference is still unexercised |
 | Tower leaders | **Shipped, unplayed.** *"How do I beat Victor"* resolves to the tower, not the field alpha |
@@ -119,12 +119,18 @@ phrases that name what is being asked for.
 | ~~`art_post` p95~~ | **Measured**: 531ms p50, 1,157ms p95 over 70 attachments. Edit-in delivery holds. |
 | ~~**Do markers land on the actual rock?**~~ | **Closed 2026-08-11.** Ore, stone, wood, paldium walked against the regenerated table — nearest *and* further markers on each card, inside and outside the base — plus quartz at (-53,-960) and (-52,12), ~551 and ~573 units out on different bearings. Near-field and far-field, five resources, separate clusters. |
 | **Does `item_source` work?** | All 240 eval recordings predate the class. Ten queries were *asked* on 2026-08-11 and all routed to the model as designed — but **only Chillet's card was read back**, so routing is confirmed and correctness is not. |
+| **Does the breeding rank model hold?** | The ADR-0008 gate, and the whole of Q3 behind it. **Nothing is left to build**: `build_breeding.py` ingests the ranks, [`Docs/breeding-verification.md`](Docs/breeding-verification.md) is generated, `score_breeding.py` waits to consume it. It needs **eggs hatched in game**. Two preconditions: breeding unlocked in the playthrough, and the install still on Steam buildid **`24467282`** with auto-updates off — ranks are rebalanced between patches, so a tester on another build is measuring a different game. Note ADR-0008 requires **100% agreement** outside the exception table and refuses partial agreement as a tunable, so one refuted Block 1 row is a decision (the `TableBasedBreedingModel` fallback), not a data point. |
 | ~~The Phase 1 latency criterion~~ | **Measured 2026-08-10 and FAILED**: voice p95 4.2s / 2.5s, text 2.0s / 1.5s. Not a tuning problem — p95 sits in the model population whenever a shipped class has no fast path. See the roadmap. |
 
-All four are in [`Docs/play-session-protocol.md`](Docs/play-session-protocol.md); three
-were closed by the 2026-08-10 and 2026-08-11 sessions. **`item_source` is the last, and
-what it needs now is reading, not asking** — the cards from block 6 either name the right
-Pals or they do not, and nobody has looked.
+The first four are in [`Docs/play-session-protocol.md`](Docs/play-session-protocol.md);
+three were closed by the 2026-08-10 and 2026-08-11 sessions. **`item_source` is the last
+one there, and what it needs now is reading, not asking** — the cards from block 6 either
+name the right Pals or they do not, and nobody has looked.
+
+The breeding row is a different shape and deliberately listed alongside them: it is not a
+play-session item at all — it needs no save, no bot and no Discord, since breeding
+mechanics are global — but it is the same kind of gap, a claim the project cannot check
+about itself. It is also the largest one, because a whole phase sits behind it.
 
 One note on how the walk was done: the four nearest nodes sit inside a base whose Pals keep
 them mined out, so some were confirmed by position rather than by a deposit being present —
