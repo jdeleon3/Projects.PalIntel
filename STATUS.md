@@ -205,7 +205,12 @@ markers on each card were walked too, outside the base, with deposits standing t
 **0. Play Phase 4, with capture on. Nothing in it has answered a real question.** Three
 classes, three datasets, every exit criterion met by construction. The first session paid
 for itself in an hour and reversed two written decisions; this is a larger surface than
-that one was. Ask specifically:
+that one was.
+
+**[`Docs/test-plan.md`](Docs/test-plan.md) is the full inventory** — every untested class
+and every reading that needs retaking, with the exact wording to say, what each item is
+testing, and what to expect, all of it produced against your live save. The summary below
+is the same list at a glance:
 
 - **Q6.** *"What should I research next"*, *"what can I unlock at level 30"*, *"what
   should I spend my ancient points on"*, *"what should I research for my base"*. Watch for

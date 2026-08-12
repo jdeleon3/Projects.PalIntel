@@ -1,5 +1,12 @@
 # Play session protocol
 
+> **Superseded for everyday use by [`test-plan.md`](test-plan.md), 2026-08-12.** That file
+> is the inventory of what is untested or needs retaking after Phase 4; this one is the
+> **latency-grading script** and the **ground-truth walk record**, and it is kept for those
+> two jobs. Nothing below is wrong, but two things in it are now stale: block 5 expects
+> *"what should I research next"* to decline, and it now answers (Q6), and the whole
+> document predates the discovery that the owned-Pal roster never reached a card.
+
 *Revised 2026-08-10 for card artwork, the drop classes and the overworld-only node fix.
 Amended 2026-08-11: the 2026-08-10 session closed the latency criterion and `art_post`,
 so **the full script below is no longer the default** — see [§Short run](#short-run--the-30-minute-version)

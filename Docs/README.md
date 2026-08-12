@@ -34,6 +34,9 @@ from a model.**
 | [02-data-model.md](02-data-model.md) | Entity schemas, both stores, the entity lexicon |
 | [03-data-ingestion.md](03-data-ingestion.md) | Sourcing, normalizing, embedding, and validating the datasets |
 | [04-roadmap.md](04-roadmap.md) | Phased build plan with exit criteria |
+| [test-plan.md](test-plan.md) | **What is untested or needs retaking in game**, with the wording to say and what to expect |
+| [play-session-protocol.md](play-session-protocol.md) | The latency-grading script and the ground-truth walk record. Superseded for everyday use by `test-plan.md` |
+| [breeding-verification.md](breeding-verification.md) | The ADR-0008 sheet, generated and waiting on hatched eggs |
 | [adr/](adr/) | Architecture Decision Records, including the amendment chain |
 
 ## Reading order
