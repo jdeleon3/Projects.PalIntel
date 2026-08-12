@@ -154,3 +154,68 @@ def test_aliases_harvested_from_unscripted_speech(kb: KnowledgeBase, mangled, pa
     read off a list. Swept against 281 transcripts before adding: worst unrelated match
     0.714, under both floors."""
     assert kb.lexicon.rank(mangled)[0].canonical == pal
+
+
+# ------------------------------------------- shapes the replay surfaced
+
+@pytest.mark.parametrize("utterance, pal", [
+    ("Hey pal, can I ride Azurbe Cryst?", "Azurobe Cryst"),
+    ("Hey pal, can I ride Lamball?", "Lamball"),
+    ("Hey pal, is Nitewing rideable?", "Nitewing"),
+])
+def test_can_i_ride_one_named_pal_is_an_info_question(pipe, utterance, pal):
+    """A yes/no about ONE Pal. Mount search returns lists and cannot answer it, so this
+    routes to the info card rather than becoming a fourth mount shape."""
+    c = call(pipe, utterance)
+    assert isinstance(c, ToolCall)
+    assert (c.name, c.args) == ("get_pal_info", {"pal": pal})
+
+
+@pytest.mark.parametrize("pal, expected", [
+    ("Lamball", "Not rideable"),
+    ("Nitewing", "a land mount"),
+    ("Jormuntide", "faster in water"),
+])
+def test_the_mount_line_is_always_present(kb: KnowledgeBase, pal, expected):
+    """**Silence is not a no.** The line renders on every info card, including for Pals
+    with no saddle, so an omission can never carry the answer - and so the card has one
+    behaviour rather than reshaping itself around which question was asked."""
+    card = cards.pal_info_card(get_pal_info(kb, pal), kb.job_label)
+    assert any(expected in ln for ln in card.lines), card.lines
+
+
+def test_a_described_subject_still_reaches_mount_search(pipe):
+    """"Which swimming mounts are available" describes rather than names, so it must not
+    be caught by the single-Pal rideable check."""
+    c = call(pipe, "hey pal which swimming mounts are available")
+    assert c.name == "find_pals_by_attribute"
+    assert c.args == {"mount": True, "medium": "water"}
+
+
+def test_an_unattached_element_word_defers(pipe):
+    """"Which dragons can I ride at level 60" states an element the cue cannot attach -
+    the pattern wants "dragon pal" or "dragon type". Answering anyway returned EVERY
+    mount at level 60 under a card titled "Mounts": a filter the player stated, silently
+    dropped, on the fast path.
+
+    Deferring rather than special-casing `dragons` keeps one rule instead of a rule plus
+    an allowlist of one.
+    """
+    assert isinstance(call(pipe, "Hey pal, which dragons can I ride at level 60?"),
+                      Decline)
+
+
+@pytest.mark.parametrize("utterance, expected", [
+    # `ground` and `water` name an element AND a medium. A word the medium cue already
+    # consumed is attached, not loose, so these must not defer.
+    ("Hey pal, what's the fastest ground mount at level 60",
+     {"mount": True, "medium": "land", "player_level": 60}),
+    ("hey pal which swimming mounts are available", {"mount": True, "medium": "water"}),
+    # And an element that IS attached still works normally.
+    ("Hey pal, I need a water pal for watering",
+     {"element": "Water", "work": "Watering"}),
+])
+def test_an_attached_element_word_does_not_defer(pipe, utterance, expected):
+    c = call(pipe, utterance)
+    assert isinstance(c, ToolCall), utterance
+    assert c.args == expected

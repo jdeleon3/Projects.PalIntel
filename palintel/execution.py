@@ -273,6 +273,10 @@ class PalInfoResult:
     drops: int                  # how many distinct items, for a "and it drops N things"
     spawn_areas: int
 
+    @property
+    def rideable(self) -> bool:
+        return self.mount is not None
+
 
 def get_pal_info(kb: KnowledgeBase, pal: str, work_limit: int = 3) -> PalInfoResult:
     """A summary of one Pal, from the datasets already in memory.

@@ -662,10 +662,7 @@ def pal_info_card(result: PalInfoResult, job_label=lambda j: j) -> Card:
         lines.append("Works: " + SEP.join(f"**{job_label(j)}** {v}"
                                           for j, v in result.work))
 
-    if result.mount is not None:
-        at = (f", saddle at lvl {result.mount.unlock_level}"
-              if result.mount.unlock_level is not None else "")
-        lines.append(f"Rideable{at}.")
+    lines.append(_mount_line(result))
 
     lines += _ranch_summary(result)
 
@@ -677,6 +674,32 @@ def pal_info_card(result: PalInfoResult, job_label=lambda j: j) -> Card:
     lines += ["", f"_Ask \"where can I find {result.pal}\" or \"what does "
                   f"{result.pal} drop\" for the detail._"]
     return Card(title=result.pal, lines=lines, colour=TIER_FACT)
+
+
+def _mount_line(result: PalInfoResult) -> str:
+    """Rideability, **always present, including when the answer is no.**
+
+    This line is unconditional and that is the whole design. *"Can I ride X"* routes
+    here, and an info card that simply omitted the line when a Pal has no saddle would
+    make silence carry the answer - which reads as "nobody looked", not as "no". Stating
+    it costs one line on every card and removes the ambiguity from all of them.
+
+    Preferred over a special rendering mode for the same reason. A card that reshapes
+    itself depending on which question was asked has two behaviours to learn and two to
+    keep right; a card that always says everything has one.
+
+    Which medium is named the way `build_mounts.py` names it: land covers flying and
+    ground because the pak gives them one speed column, and water is separate because
+    `SwimDashSpeed` is separate.
+    """
+    m = result.mount
+    if m is None:
+        return "Not rideable - it has no saddle."
+    at = (f", saddle at player level {m.unlock_level}"
+          if m.unlock_level is not None
+          else ", though nothing in the game files unlocks its saddle")
+    where = "faster in water" if m.fastest_medium == "water" else "a land mount"
+    return f"Rideable{at} - {where}."
 
 
 def _ranch_summary(result: PalInfoResult) -> list[str]:

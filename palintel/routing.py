@@ -348,6 +348,17 @@ _OIL_CUE = re.compile(r"\b(?:oil\s+extraction|extract\w*\s+oil)\b", re.I)
 _ADDRESS = re.compile(r"^\s*(?:hey|ok|okay)[,\s]+(?:pal|palintel)\b[,\s]*", re.I)
 _PAL_NOUN = re.compile(r"\bpals?\b", re.I)
 
+# NOT here: a bare element plural as the subject noun, "show me level 60 dragons". It was
+# built and reverted the same day. The measurement was fine - the plural fires on 2 of
+# 281 transcripts and both are genuine - but making it work needed an allowlist of ONE
+# element, because `plants`, `grounds` and `flames` are ordinary English about other
+# things and would have turned "which plants can I grow" into a Grass roster.
+#
+# A rule with a single hand-picked exception is not a rule, it is a special case wearing
+# one, and the next person has to learn both. "<element> pal" and "<element> type"
+# already cover every element uniformly; the bare plural defers to the model, which reads
+# the sentence rather than a pattern.
+
 # Mounts. A separate cue family from elements and jobs because it changes what "level"
 # MEANS - a saddle is gated on the player's level, everything else here on the Pal's.
 _MOUNT_CUE = re.compile(r"\b(?:mount|mounts|ride|rideable|ridable|mountable"
@@ -364,6 +375,7 @@ _MEDIUM_CUES = (
     ("land", re.compile(r"\b(?:fly\w*|flight|air|aerial|ground|land|walk\w*|run\w*)\b",
                         re.I)),
 )
+_MEDIUM_CUES_BY_NAME = dict(_MEDIUM_CUES)
 # "which mounts do I not have yet", "what am I missing". This INVERTS the answer, so a
 # false positive returns the exact complement of what was asked - but it is only ever
 # consulted inside the mount branch, which has already established there is no named
@@ -403,6 +415,14 @@ _INFO_CUES = re.compile(
     r"|\binfo (?:on|about)\b|\bdescribe\b"
     r"|\bwhat level is\b|\bhow good is\b",
     re.I)
+
+# "Can I ride X" - a yes/no about ONE named Pal, which mount search cannot answer because
+# it returns lists. Requires a modal, so it cannot collide with "which dragons can I
+# ride", where the subject is a description rather than a name and the entity guard sends
+# it to mount search instead.
+_RIDE_ONE_CUE = re.compile(
+    r"\b(?:can|could)\s+(?:i|you|we)\s+rid[e]\b|\bis\s+\w+\s+rid(?:e?able)\b"
+    r"|\brideable\b|\bridable\b", re.I)
 
 _LOCATION_CUES = re.compile(rf"\b({_CUE_SETS[DEFAULT_CUES]})\b", re.I)
 _LEVEL = re.compile(r"\b(?:level|lvl)\s*(\d{1,2})\b", re.I)
@@ -731,7 +751,11 @@ class StubRouter:
         top = candidates[0]
         if top.kind != "pal" or top.score < self._pal_floor:
             return None
-        if not _INFO_CUES.search(utterance):
+        # "Can I ride X" is an info question about a NAMED Pal, which is this branch's
+        # shape - not mount search, which answers "which Pals" and cannot answer "does
+        # this one". Routed here rather than given its own class because the info card
+        # already holds the fact; it just has to lead with it.
+        if not (_INFO_CUES.search(utterance) or _RIDE_ONE_CUE.search(utterance)):
             return None
         return ToolCall(name="get_pal_info", args={"pal": top.canonical},
                         rationale=f"info cue + pal candidate {top}")
@@ -779,6 +803,27 @@ class StubRouter:
             work = "OilExtraction"
 
         mount = bool(_MOUNT_CUE.search(body))
+        medium = (next((name for name, cue in _MEDIUM_CUES if cue.search(body)), None)
+                  if mount else None)
+
+        # **An element word we could not attach means defer, not answer without it.**
+        # "Which dragons can I ride at level 60" says `dragons`, which `_ELEMENT_CUE`
+        # cannot claim because the pattern wants "dragon pal" or "dragon type". Answering
+        # anyway returned every mount at level 60 under a card titled "Mounts" - a filter
+        # the player stated, silently dropped, on the fast path. That is the same failure
+        # as the drop branch's second-entity guard: an unresolved signal is a reason to
+        # hand the sentence to something that can read it.
+        #
+        # `ground` and `water` name an element AND a medium, so a word the medium cue
+        # already consumed does not count as unattached - otherwise "the fastest ground
+        # mount" would defer for saying "ground".
+        consumed = _MEDIUM_CUES_BY_NAME[medium] if medium else None
+        loose = {w for w in _ELEMENT_WORDS
+                 if re.search(rf"\b{w}s?\b", body, re.I)
+                 and not (consumed and consumed.search(w))}
+        if loose and element is None:
+            return None
+
         level = _spoken_level(body)
         if element is None and work is None and not mount:
             # A level alone is not this class. "what level should Shroomer be" names a
@@ -795,7 +840,6 @@ class StubRouter:
             args["work"] = work
         if mount:
             args["mount"] = True
-            medium = next((name for name, cue in _MEDIUM_CUES if cue.search(body)), None)
             if medium:
                 args["medium"] = medium
             if _UNOWNED_CUE.search(body):
