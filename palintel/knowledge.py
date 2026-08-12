@@ -474,6 +474,56 @@ class BaseFeatures:
     popular_areas: tuple[tuple[float, float], ...]
     # (x, y, kind) with kind in {"water", "river", "ocean"}.
     water: tuple[tuple[float, float, str], ...]
+    # The 32 marked areas' own roughness and water distance, sorted, as the yardstick a
+    # rating is measured against. Terrain and water only - see `deposit_deciles`.
+    marked_roughness: tuple[int, ...] = ()
+    marked_water: tuple[float, ...] = ()
+    # Deposits and distinct resources within a base radius, at every node cluster on the
+    # map, as deciles. **A different yardstick on purpose**: the marked areas hold a
+    # median of THREE deposits, so the designers are marking flat ground near water and
+    # not resource-rich ground, and scoring resources against them would say almost
+    # anything is excellent.
+    deposit_deciles: tuple[int, ...] = ()
+    kind_deciles: tuple[int, ...] = ()
+
+    @staticmethod
+    def _percentile(value: float, sorted_values, higher_is_better: bool) -> int | None:
+        """Where `value` falls in a reference distribution, 0-100.
+
+        Returns None on an empty reference rather than 50, because "no yardstick" and
+        "exactly average" are different answers and only one of them is true.
+        """
+        if not sorted_values:
+            return None
+        below = sum(1 for v in sorted_values if v < value)
+        pct = round(100 * below / len(sorted_values))
+        return pct if higher_is_better else 100 - pct
+
+    def roughness_percentile(self, value: int) -> int | None:
+        """How flat, against the marked areas. 100 = flatter than all of them."""
+        return self._percentile(value, self.marked_roughness, higher_is_better=False)
+
+    def water_percentile(self, value: float) -> int | None:
+        return self._percentile(value, self.marked_water, higher_is_better=False)
+
+    @property
+    def water_bar(self) -> float | None:
+        """How close counts as "near water", from the marked areas' own median.
+
+        **Not one base radius, which is what the first version used and which made the
+        card contradict itself**: it marked water 11 units away as a fail while also
+        reporting it was closer than 78% of the marked areas. Measured, those areas sit a
+        median of 23 units from water — three times a base radius — so a
+        within-the-radius bar is stricter than the standard the designers themselves
+        build to, and a criterion nobody can meet is not a criterion.
+        """
+        if not self.marked_water:
+            return None
+        mid = len(self.marked_water) // 2
+        return self.marked_water[mid]
+
+    def deposit_percentile(self, value: int) -> int | None:
+        return self._percentile(value, self.deposit_deciles, higher_is_better=True)
 
     def roughness_at(self, x: float, y: float) -> int | None:
         """Ground roughness in cm, or None where too few actors stand to say.
@@ -701,6 +751,16 @@ class KnowledgeBase:
                                     for a in raw_f["popular_areas"]),
                 water=tuple((w["map_x"], w["map_y"], w["kind"])
                             for w in raw_f["water"]),
+                marked_roughness=tuple(sorted(
+                    p["roughness_cm"] for p in raw_f.get("marked_area_profile", ())
+                    if p.get("roughness_cm") is not None)),
+                marked_water=tuple(sorted(
+                    p["water_distance"] for p in raw_f.get("marked_area_profile", ())
+                    if p.get("water_distance") is not None)),
+                deposit_deciles=tuple(
+                    raw_f.get("site_deciles", {}).get("deposits", ())),
+                kind_deciles=tuple(
+                    raw_f.get("site_deciles", {}).get("resource_kinds", ())),
             )
 
         return cls(game_version=raw["game_version"], lexicon=lexicon, nodes=nodes,

@@ -104,6 +104,38 @@ def test_the_branch_is_off_when_it_was_not_switched_on(kb):
         != "suggest_base_sites"
 
 
+# ------------------------------------------------------------------ rating a place
+
+@pytest.mark.parametrize("text,own", [
+    ("how good is my base location", True),
+    ("rate my base", True),
+    ("how good is this base spot", False),
+    ("rate this base location", False),
+    ("is this a good spot for a base", False),
+    ("what do you think of this location", False),
+])
+def test_a_rating_question_is_claimed_and_resolves_the_right_place(router, text, own):
+    """Two readings of one class, and they point at different ground. "My base" is where
+    they built; anything else is where they stand. A player asking about their base while
+    standing somewhere else would otherwise be rated on the wrong spot and never know."""
+    c = call(router, text)
+    assert name(c) == "rate_base_site"
+    assert bool(c.args.get("own_base")) is own
+
+
+def test_a_siting_question_is_not_claimed_as_a_rating(router):
+    """The two are told apart by what they want, not by a shared word: siting names a
+    resource and asks WHERE, rating names nothing and asks HOW GOOD."""
+    assert name(call(router, "where should I build my base for coal")) \
+        == "suggest_base_sites"
+
+
+def test_how_good_is_a_pal_is_not_a_base_rating(router):
+    """The no-entity guard. "How good is Anubis" carries the rating cue and is an info
+    question about a Pal."""
+    assert name(call(router, "how good is Anubis")) != "rate_base_site"
+
+
 # ------------------------------------------------------------------ the wiring
 
 def test_build_router_turns_the_branch_on_for_both_stubs(kb):

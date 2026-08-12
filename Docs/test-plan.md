@@ -133,6 +133,10 @@ is `BaseCampAreaRange`, 3500 world units = 7.63 map units, read from the pak.
 | C4 | where's the coal near my base | **the guard** — same words, no placement verb | an ordinary **Coal locations** card, *not* a base site |
 | C5 | *walk to the top coordinate from C1 or C2* | buildability, which no offline work settles | Can you actually place a Palbox there? Is it a cliff, water, or a no-build zone? |
 | C6 | *stand there and look around* | whether the radius is believable | Do the promised deposits sit inside the base circle the game draws? |
+| C7 | how good is my base location | **the rating class, never played.** Reads your base camps out of `Level.sav` | **Your base 1 — 4 of 4** at (229, −487): flat ±2.0m, water 11 units, 41 deposits (better than 91%), and *"the game marks this area — nearest is 1 unit away"* |
+| C8 | rate this base location | the other reading — where you are *standing*, not where you built | A card for your current position. **If it rates your base instead, the two readings are the wrong way round** |
+| C9 | *stand somewhere you think is bad and ask C8* | whether the criteria track your own judgement | Does 1-of-4 feel like a bad spot? This is the only check on whether the rating means anything |
+| C10 | *compare the card for base 2 with how it plays* | the marked-area signal | Base 2 scores 2 of 4 and is 76 units from any marked area. Does it in fact feel worse to run than base 1? |
 
 ---
 

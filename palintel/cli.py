@@ -103,6 +103,7 @@ def _state(args) -> PlayerState:
         player_coords=coords or watcher.player_coords(),
         owned_species=watcher.roster,
         tech=watcher.player_tech(),
+        base_camps=watcher.base_camps,
     )
 
 

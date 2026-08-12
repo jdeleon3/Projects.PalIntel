@@ -253,6 +253,22 @@ def _character_id(blob: bytes) -> str | None:
     return blob[p + 4:p + 4 + n - 1].decode("utf-8", "replace") or None
 
 
+def _world_save_data(level_save: Path) -> dict:
+    """`Level.sav`'s worldSaveData, parsed with type hints and NO custom decoders.
+
+    One function because three callers want different parts of the same multi-megabyte
+    parse, and because the decoder configuration is the load-bearing part: Phase 0.3
+    found at least five `RawData` sub-decoders stale on this build, and disabling all of
+    them is what makes the file parse at all.
+    """
+    from palworld_save_tools.gvas import GvasFile
+    from palworld_save_tools.paltypes import PALWORLD_TYPE_HINTS
+
+    gvas = GvasFile.read(decompress(level_save.read_bytes()),
+                         PALWORLD_TYPE_HINTS, {}, allow_nan=True)
+    return gvas.properties["worldSaveData"]["value"]
+
+
 def owned_species(level_save: Path) -> frozenset[str]:
     """The set of Pal CharacterIDs the player owns, lower-cased.
 
@@ -276,12 +292,7 @@ def owned_species(level_save: Path) -> frozenset[str]:
     that mean Pals must intersect with the Pal roster rather than trusting the ids -
     otherwise Q5 can offer a captured raider as a counter to a boss.
     """
-    from palworld_save_tools.gvas import GvasFile
-    from palworld_save_tools.paltypes import PALWORLD_TYPE_HINTS
-
-    gvas = GvasFile.read(decompress(level_save.read_bytes()),
-                         PALWORLD_TYPE_HINTS, {}, allow_nan=True)
-    entries = gvas.properties["worldSaveData"]["value"] \
+    entries = _world_save_data(level_save) \
         .get("CharacterSaveParameterMap", {}).get("value", [])
 
     out, skipped = set(), 0
@@ -297,6 +308,65 @@ def owned_species(level_save: Path) -> frozenset[str]:
     log.info("owned species: %d distinct from %d entries (%d without a CharacterID)",
              len(out), len(entries), skipped)
     return frozenset(out)
+
+
+def _transform_in(blob: bytes) -> tuple[float, float, float] | None:
+    """Recover a base camp's world position from an undecoded `BaseCampSaveData` blob.
+
+    The blob holds a serialised `FTransform` — a rotation quaternion (4 doubles), a
+    translation (3), then a scale — and 0.24.0 has no decoder for it, the same situation
+    `_character_id` is in for `CharacterID`.
+
+    **Found by structure, not by offset.** The preamble varies in length, so this scans
+    for the first window where four consecutive doubles form a UNIT QUATERNION and the
+    three after them are inside the world's bounds. A fixed offset would be a guess that
+    happens to work on three blobs; a unit-length check is a property the data has to
+    satisfy, and it is why a wrong window is rejected rather than returned as a
+    plausible-looking coordinate somewhere in the sea.
+    """
+    # Palworld's world is roughly ±1,000,000 world units on each axis. Anything outside
+    # that is not a position, it is two doubles that happened to parse.
+    limit = 2_000_000.0
+    for offset in range(0, max(len(blob) - 56, 0)):
+        try:
+            quat = struct.unpack_from("<4d", blob, offset)
+            trans = struct.unpack_from("<3d", blob, offset + 32)
+        except struct.error:
+            return None
+        if any(abs(v) > 1.0001 for v in quat):
+            continue
+        if abs(sum(v * v for v in quat) - 1.0) > 1e-6:
+            continue
+        if any(abs(v) > limit for v in trans) or abs(trans[0]) < 1000:
+            continue
+        return trans
+    return None
+
+
+def base_camps(level_save: Path,
+               transform: Transform | None = None) -> list[tuple[float, float]]:
+    """Where the player's base camps are, in map units.
+
+    Read from the same `Level.sav` and the same no-custom-decoders configuration that
+    `owned_species` uses, so a caller that wants both pays for one parse. Returns fewer
+    entries than the save holds if any blob does not yield a position, which is reported
+    rather than raised: a base camp this cannot locate should cost that one camp, not the
+    answer.
+    """
+    transform = transform or Transform.load()
+    entries = _world_save_data(level_save).get("BaseCampSaveData", {}).get("value", [])
+
+    out, skipped = [], 0
+    for entry in entries:
+        blob = _blob(entry.get("value", {}).get("RawData", {}).get("value"))
+        found = _transform_in(blob) if blob else None
+        if found is None:
+            skipped += 1
+            continue
+        out.append(transform.to_map(found[0], found[1]))
+    log.info("base camps: %d located of %d (%d without a readable transform)",
+             len(out), len(entries), skipped)
+    return out
 
 
 class SaveWatcher:
@@ -343,6 +413,9 @@ class SaveWatcher:
         self.roster: frozenset[str] | None = None
         self.roster_error: str | None = None
         self.roster_read_at: float = 0.0
+        # Where the player's base camps are, from the same Level.sav read. None means not
+        # read; an empty list means read and they have none.
+        self.base_camps: list[tuple[float, float]] | None = None
         self._mtime = 0.0
         self._transform = Transform.load()
 
@@ -408,6 +481,10 @@ class SaveWatcher:
             return False
         try:
             self.roster = owned_species(level)
+            # Same file, same cadence, and a base camp moves even less often than the
+            # roster does. Read here rather than in its own poll so the multi-megabyte
+            # parse happens once.
+            self.base_camps = base_camps(level, self._transform)
             self.roster_error = None
         except Exception as e:
             log.warning("roster read failed (%s: %s); keeping previous", type(e).__name__, e)

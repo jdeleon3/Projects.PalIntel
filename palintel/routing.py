@@ -541,6 +541,26 @@ _BASE_CUE = re.compile(
 # being a recommendation and becomes a list of everything within reach of everything.
 MAX_BASE_RESOURCES = 3
 
+# "How good is my base location", "rate this spot". The mirror of the siting question and
+# a different one: that searches for places, this judges a place the player is already
+# standing on or has already built.
+#
+# It names no resource, which is what separates it from `_BASE_CUE` above without either
+# pattern having to know about the other: "where should I build my base for coal" names
+# coal and asks WHERE, this names nothing and asks HOW GOOD.
+_RATE_CUE = re.compile(
+    r"\bhow good\b|\brate\b|\bis this a good\b|\bany good\b|\bwhat do you think of\b"
+    r"|\bhow (?:is|are)\b.{0,20}\b(?:base|spot|location)\b", re.I)
+# The noun it has to be about, so "how good is Anubis" never reaches this branch - though
+# the entity guard would catch that one anyway.
+_RATE_SUBJECT = re.compile(r"\bbase\b|\bcamp\b|\bspot\b|\blocation\b|\bsite\b|\bhere\b",
+                           re.I)
+# Which of the two readings. "My base" is where they built; anything else is where they
+# stand. Deliberately requires the possessive: "a base" and "the base" are not claims
+# about ownership and default to the safer reading, which is the one that needs no save
+# beyond a position.
+_OWN_BASE = re.compile(r"\b(?:my|our)\s+(?:base|camp)s?\b", re.I)
+
 _LOCATION_CUES = re.compile(rf"\b({_CUE_SETS[DEFAULT_CUES]})\b", re.I)
 _LEVEL = re.compile(r"\b(?:level|lvl)\s*(\d{1,2})\b", re.I)
 _LEVEL_WORDS = {
@@ -1040,6 +1060,30 @@ class StubRouter:
                         rationale=f"base placement cue + {len(wanted)} resource(s): "
                                   f"{', '.join(wanted)}")
 
+    def _rate_call(self, utterance: str,
+                   candidates: list[Candidate]) -> "ToolCall | None":
+        """`rate_base_site` when the utterance asks how good a place is.
+
+        Checked BEFORE `_base_call`, because "how good is this base spot" carries a
+        `spot` and could look like siting, while nothing in the siting vocabulary asks
+        how good anything is. The two are told apart by what they want, not by a shared
+        word: this one names no resource and asks for a judgement.
+
+        Abstains on a named entity like every other no-entity branch, which is what keeps
+        "how good is Anubis" out of it - that is an info question about a Pal.
+        """
+        if not self._base_sites:
+            return None
+        body = _ADDRESS.sub("", utterance)
+        if not (_RATE_CUE.search(body) and _RATE_SUBJECT.search(body)):
+            return None
+        if self._subject(candidates) is not None:
+            return None
+        args = {"own_base": True} if _OWN_BASE.search(body) else {}
+        return ToolCall(name="rate_base_site", args=args,
+                        rationale="base rating cue, no named entity"
+                                  + (" (their own base)" if args else " (where they are)"))
+
     def _tech_call(self, utterance: str,
                    candidates: list[Candidate]) -> "ToolCall | None":
         """`suggest_next_unlock` when the utterance asks what to research.
@@ -1217,6 +1261,12 @@ class StubRouter:
         # `where` and a confident `coal`, so the gate would pass it straight to the
         # resource branch and answer a siting question with a list of coal spots. The one
         # branch here whose safety is the cue alone - see `_base_call`.
+        # Ahead of siting: "how good is this base spot" carries a word siting looks for,
+        # and nothing in siting's vocabulary asks how good anything is.
+        rating = self._rate_call(utterance, candidates)
+        if rating is not None:
+            return rating
+
         bases = self._base_call(utterance, candidates)
         if bases is not None:
             return bases
