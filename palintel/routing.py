@@ -338,6 +338,35 @@ _OIL_CUE = re.compile(r"\b(?:oil\s+extraction|extract\w*\s+oil)\b", re.I)
 _ADDRESS = re.compile(r"^\s*(?:hey|ok|okay)[,\s]+(?:pal|palintel)\b[,\s]*", re.I)
 _PAL_NOUN = re.compile(r"\bpals?\b", re.I)
 
+# Mounts. A separate cue family from elements and jobs because it changes what "level"
+# MEANS - a saddle is gated on the player's level, everything else here on the Pal's.
+_MOUNT_CUE = re.compile(r"\b(?:mount|mounts|ride|rideable|ridable|mountable"
+                        r"|saddle|saddles)\b", re.I)
+# Which medium, when the player says. Absent means "either", which ranks a Pal by
+# whichever of its two speeds is higher rather than silently assuming land.
+#
+# "flying" and "ground" both map to `land`, and that is the game's distinction rather
+# than a shortcut: there is no flight-speed column, so a flyer's ridden speed IS the
+# ground speed field. See tools/ingest/build_mounts.py for the seven flight signals that
+# were measured and falsified before grouping them.
+_MEDIUM_CUES = (
+    ("water", re.compile(r"\b(?:swim\w*|water|aquatic|sea|ocean)\b", re.I)),
+    ("land", re.compile(r"\b(?:fly\w*|flight|air|aerial|ground|land|walk\w*|run\w*)\b",
+                        re.I)),
+)
+# "which mounts do I not have yet", "what am I missing". This INVERTS the answer, so a
+# false positive returns the exact complement of what was asked - but it is only ever
+# consulted inside the mount branch, which has already established there is no named
+# entity and a mount cue, so the pattern can afford to read naturally.
+#
+# The negation and the verb are allowed a couple of words apart: "do I not have" puts a
+# pronoun between them, which an adjacent-tokens pattern missed.
+_UNOWNED_CUE = re.compile(
+    r"\b(?:do\s?n[o']?t|have\s?n[o']?t|not|never)\s+(?:\w+\s+){0,2}"
+    r"(?:have|got|own|owned|caught|catch|get)\b"
+    r"|\bmissing\b"
+    r"|\byet\s+to\s+(?:catch|get|own)\b", re.I)
+
 _LOCATION_CUES = re.compile(rf"\b({_CUE_SETS[DEFAULT_CUES]})\b", re.I)
 _LEVEL = re.compile(r"\b(?:level|lvl)\s*(\d{1,2})\b", re.I)
 _LEVEL_WORDS = {
@@ -667,7 +696,11 @@ class StubRouter:
         if not self._attributes:
             return None
         body = _ADDRESS.sub("", utterance)
-        if not _PAL_NOUN.search(body):
+        # "mount" counts as the subject noun in its own right. "What's the fastest mount
+        # I can get at 60" never says "pal" and is unambiguously this class; requiring
+        # the word declined it. The wake word is still stripped first, because "hey pal"
+        # must not be what supplies the noun.
+        if not (_PAL_NOUN.search(body) or _MOUNT_CUE.search(body)):
             return None
 
         element = work = None
@@ -680,8 +713,9 @@ class StubRouter:
         elif _OIL_CUE.search(body):
             work = "OilExtraction"
 
+        mount = bool(_MOUNT_CUE.search(body))
         level = _spoken_level(body)
-        if element is None and work is None:
+        if element is None and work is None and not mount:
             # A level alone is not this class. "what level should Shroomer be" names a
             # Pal and asks something else entirely, and "any pals at level 60" is a list
             # of ninety, which is an index rather than an answer.
@@ -694,7 +728,22 @@ class StubRouter:
             args["element"] = element
         if work:
             args["work"] = work
-        if level is not None:
+        if mount:
+            args["mount"] = True
+            medium = next((name for name, cue in _MEDIUM_CUES if cue.search(body)), None)
+            if medium:
+                args["medium"] = medium
+            if _UNOWNED_CUE.search(body):
+                args["unowned"] = True
+            # **The level means the PLAYER's here, and only here.** A saddle is a
+            # technology gated on player level, which is why STATUS's 2026-08-11 decision
+            # is amended rather than kept whole: that decision rejected player level
+            # because filtering by it needed an uncalibrated headroom constant, and a
+            # saddle gate needs none - the game states the number. Two argument names so
+            # the dispatcher cannot confuse them.
+            if level is not None:
+                args["player_level"] = level
+        elif level is not None:
             args["level"] = level
         return ToolCall(name="find_pals_by_attribute", args=args,
                         rationale=f"attribute cue, no named entity: {args}")

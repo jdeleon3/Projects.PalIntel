@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .knowledge import (Dropper, KnowledgeBase, PalAttributes, PalDrop, Ranch,
-                        ResourceNode, SpawnArea)
+from .knowledge import (Dropper, KnowledgeBase, Mount, PalAttributes, PalDrop,
+                        Ranch, ResourceNode, SpawnArea)
 
 
 @dataclass(frozen=True)
@@ -271,6 +271,13 @@ class AttributeMatch:
     # only ever appears when NOTHING matched exactly, and the card says so.
     level_gap: int
     best_work: str | None
+    # Populated only when the query was about mounts. `speed` is in the medium that was
+    # asked for, or the Pal's better one when none was.
+    mount: Mount | None = None
+    speed: int | None = None
+    # Which medium `speed` came from, for the no-medium case where the card must not let
+    # a swimmer's number read as a land speed.
+    speed_medium: str | None = None
 
     def band_label(self) -> str:
         if self.band is None:
@@ -289,6 +296,21 @@ class AttributeResult:
     # The game's own word for `work` ("EmitFlame" -> "Kindling"), carried so the card
     # never has to print a pak enum and never has to hold a mapping of its own.
     work_label: str | None = None
+    # The mount half of the query, all None/False when it was not one.
+    mounts_only: bool = False
+    medium: str | None = None           # "land" | "water" | None for either
+    # The PLAYER's level, from the utterance. Distinct from `level`, which is the Pal's -
+    # see STATUS's 2026-08-11 decision and its amendment.
+    player_level: int | None = None
+    # Mounts the player-level filter had to skip because no technology row unlocks their
+    # saddle. Two of 108. Reported rather than silently dropped: their availability is
+    # unknown, not disproved.
+    unlock_unknown: int = 0
+    # True when the query asked for what the player does NOT own. Requires the roster.
+    unowned_only: bool = False
+    # False when the roster was never read. `unowned_only` is unanswerable without it,
+    # and "you own none of these" is a claim about a set nobody looked at.
+    roster_known: bool = True
     # False when no Pal's band contained the requested level and the nearest ones were
     # returned instead. The card MUST say so: "the closest thing to an electric Pal at
     # 60" and "an electric Pal at 60" are different answers, and the second is a claim.
@@ -319,6 +341,12 @@ def find_pals_by_attribute(
     work: str | None = None,
     level: int | None = None,
     limit: int = 5,
+    *,
+    mounts_only: bool = False,
+    medium: str | None = None,
+    player_level: int | None = None,
+    unowned_only: bool = False,
+    owned: frozenset[str] | None = None,
 ) -> AttributeResult:
     """Which Pals match a description. At least one filter is required.
 
@@ -335,10 +363,38 @@ def find_pals_by_attribute(
     common and not an edge: Feybreak places most species at 80, so the wild levels are
     lumpy and there is genuinely no electric Pal at exactly 60. "Nothing at 60, here is
     what is nearest" is the useful true answer; "no results" is the useless one.
+
+    **`player_level` is the other meaning of "level", and it exists only for mounts.**
+    STATUS's 2026-08-11 decision that level always means the Pal's is amended rather than
+    overturned: a saddle unlocks at a player level the game *states*, so this is the case
+    the decision's own reasoning allows - it rejected player level because filtering by it
+    needed an uncalibrated "how far above your level can you cope" constant, and a saddle
+    gate needs none. The two arrive in separate arguments so neither can be mistaken for
+    the other, and a card prints them with different words.
     """
     rows = [a for a in kb.attributes.values()
             if (element is None or element in a.elements)
             and (work is None or a.work.get(work, 0) > 0)]
+
+    unlock_unknown = 0
+    roster_known = owned is not None
+    if mounts_only:
+        rows = [a for a in rows if a.name in kb.mounts]
+        if medium == "water":
+            rows = [a for a in rows if kb.mounts[a.name].swim]
+        if player_level is not None:
+            # Counted before filtering: a mount whose saddle has no technology row is not
+            # "too high a level", it is unknown, and the card says so rather than letting
+            # the omission read as a considered exclusion.
+            unlock_unknown = sum(1 for a in rows
+                                 if kb.mounts[a.name].unlock_level is None)
+            rows = [a for a in rows if kb.mounts[a.name].available_at(player_level)]
+        if unowned_only and roster_known:
+            # `owned` is character ids, lower-cased, from saves.owned_species - the same
+            # set the counter card filters against.
+            rows = [a for a in rows
+                    if kb.mounts[a.name].character_id.lower() not in owned]
+
     total = len(rows)
 
     exact = True
@@ -356,32 +412,54 @@ def find_pals_by_attribute(
     gaps = {a.name: (_gap(a, level) if level is not None and a.bands else (0, None))
             for a in rows}
 
+    def speed_of(a: PalAttributes) -> int:
+        m = kb.mounts.get(a.name)
+        return (m.speed(medium) or 0) if m else 0
+
     def sort_key(a: PalAttributes):
-        # Job level leads when a job was asked for - "what pal is best at mining" is a
-        # question about that number and nothing else.
+        # Speed leads for a mount query - "the fastest mount I can get" is a question
+        # about that number and nothing else, exactly as a job level leads below.
         #
-        # Otherwise highest Pal level first, which is STATUS's decision and carries its
-        # caveat: highest is a proxy for strongest and nothing more, so the CARD must not
-        # imply a ranking the data does not carry. Name breaks every tie, so two runs on
-        # one save produce the same list.
+        # Then job level, then highest Pal level, which is STATUS's decision and carries
+        # its caveat: highest is a proxy for strongest and nothing more, so the CARD must
+        # not imply a ranking the data does not carry. Name breaks every tie, so two runs
+        # on one save produce the same list.
         return (gaps[a.name][0],
+                -speed_of(a) if mounts_only else 0,
                 -a.work.get(work, 0) if work else 0,
                 -(a.level_max or 0),
                 a.name)
 
     rows.sort(key=sort_key)
-    return AttributeResult(
-        element=element, work=work, level=level,
-        matches=[AttributeMatch(
+
+    def match(a: PalAttributes) -> AttributeMatch:
+        m = kb.mounts.get(a.name) if mounts_only else None
+        return AttributeMatch(
             pal=a.name, elements=a.elements,
             work_level=a.work.get(work) if work else None,
             band=(gaps[a.name][1] if level is not None
                   else (a.bands[-1] if a.bands else None)),
             level_gap=gaps[a.name][0],
             best_work=a.best_work,
-        ) for a in rows[:limit]],
+            mount=m,
+            speed=m.speed(medium) if m else None,
+            # For an explicit medium this is just that medium. With none asked for it is
+            # whichever of the two won, and the card needs it: printing 2520 beside a
+            # Pal without saying it is a swim speed reads as a land speed.
+            speed_medium=(medium or m.fastest_medium) if m else None,
+        )
+
+    return AttributeResult(
+        element=element, work=work, level=level,
+        matches=[match(a) for a in rows[:limit]],
         total_available=total,
         work_label=kb.job_label(work) if work else None,
         level_exact=exact,
         without_a_band=without_a_band,
+        mounts_only=mounts_only,
+        medium=medium,
+        player_level=player_level,
+        unlock_unknown=unlock_unknown,
+        unowned_only=unowned_only,
+        roster_known=roster_known,
     )

@@ -169,6 +169,48 @@ the icons on a high-level Pal, so whether the internal integer *is* the displaye
 a one-glance check that has not been made. Cards print the number and never call it a
 star count.
 
+### 3.2c Mounts (mount search)
+
+Which Pals can be ridden, from what **player** level, and how fast.
+`tools/ingest/build_mounts.py`. Three stated sources, nothing derived:
+
+| Field | From |
+|---|---|
+| rideable | a `SkillUnlock_<Tribe>` item with `IconName = SkillUnlock_Saddle` — 108 |
+| `unlock_level` | that saddle's technology row, `LevelCap` — the **player's** level |
+| `ride_speed` / `swim_speed` | `RideSprintSpeed` / `SwimDashSpeed` |
+
+**The saddle is the authority on rideability, never the speed field.** `RideSprintSpeed`
+is populated on 693 of 753 rows and only 107 of those have a saddle, so a ride speed says
+nothing about whether a Pal can be ridden — the number just never gets used. The reverse
+holds cleanly: all 108 saddled Pals have one, and the build fails if that stops being
+true.
+
+**`-1` is "not applicable", not a speed**, on 52–105 rows depending on the field. Stored
+as null, because a fastest-first sort that kept it would rank "no such movement" above
+real numbers.
+
+**The join is case-insensitive, and that is a bug this build had.** The item is
+`SkillUnlock_Thunderdog_Ice`; the stat row is `ThunderDog_Ice`. One capital letter, and an
+exact lookup silently dropped Rayhound Cryst from the roster. Second occurrence in this
+project after `Boss_Anubis` (§3.3), so **the pak's casing is not trustworthy on any join.**
+
+**Two saddles have no technology row at all** (Boltmane, Broncherry Aqua), so
+`unlock_level` is null and how you get them is genuinely unknown from the pak. A
+player-level filter excludes them and the card reports how many it could not check —
+"unknown" and "too high a level" are different answers.
+
+#### Flying and ground are one category, and that is the game's doing
+
+There is no flight flag and, more to the point, **no flight speed**: a flyer's ridden
+speed is `RideSprintSpeed`, the same column a ground mount uses. Seven candidate signals
+were measured against a hand-labelled set on 2026-08-11 and all failed — see STATUS's
+backlog entry for the table. The decisive one: the set of component classes present in
+every labelled flyer and no labelled ground Pal is **empty**. All 532 data tables in the
+pak were listed; none concerns movement.
+
+Water is separate because `SwimDashSpeed` is a separate column.
+
 ### 3.4 Breeding data (Q3)
 
 Strategy depends entirely on assumption **A3**
@@ -501,6 +543,10 @@ python tools/ingest/build_ranch.py --version 1.0.2
 # Work suitability, for Pal search by attribute. Needs the `tables` extract for the job
 # labels; optional, and its absence turns that one query class off (section 3.2b).
 python tools/ingest/build_work.py --version 1.0.2
+
+# Mounts: the saddle roster, its player-level gate and the two ride speeds (section 3.2c).
+# Also optional, and also needs the `tables` extract for DT_ItemDataTable.
+python tools/ingest/build_mounts.py --version 1.0.2
 
 # ORDER MATTERS for these two: build_bosses.py reads lexicon.json to resolve a boss row
 # to a Pal name, and both read the tower leaders out of data/raw via _leaders.py.

@@ -398,6 +398,60 @@ def _load_attributes(base: Path,
 
 
 @dataclass(frozen=True)
+class Mount:
+    """A Pal you can ride, and the two speeds the game actually distinguishes.
+
+    **`unlock_level` is the PLAYER's level**, from the saddle's technology - the one
+    place in this project where a level on a card is not the Pal's. That is what makes
+    *"the fastest mount I can get at level 60"* answerable as a fact rather than as the
+    uncalibrated judgement STATUS's 2026-08-11 decision refused: the saddle unlocks at a
+    stated level, and no "how far above your level can you cope" constant is involved.
+
+    `None` means no technology row unlocks this saddle - two of the 108 - and it must
+    never be read as "available now". A level filter excludes them and says how many.
+
+    **There is no flight speed.** A flying mount's ridden speed is `ride`, the same field
+    a ground mount uses, so flying and ground are one category here. That is the pak's
+    distinction, not a simplification: see tools/ingest/build_mounts.py for the seven
+    flight signals that were measured and falsified.
+    """
+    name: str
+    character_id: str
+    unlock_level: int | None
+    ride: int | None           # RideSprintSpeed - on land AND in the air
+    swim: int | None           # SwimDashSpeed
+
+    def speed(self, medium: str | None) -> int | None:
+        """Speed in `medium`, or the better of the two when none was asked for.
+
+        "The fastest mount I can get" with no medium named is asking how fast you can
+        travel on it, so the answer is whichever of its two speeds is higher - a max over
+        two stated numbers, with `fastest_medium` naming which one won so the card never
+        implies a boat is fast on land.
+        """
+        if medium == "land":
+            return self.ride
+        if medium == "water":
+            return self.swim
+        return max((s for s in (self.ride, self.swim) if s), default=None)
+
+    @property
+    def fastest_medium(self) -> str | None:
+        if self.ride is None and self.swim is None:
+            return None
+        return "water" if (self.swim or 0) > (self.ride or 0) else "land"
+
+    def available_at(self, player_level: int) -> bool:
+        """True when the saddle's technology is unlocked at `player_level`.
+
+        False for the two with no technology row. Excluding them is the conservative
+        reading: their availability is unknown, and a card claiming you can get one at
+        level 60 would be asserting something the pak does not say.
+        """
+        return self.unlock_level is not None and self.unlock_level <= player_level
+
+
+@dataclass(frozen=True)
 class PalAttributes:
     """What a Pal *is*, as opposed to where it is or what it drops.
 
@@ -487,6 +541,10 @@ class KnowledgeBase:
     # Job enum -> the game's own label ("EmitFlame" -> "Kindling"). From the UI text
     # table, so a card prints what the player reads in game rather than a pak enum.
     jobs: dict[str, str] = field(default_factory=dict)
+    # Pal -> saddle, unlock level and speeds, for the 108 that can be ridden. Empty when
+    # mounts.json is absent, which turns the mount filter off and leaves the rest of the
+    # attribute search working.
+    mounts: dict[str, "Mount"] = field(default_factory=dict)
 
     @classmethod
     def load(cls, version: str = "1.0.2", root: Path | None = None) -> "KnowledgeBase":
@@ -553,13 +611,23 @@ class KnowledgeBase:
 
         attributes, jobs = _load_attributes(base, spawns)
 
+        mounts: dict[str, Mount] = {}
+        mount_path = base / "mounts.json"
+        if mount_path.exists():
+            mounts = {m["name"]: Mount(
+                name=m["name"], character_id=m["character_id"],
+                unlock_level=m["unlock_level"],
+                ride=m["ride_speed"], swim=m["swim_speed"])
+                for m in json.loads(
+                    mount_path.read_text(encoding="utf-8"))["entries"]}
+
         return cls(game_version=raw["game_version"], lexicon=lexicon, nodes=nodes,
                    spawns=spawns,
                    pals_without_areas=frozenset(spawn_raw["pals_without_areas"]),
                    droppers=droppers, pal_drops=pal_drops,
                    item_sources=item_sources, ranch=ranch,
                    ranch_source=ranch_source,
-                   attributes=attributes, jobs=jobs)
+                   attributes=attributes, jobs=jobs, mounts=mounts)
 
     def job_label(self, job: str) -> str:
         """The game's word for a job enum, falling back to the enum itself."""

@@ -438,7 +438,18 @@ class Pipeline:
 
         if call.name == "find_pals_by_attribute":
             args = {k: v for k, v in call.args.items()
-                    if k in ("element", "work", "level") and v is not None}
+                    if k in ("element", "work", "level", "medium", "player_level")
+                    and v is not None}
+            # `mount` and `unowned` are flags rather than filters, so they are read
+            # separately - an absent one is False, not "no filter given".
+            mounts_only = bool(call.args.get("mount"))
+            unowned = bool(call.args.get("unowned"))
+            if mounts_only:
+                args["mounts_only"] = True
+                args["unowned_only"] = unowned
+                # The roster, when it has been read. None stays None all the way to the
+                # card, which says it has not looked rather than claiming you own none.
+                args["owned"] = state.owned_species
             if not args:
                 # Every filter empty means the model chose the class and described
                 # nothing, which would return the whole Paldeck sorted by level. Same

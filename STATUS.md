@@ -19,6 +19,7 @@ mapping and attribute search are on `design-and-phase0` and not yet promoted.*
 | Card artwork + drops | **Shipped.** [ADR-0017](Docs/adr/0017-card-artwork-from-game-assets.md) Accepted |
 | 3 — Q3 breeding + Q5 counters | **Order swapped 2026-08-11. Q5 built end to end, unplayed.** Data, candidate set, Tier 2 guard, card, fast path and model path all land; nothing has answered a counter question in real play. **Q3 is blocked** — the ADR-0008 gate needs in-game breeding, not yet unlocked |
 | Pal search by attribute | **Shipped, unplayed.** The first new query class since the roadmap. Work-suitability ingest, three-axis filter, card, fast path and model path |
+| Mount search | **Shipped, unplayed.** Saddle roster, player-level gate, speed ranking by medium, and the set-difference against the owned roster |
 | Tower leaders | **Shipped, unplayed.** *"How do I beat Victor"* resolves to the tower, not the field alpha |
 | 4 — Q6 tech + Q4 base siting + Q7 corpus | Not started |
 
@@ -32,9 +33,10 @@ mapping and attribute search are on `design-and-phase0` and not yet promoted.*
 | Item source | *"who drops Flame Organ"* | 151 items, enum-only (not in the lexicon) |
 | Boss counters | *"how do I beat Anubis"*, *"how do I beat Victor"* | **Tier 2 — computed advice, amber card.** Filtered to Pals you own when the roster has been read; says so plainly when it has not. A tower leader resolves to the **tower**, not the field alpha of the same species |
 | Pal search by attribute | *"I need a mining pal"*, *"an electric pal at level 60"* | **Tier 1.** Element × job × wild level, all optional. The only class that takes a description instead of a name |
+| Mount search | *"the fastest mount I can get at level 60"*, *"which mounts don't I have"* | **Tier 1.** Land (= flying **and** ground) or water or either, gated on the **player's** level via the saddle tech. Declines honestly when the roster is unread |
 
 Voice in via the local microphone, text in via the channel, cards out to Discord.
-One consolidated `answer_query` tool routes all six.
+One consolidated `answer_query` tool routes all of them.
 
 ---
 
@@ -246,11 +248,49 @@ markers on each card were walked too, outside the base, with deposits standing t
   is a PLAYER requirement, from that same uncalibrated rule. So "level" does not have one
   meaning today either, and this decision only settles the new class.
 
+  **AMENDED 2026-08-11, same day, by the mount questions.** *"What is the fastest flying
+  mount I can get at level 60"* means the **player's** level: a saddle is a technology
+  with a `LevelCap`. The amendment is narrow and the decision's own reasoning permits it —
+  player level was rejected because filtering by it needed an uncalibrated "how far above
+  your level can you cope" constant, and **a saddle gate needs none, because the game
+  states the number.** So: *level means the Pal's, except where the game itself states a
+  player gate.* The two live in separate fields (`level` and `player_level`) and separate
+  schema slots so neither can be mistaken for the other, and the card spells out "player
+  level 60" where every other card prints the Pal's.
+
+  Note this does not recover the general case the decision gave up: *"an electric Pal for
+  level 60"* meaning "something I can use" still needs the headroom constant, and player
+  level is still permanently `None` from the save. The mount case works because the
+  number comes from the utterance and the gate comes from a table.
+
   *Sorting: highest Pal level first*, with the caveat the counter card just had to learn -
   highest is a proxy for strongest and nothing more, so the card must not imply a ranking
   the data does not carry. **Shipped as "sorted by highest level, which is not a ranking"
   in the footer**, and only when no job was named: with a job, the sort key is that job's
   level, which is a number the game states and can be presented as one.
+- **Mount type: flying vs ground** — **the one thing the pak does not say, and it may not
+  matter.** Asked for on 2026-08-11 as three separate questions ("fastest flying /
+  swimming / ground mount at level 60"). Swimming shipped; flying and ground shipped
+  **merged into one "land" category**, because the game merges them:
+
+  *No flight flag.* Seven signals measured against a hand-labelled set and all falsified —
+  `SwimSpeed == RunSpeed` (10/19 flyers), `GenusCategory == Bird`,
+  `PalFlyMeshHeightCtrlComponent` (2/6), the `Pawn_NoDamageFlyPal` collision profile
+  (2/6), `RidePositionType` (it is seat position — BackRide, BiggerHorseRide — not
+  flight), fly-named animation assets (precision 6/6, recall 6/12), and decisively **the
+  set of component classes present in every labelled flyer and no labelled ground Pal is
+  empty**. All 532 data tables in the pak were listed; none concerns movement. The flag
+  is in the native parent class or in graph data CUE4Parse's export does not surface.
+
+  *And no flight speed either*, which is why the merge is honest rather than a
+  workaround: a flyer's ridden speed is `RideSprintSpeed`, the same column a ground mount
+  uses. Splitting them would produce the same ranking twice with an invented label on
+  each. The card says "flying and ground mounts share one speed in the game files".
+
+  **What separating them would actually buy** is a filter, not a better ranking — "only
+  show me things that fly". Worth doing only if play shows players asking for that
+  specifically, and it needs the inherited-component tree or BP bytecode, which is the
+  same wall the ranch spike hit.
 - **Find dungeons near me** — spiked, viable, and **thinner than it looked**. The 18
   permanent "Sealed Realm" arenas are already marked on the in-game map; the 13 random
   sites hold a dungeon only ~67% of the time. Does not recover the lost cave coal.

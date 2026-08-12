@@ -232,3 +232,147 @@ def test_pal_level_is_never_read_as_the_players_level():
         "target": None, "max_player_level": 12,
         "pal_elements": ["Fire"], "pal_work": [], "pal_level": 60})
     assert args == {"element": "Fire", "level": 60}
+
+
+# ------------------------------------------------------------------ mounts
+#
+# Four questions asked on 2026-08-11. Two of them ("fastest flying", "fastest ground")
+# turned out to be the SAME question of this data: the pak has no flight speed, so a
+# flyer's ridden speed is `RideSprintSpeed`, the column a ground mount uses. Grouping
+# them is reporting what the game distinguishes, and the card says so rather than letting
+# "land" quietly exclude flyers.
+
+
+@pytest.fixture(scope="module")
+def mounts(kb: KnowledgeBase):
+    if not kb.mounts:
+        pytest.skip("mounts.json not built")
+    return kb.mounts
+
+
+def test_the_saddle_roster_is_complete(mounts):
+    """108 saddle items, 108 mounts. This caught a real bug: the item is spelled
+    `SkillUnlock_Thunderdog_Ice` and the stat row `ThunderDog_Ice`, one capital letter,
+    and an exact join silently dropped Rayhound Cryst - the same trap as `Boss_Anubis`."""
+    assert len(mounts) == 108
+    assert "Rayhound Cryst" in mounts
+
+
+def test_every_mount_has_a_ride_speed(mounts):
+    """A mount with no speed would sort as unknown against real numbers on a card whose
+    whole purpose is ranking by speed. The ingest fails the build rather than ship it."""
+    assert all(m.ride for m in mounts.values())
+
+
+def test_unlock_level_is_the_players_not_the_pals(kb: KnowledgeBase, mounts):
+    """The one place in this project a level on a card is not the Pal's. Rayhound's
+    saddle unlocks at player 30; Rayhound itself spawns at a quite different band."""
+    r = mounts["Rayhound"]
+    assert r.unlock_level == 30
+    assert r.unlock_level != kb.attributes["Rayhound"].level_min
+
+
+def test_an_unknown_unlock_is_never_treated_as_available(mounts):
+    """Two saddles have no technology row, so how you get them is genuinely unknown.
+    Excluding them is the conservative reading; claiming them at level 60 would assert
+    something the pak does not say."""
+    unknown = [m for m in mounts.values() if m.unlock_level is None]
+    assert len(unknown) == 2
+    assert not any(m.available_at(99) for m in unknown)
+
+
+def test_speed_falls_back_to_the_better_medium(mounts):
+    """With no medium named, a Pal is ranked by whichever of its two speeds is higher -
+    a max over two stated numbers, with `fastest_medium` naming the winner so the card
+    cannot print a swim speed as a land speed."""
+    aqua = mounts["Faleris Aqua"]
+    assert aqua.speed("land") == aqua.ride
+    assert aqua.speed("water") == aqua.swim
+    assert aqua.speed(None) == max(aqua.ride, aqua.swim)
+    assert aqua.fastest_medium == "water"
+
+
+def test_flying_and_ground_are_one_ranking(kb: KnowledgeBase):
+    """Not a shortcut - the game has one ridden-speed column. Asking for either returns
+    the identical list, which is why the card groups them and says so."""
+    land = find_pals_by_attribute(kb, mounts_only=True, medium="land", limit=10)
+    assert [m.pal for m in land.matches]
+    assert "flying and ground" in cards.attribute_card(land).footer
+
+
+def test_water_is_a_genuinely_different_ranking(kb: KnowledgeBase):
+    land = find_pals_by_attribute(kb, mounts_only=True, medium="land", limit=5)
+    water = find_pals_by_attribute(kb, mounts_only=True, medium="water", limit=5)
+    assert [m.pal for m in land.matches] != [m.pal for m in water.matches]
+    assert all(m.speed_medium == "water" for m in water.matches)
+
+
+def test_the_player_level_gate_filters_and_reports_what_it_skipped(kb: KnowledgeBase):
+    r = find_pals_by_attribute(kb, mounts_only=True, player_level=20, limit=50)
+    assert all(m.mount.unlock_level <= 20 for m in r.matches)
+    assert r.unlock_unknown == 2
+    assert "no technology unlocks their saddle" in "\n".join(
+        cards.attribute_card(r).lines)
+
+
+def test_a_speed_always_says_which_medium(kb: KnowledgeBase):
+    """Faleris Aqua leads the no-medium list on 2520, which is a SWIM speed. The bare
+    number would read as how fast it runs."""
+    card = cards.attribute_card(find_pals_by_attribute(kb, mounts_only=True, limit=5))
+    assert all(("in water" in ln or "on land" in ln)
+               for ln in card.lines if ln.startswith("**"))
+
+
+def test_unowned_needs_the_roster_and_says_so(kb: KnowledgeBase):
+    """**The failure this guards.** Without the roster, 'which don't I have' would return
+    all 108 and read as 'you own none of these' - a confident claim about a set nobody
+    looked at, exactly what `roster_known` exists to prevent on the counter card."""
+    blind = find_pals_by_attribute(kb, mounts_only=True, unowned_only=True, limit=5)
+    assert not blind.roster_known
+    card = cards.attribute_card(blind)
+    assert card.title == "I haven't read your Pals"
+    assert card.colour == cards.TIER_DECLINE
+
+
+def test_unowned_subtracts_the_roster(kb: KnowledgeBase):
+    owned = frozenset({"thunderdog", "hawkbird", "deer"})
+    r = find_pals_by_attribute(kb, mounts_only=True, unowned_only=True, owned=owned,
+                               limit=200)
+    names = {m.pal for m in r.matches}
+    assert "Rayhound" not in names and "Nitewing" not in names
+    assert "Shaolong" in names
+    assert r.roster_known
+
+
+@pytest.mark.parametrize("utterance, expected", [
+    # The four asked on 2026-08-11, verbatim.
+    ("hey pal what is the fastest flying mount pal I can get at level 60",
+     {"mount": True, "medium": "land", "player_level": 60}),
+    ("hey pal what is the fastest swimming mount pal I can get at level 60",
+     {"mount": True, "medium": "water", "player_level": 60}),
+    ("hey pal what are the fastest ground mount pal I can get at level 60",
+     {"mount": True, "medium": "land", "player_level": 60}),
+    ("hey pal which mount pals do I not have yet",
+     {"mount": True, "unowned": True}),
+    # And the overall case, which names no medium and no "pal".
+    ("hey pal what is the fastest mount I can get at level 60",
+     {"mount": True, "player_level": 60}),
+    ("hey pal what mounts am I missing", {"mount": True, "unowned": True}),
+])
+def test_mount_questions_route(router, utterance, expected):
+    call = route(router, utterance)
+    assert isinstance(call, ToolCall), f"declined: {getattr(call, 'reason', '')}"
+    assert call.name == "find_pals_by_attribute"
+    assert call.args == expected
+
+
+def test_a_mount_level_never_lands_in_the_pal_level_slot(router):
+    """One word, two meanings, two arguments. A saddle gate filtering wild spawn bands
+    would answer a mount question with Pals that happen to spawn at 60."""
+    call = route(router, "hey pal what is the fastest mount I can get at level 60")
+    assert "player_level" in call.args and "level" not in call.args
+
+
+def test_a_non_mount_level_stays_the_pals(router):
+    call = route(router, "hey pal what electric pals are around level 60")
+    assert "level" in call.args and "player_level" not in call.args

@@ -176,12 +176,50 @@ def unified_schema(resources: list[str], pals: list[str],
                     "description": (
                         "pal_search only: the level of the PAL being looked for, never "
                         "the player's - \"an electric pal that is level 60\" is 60. "
-                        "Null when none is stated."
+                        "Null when none is stated. For a MOUNT question use "
+                        "mount_unlock_level instead: a saddle is gated on the player."
+                    ),
+                },
+                "mount_query": {
+                    "type": "boolean",
+                    "description": (
+                        "pal_search only: true when the question is about Pals you can "
+                        "RIDE - mounts, saddles, \"what can I fly on\". False otherwise."
+                    ),
+                },
+                "mount_medium": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": ["land", "water"]},
+                    "description": (
+                        "pal_search only. \"land\" covers flying AND ground - the game "
+                        "gives them one speed and has no separate flight speed. "
+                        "\"water\" is swimming. LEAVE EMPTY when the question names no "
+                        "medium, which ranks each Pal by whichever of its two speeds is "
+                        "higher. An array rather than a nullable enum because strict "
+                        "tool use has no clean form for the latter."
+                    ),
+                },
+                "mount_unlock_level": {
+                    "type": ["integer", "null"],
+                    "description": (
+                        "pal_search only: the PLAYER's level in a mount question - "
+                        "\"the fastest mount I can get at level 60\" is 60. A saddle is "
+                        "a technology unlocked at a player level, so this is NOT the "
+                        "Pal's level. Null otherwise."
+                    ),
+                },
+                "mount_unowned": {
+                    "type": "boolean",
+                    "description": (
+                        "pal_search only: true when the question asks which mounts the "
+                        "player does NOT have yet. False otherwise."
                     ),
                 },
             },
             "required": ["query_class", "pals", "resources", "items_named", "target",
-                         "max_player_level", "pal_elements", "pal_work", "pal_level"],
+                         "max_player_level", "pal_elements", "pal_work", "pal_level",
+                         "mount_query", "mount_medium", "mount_unlock_level",
+                         "mount_unowned"],
             "additionalProperties": False,
         },
     }
@@ -261,6 +299,30 @@ def unpack(name: str, args: dict[str, Any]) -> tuple[str, dict[str, Any]]:
             out["work"] = args["pal_work"][0]
         if args.get("pal_level") is not None:
             out["level"] = args["pal_level"]
+
+        # Any of the four slots marks a mount question, not just the boolean: a model
+        # that sets `mount_medium` and forgets `mount_query` would otherwise get an
+        # ordinary attribute search carrying a medium nothing could use.
+        medium = list(args.get("mount_medium") or [])
+        unlock = args.get("mount_unlock_level")
+        unowned = bool(args.get("mount_unowned"))
+        if args.get("mount_query") or medium or unlock is not None or unowned:
+            out["mount"] = True
+            # One medium. Two would be an intersection - a mount that is fastest on land
+            # AND in water is one ranking, not two - and the array exists only because
+            # strict tool use has no clean optional enum.
+            if medium:
+                out["medium"] = medium[0]
+            if unlock is not None:
+                out["player_level"] = unlock
+            if unowned:
+                out["unowned"] = True
+            # A mount question's level is the PLAYER's. If the model put it in the Pal
+            # slot anyway - the two are one word apart in the utterance - move it rather
+            # than filtering wild spawn bands by a saddle level, which would answer a
+            # mount question with Pals that happen to spawn at 60.
+            if "level" in out and unlock is None:
+                out["player_level"] = out.pop("level")
     if tool == "find_resource_nodes" and args.get("max_player_level") is not None:
         out["max_player_level"] = args["max_player_level"]
     if tool == "evaluate_counter" and args.get("target") is not None:

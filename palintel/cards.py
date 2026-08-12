@@ -647,13 +647,38 @@ def attribute_card(result: AttributeResult) -> Card:
       fact, because "the closest thing to an electric Pal at 60" and "an electric Pal at
       60" are not the same claim.
     """
-    title = f"{_element(result.element)} Pals" if result.element else "Pals"
+    if result.mounts_only:
+        noun = {"land": "land mounts", "water": "water mounts"}.get(
+            result.medium, "mounts")
+        title = f"{_element(result.element)} {noun}" if result.element else noun.title()
+        if result.unowned_only:
+            title = f"{noun.title()} you don't have yet"
+        elif result.player_level is not None:
+            # "player level", spelled out. Every other card in this file prints a Pal's
+            # level, and one word meaning two things across two cards is the ambiguity
+            # STATUS's decision exists to contain.
+            title += f" at player level {result.player_level}"
+    else:
+        title = f"{_element(result.element)} Pals" if result.element else "Pals"
     if result.work:
         title += f" for {result.work_label or result.work}"
     if result.level is not None:
         # "at", not "around", even when the filter widened. The leading line below owns
         # that caveat, and a title that hedges makes every card read as approximate.
         title += f" at level {result.level}"
+
+    if result.unowned_only and not result.roster_known:
+        # **Not a list of every mount.** "Which ones don't I have" against an unread
+        # roster would return all 108 and read as "you own none of these" - a confident
+        # claim about a set nobody looked at, which is the same failure the counter card
+        # separates `roster_known` to avoid. Saying so is the answer.
+        return Card(
+            title="I haven't read your Pals",
+            lines=["I can't tell you which mounts you're missing without looking at "
+                   f"your save. I know of **{result.total_available}** rideable Pals in "
+                   "total.",
+                   "", "_Point me at a save directory and ask again._"],
+            colour=TIER_DECLINE)
 
     if not result.matches:
         # Nothing matched every filter. Say which combination came up empty rather than
@@ -676,7 +701,17 @@ def attribute_card(result: AttributeResult) -> Card:
             # The job that was asked about, and only that one. A Pal's best job is a
             # different fact and printing it here answers a question nobody asked.
             bits.append(f"{result.work_label or result.work} {m.work_level}")
-        bits.append(m.band_label())
+        if m.mount is not None:
+            bits.append(_speed_label(m, result))
+            if m.mount.unlock_level is not None:
+                bits.append(f"saddle at lvl {m.mount.unlock_level}")
+            else:
+                # Never blank. A mount with no known unlock is a different state from one
+                # you can build now, and the list is sorted by speed so it can sit at the
+                # top of a card the player is about to act on.
+                bits.append("_unlock unknown_")
+        else:
+            bits.append(m.band_label())
         lines.append(SEP.join(bits))
 
     if result.without_a_band:
@@ -686,9 +721,18 @@ def attribute_card(result: AttributeResult) -> Card:
         lines += ["", f"_{result.without_a_band} more match but have no wild spawn, "
                       f"so I can't check their level._"]
 
+    if result.unlock_unknown:
+        # Not "too high a level" - unknown. Two saddles have no technology row at all, so
+        # nothing in the game files says how you get them, and a level filter cannot rule
+        # them in or out.
+        lines += ["", f"_{result.unlock_unknown} more can be ridden but no technology "
+                      f"unlocks their saddle, so I can't tell what level you need._"]
+
     shown = len(result.matches)
     footer = f"{shown} of {result.total_available} shown"
-    if result.work:
+    if result.mounts_only:
+        footer += f"{SEP}{_medium_note(result)}"
+    elif result.work:
         # The number is the game's own suitability column, not a rating this project
         # invented - and not a claim about the Pal being good, which nothing here
         # measures.
@@ -696,6 +740,37 @@ def attribute_card(result: AttributeResult) -> Card:
     elif result.level is None:
         footer += f"{SEP}sorted by highest level, which is not a ranking"
     return Card(title=title, lines=lines, footer=footer, colour=TIER_FACT)
+
+
+def _speed_label(m, result: AttributeResult) -> str:
+    """A mount's speed, always saying which medium it is in.
+
+    The medium is never dropped, even when it was asked for. With no medium named the
+    card ranks by whichever of a Pal's two speeds is higher, so Faleris Aqua leads on
+    2520 - a *swim* speed - and printing the bare number would read as how fast it runs.
+    """
+    if m.speed is None:
+        return "no speed data"
+    where = "in water" if m.speed_medium == "water" else "on land"
+    return f"{m.speed} {where}"
+
+
+def _medium_note(result: AttributeResult) -> str:
+    """Say what "land" covers, because it covers more than the word does.
+
+    **Flying and ground mounts are one category, and that is the game's doing.** The pak
+    has no flight flag - seven signals were measured and falsified - but more decisively
+    it has no flight *speed*: a flyer's ridden speed is `RideSprintSpeed`, the same
+    column a ground mount uses. So separating them would not produce two rankings, it
+    would produce the same ranking twice with an invented label on each. The card says
+    flyers are in the list rather than letting "land" quietly exclude them.
+    """
+    if result.medium == "water":
+        return "swim speed"
+    covers = "flying and ground mounts share one speed in the game files"
+    if result.medium == "land":
+        return covers
+    return f"fastest of land and water{SEP}{covers}"
 
 
 def _filters_line(result: AttributeResult) -> str:
