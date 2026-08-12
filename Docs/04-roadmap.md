@@ -40,7 +40,7 @@ Remaining before Phase 1 can start:
 | Spike | Blocker |
 |---|---|
 | **0.6 — STT accuracy (A5)** | Model and latency **resolved**; architecture **corrected** ([ADR-0016](adr/0016-entity-resolution-in-router.md)). Router measured in Phase 1: **Gemini 3.6 Flash ~90% exact, ~3% wrong**, still under the 95% gate. |
-| 0.4 — breeding combos (A3) | Confirmed via `CombiRank` + `DT_PalCombiUnique`. Gates Phase 3, not Phase 1. |
+| 0.4 — breeding combos (A3) | Confirmed via `CombiRank` + `DT_PalCombiUnique`. Gates Phase 3B, not Phase 1. (Written as "Phase 3"; that phase was split 2026-08-11 and breeding is the half A3 gates.) |
 
 ### A1 retired — there is no overlay
 
@@ -612,7 +612,7 @@ small-sample artifact — it held at 68% and 72% across earlier runs. STT mangle
 and the corrector must recover both, so failure compounds. **Q4 should not assume the
 single-entity number.**
 
-**Phase 0 exit: A4 ✅ · A6 ✅ · A2 ✅(caveat) · A3 ◐ (gates Phase 3) · A7 ◐ · A1 ⊘ retired
+**Phase 0 exit: A4 ✅ · A6 ✅ · A2 ✅(caveat) · A3 ◐ (gates Phase 3B) · A7 ◐ · A1 ⊘ retired
 · A5 ✅ accepted at measured behaviour.** Phase 1 is unblocked.
 
 ### Survey outcome (0.5 / 0.7 — complete)
@@ -2373,16 +2373,13 @@ that turns out to be 3% is the same class of error as a card that looks reasonab
 
 ---
 
-## Phase 3 — Graph search and scoring: Q3 + Q5 (target: 3 weeks)
+## Phase 3 — Boss counters: Q5 (was Q3 + Q5)
 
-Pairs the hardest Tier 1 class with the cleanest Tier 2 class.
-
-**Q3 breeding (Tier 1)**
-- Breeding ingest per the Phase 0.4 outcome
-- `BreedingModel` behind the protocol; `breeding_path` BFS from owned Pals
-- Multi-step chain card — the hardest rendering problem here, since a 3-step chain must stay
-  legible in a small overlay. Consider capping displayed depth and summarizing beyond it.
-- Handle unreachable targets and equal-length paths (prefer chains using more owned Pals)
+**Split 2026-08-11. Q3 breeding moved to [Phase 3B](#phase-3b--breeding-q3--unscheduled),
+and the pairing that named this phase is dissolved.** The two were paired to put the
+hardest Tier 1 class next to the cleanest Tier 2 one; that reasoning was about
+*implementation* difficulty, and what actually separated them was neither — Q5 needed
+code, Q3 needs a game state nobody involved has reached. See the split note below.
 
 **Q5 boss counters (Tier 2)**
 - Element matrix (hand-entered, unit tested) + boss dataset
@@ -2392,8 +2389,62 @@ Pairs the hardest Tier 1 class with the cleanest Tier 2 class.
   validator before the LLM pass, not after.
 - `CounterPlanCard` with recommendation treatment
 
-**Exit:** correct chains for 20 hand-verified breeding targets; Q5 recommendations contain
-only owned Pals, verified across the eval set; both card types legible in the overlay.
+**Exit:** Q5 recommendations contain only owned Pals, verified across the eval set; the
+counter card legible on the second screen.
+
+**State:** built end to end 2026-08-11 — element matrix, boss dataset, owned roster,
+candidate set, Tier 2 guard, counter card, fast path with chained dispatch, model path —
+and **unplayed**. Nothing has answered a counter question in real play, so the exit
+criterion is met by construction and not by observation.
+
+---
+
+## Phase 3B — Breeding: Q3 — **unscheduled**
+
+Deliberately not numbered `6`. A number is a claim about order, and this is not late in the
+order — it is **outside** it. Everything here should be built the week the gate opens,
+whenever that is, including before or during Phase 4. What follows the number is sequence;
+what follows this phase is a dependency.
+
+**Blocked on [ADR-0008](adr/0008-breeding-graph-derivation.md)'s verification gate, which
+is not a code task.** `tools/ingest/build_breeding.py` ingests the ranks,
+[`breeding-verification.md`](breeding-verification.md) is generated from them, and
+`tools/eval/score_breeding.py` waits to consume the results. What is missing is eggs
+hatched in a game where breeding is unlocked, on Steam buildid `24467282`.
+
+**The escape hatch was tried and it failed, 2026-08-11.** The sheet notes that breeding
+mechanics are global — no save, no bot, no Discord, so *any* player on the right build can
+run it — and that was written as the thing which keeps this off the critical path. It was
+true and insufficient. A second player was lined up and **did not have breeding unlocked
+either**, which is the one precondition the sheet states in prose and never lists beside
+the build id. Two people's game progress is a narrower funnel than "anyone on the right
+build" suggests, and the sheet has been corrected to say so.
+
+*Generalise it:* a dependency that can be satisfied by anyone is still a dependency on
+someone, and this one is on a **playthrough**, not a person. Delegating it does not shrink
+it; it only changes whose save has to be far enough along.
+
+**Q3 breeding (Tier 1)** — unchanged in content, all of it pending the gate:
+- Breeding ingest per the Phase 0.4 outcome — **done**, conditional on the gate confirming it
+- `BreedingModel` behind the protocol; `breeding_path` BFS from owned Pals
+- Multi-step chain card — the hardest rendering problem in the project, since a 3-step chain
+  must stay legible on a card. Consider capping displayed depth and summarizing beyond it.
+- Handle unreachable targets and equal-length paths (prefer chains using more owned Pals)
+
+**Entry:** the gate closes — `score_breeding.py` run against a filled sheet, ADR-0008 moved
+from Provisional to Accepted, or to the `TableBasedBreedingModel` fallback it names. Note
+the ADR requires **100% agreement** outside the exception table and refuses partial
+agreement as a tunable, so one refuted Block 1 row is a decision, not a data point, and it
+is the decision that makes this phase substantially larger.
+
+**Exit:** correct chains for 20 hand-verified breeding targets; the chain card legible on
+the second screen.
+
+**What the split buys, and it is the reason for doing it:** Phase 3 read as blocked when
+only half of it was, and the blocked half was blocked on something that was not coming.
+A phase that cannot close because of a dependency outside the repo will quietly absorb the
+phase it is bundled with — Q5 has been shipped and unplayed since 2026-08-11 while the
+phase containing it reported as blocked.
 
 ---
 
@@ -2562,6 +2613,6 @@ something outside the repo moved, and only re-running tells you.
 | Q1 first | Simplest data model; exercises the whole pipeline without graph search or synthesis |
 | Text input in Phase 1 | Nearly free, and it makes every later phase testable without a microphone |
 | Conversation memory in Phase 2 | Needs ≥ 2 query classes before follow-ups mean anything |
-| Q3 + Q5 paired | Hardest Tier 1 with cleanest Tier 2; establishes candidate-set discipline early |
+| ~~Q3 + Q5 paired~~ | Hardest Tier 1 with cleanest Tier 2; establishes candidate-set discipline early. **Dissolved 2026-08-11** — the pairing sorted the two by implementation difficulty, and what actually separated them was a dependency outside the repo. Q5 shipped; Q3 is [Phase 3B](#phase-3b--breeding-q3--unscheduled). *The lesson for future pairings: phases should be bundled by what blocks them, not by how hard they are to write.* |
 | Q7 last | Depends on corpus ingest and threshold calibration, and its router fallback should not mask routing bugs in earlier phases |
 | Fast-path matcher last | An optimization. Correctness first; the p95 target is met without it. |

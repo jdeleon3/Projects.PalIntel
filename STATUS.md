@@ -17,11 +17,12 @@ mapping and attribute search are on `design-and-phase0` and not yet promoted.*
 | 1 — Q1 resource lookup | **Closed 2026-08-10.** Latency accepted at measured behaviour, carried forward |
 | 2 — Q2 Pal spawns + memory | **Closed 2026-08-10** |
 | Card artwork + drops | **Shipped.** [ADR-0017](Docs/adr/0017-card-artwork-from-game-assets.md) Accepted |
-| 3 — Q3 breeding + Q5 counters | **Order swapped 2026-08-11. Q5 built end to end, unplayed.** Data, candidate set, Tier 2 guard, card, fast path and model path all land; nothing has answered a counter question in real play. **Q3 is blocked on hatching eggs, not on code** — see below |
+| 3 — Q5 counters | **Built end to end 2026-08-11, unplayed.** Data, candidate set, Tier 2 guard, card, fast path and model path all land; nothing has answered a counter question in real play. Was "Q3 + Q5"; **split 2026-08-11** |
+| **3B — Q3 breeding** | **Unscheduled, blocked outside the repo.** Not numbered `4` or `6` on purpose: it runs the week the gate opens, which may be before, during or after Phase 4. Blocked on hatching eggs, not on code — see below |
 | Pal search by attribute | **Shipped, unplayed.** The first new query class since the roadmap. Work-suitability ingest, three-axis filter, card, fast path and model path |
 | Mount search | **Shipped and PLAYED 2026-08-11.** Landed 19:13, exercised four minutes later — *"which dragons can I ride at level 60"*, *"which swimming mounts are available"*, *"the fastest ground mount at level 60"*, three of the four on the fast path. **Speed ordering confirmed correct by the player.** The unowned set-difference is still unexercised |
 | Tower leaders | **Shipped, unplayed.** *"How do I beat Victor"* resolves to the tower, not the field alpha |
-| 4 — Q6 tech + Q4 base siting + Q7 corpus | Not started |
+| 4 — Q6 tech + Q4 base siting + Q7 corpus | **Not started, and now the next phase in sequence** — Q3 leaving Phase 3 is what makes that true. Nothing blocks it: Q6 was recorded fully unblocked in Phase 0 (A6 confirmed, the save exposes `UnlockedRecipeTechnologyNames`), Q4 is curation, and A7 confined the licence risk to the Q7 prose corpus |
 
 ## What answers a question today
 
@@ -119,7 +120,7 @@ phrases that name what is being asked for.
 | ~~`art_post` p95~~ | **Measured**: 531ms p50, 1,157ms p95 over 70 attachments. Edit-in delivery holds. |
 | ~~**Do markers land on the actual rock?**~~ | **Closed 2026-08-11.** Ore, stone, wood, paldium walked against the regenerated table — nearest *and* further markers on each card, inside and outside the base — plus quartz at (-53,-960) and (-52,12), ~551 and ~573 units out on different bearings. Near-field and far-field, five resources, separate clusters. |
 | **Does `item_source` work?** | All 240 eval recordings predate the class. Ten queries were *asked* on 2026-08-11 and all routed to the model as designed — but **only Chillet's card was read back**, so routing is confirmed and correctness is not. |
-| **Does the breeding rank model hold?** | The ADR-0008 gate, and the whole of Q3 behind it. **Nothing is left to build**: `build_breeding.py` ingests the ranks, [`Docs/breeding-verification.md`](Docs/breeding-verification.md) is generated, `score_breeding.py` waits to consume it. It needs **eggs hatched in game**. Two preconditions: breeding unlocked in the playthrough, and the install still on Steam buildid **`24467282`** with auto-updates off — ranks are rebalanced between patches, so a tester on another build is measuring a different game. Note ADR-0008 requires **100% agreement** outside the exception table and refuses partial agreement as a tunable, so one refuted Block 1 row is a decision (the `TableBasedBreedingModel` fallback), not a data point. |
+| **Does the breeding rank model hold?** | The ADR-0008 gate, and the whole of Phase 3B behind it. **Nothing is left to build**: `build_breeding.py` ingests the ranks, [`Docs/breeding-verification.md`](Docs/breeding-verification.md) is generated, `score_breeding.py` waits to consume it. It needs **eggs hatched in game**. Two preconditions: breeding unlocked in the playthrough, and the install still on Steam buildid **`24467282`** with auto-updates off — ranks are rebalanced between patches, so a tester on another build is measuring a different game. **The delegation route was tried and failed 2026-08-11**: a second player was lined up and did not have breeding unlocked either. Note ADR-0008 requires **100% agreement** outside the exception table and refuses partial agreement as a tunable, so one refuted Block 1 row is a decision (the `TableBasedBreedingModel` fallback), not a data point. |
 | ~~The Phase 1 latency criterion~~ | **Measured 2026-08-10 and FAILED**: voice p95 4.2s / 2.5s, text 2.0s / 1.5s. Not a tuning problem — p95 sits in the model population whenever a shipped class has no fast path. See the roadmap. |
 
 The first four are in [`Docs/play-session-protocol.md`](Docs/play-session-protocol.md);
@@ -164,8 +165,13 @@ markers on each card were walked too, outside the base, with deposits standing t
    play; see the backlog.
 3. ~~Phase 3 groundwork~~ — **Q5 is built end to end** (2026-08-11): element matrix, boss
    dataset, owned roster, candidate set, Tier 2 guard, counter card, fast path with
-   chained dispatch, and the model path. Q3 is blocked on the ADR-0008 gate, which needs
-   breeding unlocked in game.
+   chained dispatch, and the model path.
+
+   **Q3 left with it 2026-08-11 and is now Phase 3B, unscheduled.** The ADR-0008 gate needs
+   a playthrough with breeding unlocked, the second player lined up to run the sheet did
+   not have it, and no amount of work in this repo moves that. Splitting it out is not
+   giving up on it — it stops a dependency outside the repo from holding a phase open, and
+   Phase 4 is free to start without waiting.
 4. ~~Play with capture on~~ — **done 2026-08-11, see the session block above.** The
    counter classes, the nine leaders, attribute search AND mount search were all
    exercised - the mount commit landed four minutes before the session started, and the
