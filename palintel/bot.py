@@ -513,14 +513,14 @@ def run() -> None:
                 # the signature of a detector firing on background noise.
                 activity.record("empty", f"{utt.seconds:.1f}s")
                 return
-            if activation.hallucinated(text):
-                # Whisper answered silence with subtitle boilerplate. Recorded as empty
+            if activation.overheard(text):
+                # A video playing in the room, transcribed accurately. Recorded as empty
                 # rather than heard, and dropped BEFORE `activity.record("heard", ...)`
                 # so it never enters the graded population, never spends a model call,
                 # and - the reason this gate exists at all - never becomes a captured
                 # clip with a routing label attached to it.
-                activity.record("empty", f"hallucinated: {text[:40]!r}")
-                log.info("voice: discarding Whisper boilerplate (%r)", text[:60])
+                activity.record("empty", f"overheard: {text[:40]!r}")
+                log.info("voice: discarding overheard media audio (%r)", text[:60])
                 return
             activity.record("heard", text[:80])
 

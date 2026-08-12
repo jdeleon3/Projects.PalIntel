@@ -19,7 +19,7 @@ mapping and attribute search are on `design-and-phase0` and not yet promoted.*
 | Card artwork + drops | **Shipped.** [ADR-0017](Docs/adr/0017-card-artwork-from-game-assets.md) Accepted |
 | 3 — Q3 breeding + Q5 counters | **Order swapped 2026-08-11. Q5 built end to end, unplayed.** Data, candidate set, Tier 2 guard, card, fast path and model path all land; nothing has answered a counter question in real play. **Q3 is blocked** — the ADR-0008 gate needs in-game breeding, not yet unlocked |
 | Pal search by attribute | **Shipped, unplayed.** The first new query class since the roadmap. Work-suitability ingest, three-axis filter, card, fast path and model path |
-| Mount search | **Shipped, unplayed.** Saddle roster, player-level gate, speed ranking by medium, and the set-difference against the owned roster |
+| Mount search | **Shipped and PLAYED 2026-08-11.** Landed 19:13, exercised four minutes later — *"which dragons can I ride at level 60"*, *"which swimming mounts are available"*, *"the fastest ground mount at level 60"*, three of the four on the fast path. **Speed ordering confirmed correct by the player.** The unowned set-difference is still unexercised |
 | Tower leaders | **Shipped, unplayed.** *"How do I beat Victor"* resolves to the tower, not the field alpha |
 | 4 — Q6 tech + Q4 base siting + Q7 corpus | Not started |
 
@@ -81,11 +81,22 @@ What it changed, all of it now regression-tested in `tests/test_session_findings
   answered by the **wrong class**: a location card for *"tell me about Shroomer"*, a Tier
   2 counter plan for *"who is Victor"*. A wrong-class answer is worse than a decline
   because it looks like an answer. Built, from data already loaded.
-- **Whisper invented speech.** A clip transcribed as *"Thank you for watching! Please
-  like, subscribe, comment and"* — counted as heard, spent 1.8s and a model call, and was
-  **captured as a labelled clip**, polluting the corpus capture exists to build. A third
-  kind of nothing, distinct from an empty transcript and from a truncated one, and the
-  only one that looks like a real query all the way down.
+- **The microphone overheard a video.** A clip transcribed as *"Thank you for watching!
+  Please like, subscribe, comment and"* — counted as heard, spent 1.8s and a model call,
+  and was **captured as a labelled clip**, polluting the corpus capture exists to build.
+
+  **Diagnosed wrong first, corrected by the player.** I read it as Whisper inventing
+  subtitle boilerplate on silence, which it genuinely does. It was the kids watching
+  YouTube nearby, and Whisper transcribed it accurately. The guard still earns its place
+  — video outros are among the most common things a household mic overhears — but it is
+  **not** a solution to the general case: any media playing nearby produces fluent,
+  plausible text, and a Palworld video would produce Palworld sentences. The real gate is
+  the wake word, which fired on this at `threshold = 0.1`. That setting is deliberately
+  low because a false negative is a silent failure (ADR-0004); this is a false positive
+  from the same choice, and the honest reading is that the trade is working as designed.
+
+  Also a privacy note the config comment already anticipated: capture records whatever is
+  near the microphone, including other people in the room. It did.
 - **A textbook failure run**, exactly as the capture design predicted: *"Lani"* →
   *"Lening"* → *"Leneen"* in ninety seconds, two declines and a wrong class. Yielded the
   first aliases in this project harvested from unscripted speech rather than read prompts.
@@ -150,8 +161,10 @@ markers on each card were walked too, outside the base, with deposits standing t
    chained dispatch, and the model path. Q3 is blocked on the ADR-0008 gate, which needs
    breeding unlocked in game.
 4. ~~Play with capture on~~ — **done 2026-08-11, see the session block above.** The
-   counter classes, the nine leaders and attribute search were all exercised; mounts and
-   `pal_info` were built after it and are unplayed. **A second session is now the highest
+   counter classes, the nine leaders, attribute search AND mount search were all
+   exercised - the mount commit landed four minutes before the session started, and the
+   player confirmed the speed ordering reads correctly. `pal_info`, "can I ride X" and
+   every fix the session produced were built after it and are unplayed. **A second session is now the highest
    -value thing available**, because the first one paid for itself in one hour and the
    fixes it produced are themselves unplayed. Ask especially: `pal_info` phrasings,
    mounts, and whether the tower/alpha preference reads right when you genuinely mean a
@@ -411,16 +424,23 @@ markers on each card were walked too, outside the base, with deposits standing t
   `ToolCall` and these are two different tools, so it needs multi-call dispatch rather
   than a cue change. That case abstains to the model today — correct, but it costs a
   model round trip on exactly the phrasings a fast path would most like to claim.
-- **The drop fast path's second-entity guard depends on STT** — **measured 2026-08-11, no
-  longer a hypothesis.** `routing.py:457` defers a two-Pal drop question to the model only
-  when the *second* Pal clears the lexicon floor, so when speech damages that name the
-  guard does not fire and the fast path answers a two-answer question from its single
-  slot. Reproduced on a recorded transcript: *"what do I get from Astralym and Micora"*
-  → `find_pal_drops`, single slot, from a prompt written to provoke it. The earlier
-  entry asked for a card count before proposing a fix; that evidence now exists.
-  Candidate fix — **a Pal-kind near-miss below the floor should defer rather than
-  claim** — but note the 2026-08-11 branch batch says the wider problem is entity
-  resolution at 68% accuracy, so tightening this guard treats one symptom of it.
+- **The drop fast path answers a two-Pal question from one slot** — **reproduced in real
+  play 2026-08-11, and then ACCEPTED.** The guard defers only when the *second* Pal
+  clears the lexicon floor, so damaged speech lets the fast path answer about the first
+  Pal alone: *"what does Gidra and Dromatide drop?"* → `find_pal_drops(Gildra)` in 0.1s,
+  with Dromatide's best match at 0.74, under the floor.
+
+  **Left as is on the player's call**, and the reasoning is a usage fact this project had
+  no other way to learn: *"I don't think I will ask multiple pal questions — it's hard
+  enough to say one Pal's name!"* Two-Pal questions are rare because the speech is hard,
+  and answering the first of two is a partial answer rather than a wrong one.
+
+  Revisit if it becomes troublesome in play. The candidate fix is unchanged — **a
+  Pal-kind near-miss below the floor should defer rather than claim** — but it must be
+  swept on the 271 transcripts first, because near-misses are common and it would cost
+  drop coverage across the board to fix a case that may never be asked. Note also that
+  the branch batch calls the wider problem entity resolution at 68%, so this guard treats
+  one symptom of it.
 - **Capture gameplay audio as a self-labelling testbed** — **capture and feedback built
   2026-08-11, both off by default; the analysis half is not.** `[capture] enabled` keeps
   the clip and a log line, `[capture] feedback` puts three labelling buttons under each

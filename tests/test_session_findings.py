@@ -13,7 +13,7 @@ from __future__ import annotations
 import pytest
 
 from palintel import cards, counters
-from palintel.activation import hallucinated
+from palintel.activation import overheard
 from palintel.execution import get_pal_info
 from palintel.knowledge import KnowledgeBase
 from palintel.pipeline import Pipeline, build_router
@@ -62,21 +62,22 @@ def test_the_games_own_name_for_a_fight_is_fast_pathed(pipe):
 
 # ------------------------------------------- Whisper inventing speech
 
-def test_whisper_boilerplate_is_discarded():
-    """Not empty, not truncated - **invented**. It was counted as heard, spent 1.8s and a
-    model call, and was captured as a labelled clip, polluting the corpus capture exists
-    to build."""
-    assert hallucinated("Thank you for watching! Please like, subscribe, comment and")
+def test_overheard_media_is_discarded():
+    """Not empty, not truncated, and **not invented** - the player's kids were watching
+    YouTube and the mic picked it up. Whisper transcribed it accurately, which is why it
+    was counted as heard, spent 1.8s and a model call, and was captured as a labelled
+    clip, polluting the corpus capture exists to build."""
+    assert overheard("Thank you for watching! Please like, subscribe, comment and")
 
 
 @pytest.mark.parametrize("real", [
     "Hey pal, thanks", "Hey pal, which pals can ranch?",
     "Hey pal, what am I watching for here", "Hey pal, how do I beat Victor?",
 ])
-def test_real_speech_survives_the_hallucination_guard(real):
+def test_real_speech_survives_the_overheard_guard(real):
     """The list is closed and small on purpose: discarding a real question is the failure
     this project weighs heaviest, and nobody asks PalIntel to like and subscribe."""
-    assert not hallucinated(real)
+    assert not overheard(real)
 
 
 # ------------------------------------------- the class that was missing

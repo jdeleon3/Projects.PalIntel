@@ -125,19 +125,30 @@ def detect(utterance: str, wake_word: str = WAKE_WORD,
     return Activation(True, utterance[idx:].lstrip(" ,.:;-").strip(), consumed, score)
 
 
-# Whisper's boilerplate. On silence or non-speech noise the model does not return an
-# empty string - it returns text it was trained on, and for a model trained on subtitle
-# corpora that means YouTube outros and caption credits.
+# Speech from something else in the room. **Not a Whisper hallucination, and the
+# distinction was corrected by the player rather than deduced.**
 #
 # Observed in the 2026-08-11 session: a clip transcribed as *"Thank you for watching!
-# Please like, subscribe, comment and"*, which was counted as HEARD, spent 1.8s and a
-# model call to decline, and - worse - was captured as a labelled gameplay clip. It
-# pollutes the very corpus capture exists to build.
+# Please like, subscribe, comment and"*, counted as HEARD, which spent 1.8s and a model
+# call to decline and was captured as a labelled gameplay clip - polluting the very
+# corpus capture exists to build.
+#
+# The first reading was that Whisper invents subtitle boilerplate on silence, which it
+# genuinely does. **It was a YouTube video the player's kids were watching nearby**, and
+# Whisper transcribed it accurately. That matters for what this guard is and is not:
+#
+#   * It still earns its place. Video outros are among the most common things a
+#     household microphone overhears, and this list catches them for a few bytes.
+#   * It is NOT a solution to the general problem. Any media playing nearby produces
+#     fluent, plausible text - a Palworld video would produce Palworld sentences - and no
+#     phrase list reaches that. The real gate is the wake word, which fired on this audio
+#     at `threshold = 0.1`, deliberately low per ADR-0004 because a false negative is a
+#     silent failure. This is a false POSITIVE from the same setting.
 #
 # Matched as whole phrases rather than by keyword, because "thanks" and "subscribe" are
-# things a player might genuinely say. Anchored loosely because the hallucination is
-# often truncated mid-sentence by endpointing, as this one was.
-_HALLUCINATED = re.compile(
+# things a player might genuinely say. Anchored loosely because endpointing truncates
+# these mid-sentence, as it did this one.
+_OVERHEARD = re.compile(
     r"thank(?:s| you)(?: (?:all|so much|you))? for watching"
     r"|please (?:like|subscribe)"
     r"|like,? (?:and )?subscribe"
@@ -148,24 +159,26 @@ _HALLUCINATED = re.compile(
     re.I)
 
 
-def hallucinated(text: str) -> bool:
-    """True when a transcript is Whisper's silence boilerplate rather than speech.
+def overheard(text: str) -> bool:
+    """True when a transcript is media playing nearby rather than someone talking to us.
 
-    **A third kind of nothing**, and it has to be separated from the other two. An empty
-    transcript means the detector fired on noise; a `bare` activation means the player
-    spoke and endpointing cut the question off. This one means the player said nothing
-    and the model invented fluent, confident text about it - which is the only one of the
-    three that looks like a real query all the way down the pipeline.
+    **A third kind of not-a-query**, and it has to be separated from the other two. An
+    empty transcript means the detector fired on noise; a `bare` activation means the
+    player spoke and endpointing cut the question off. This one means *somebody else*
+    spoke - a video, a TV, another person - and Whisper transcribed them faithfully,
+    which makes it the only one of the three that looks like a real query all the way
+    down the pipeline.
 
-    Checked on the WHOLE transcript, before the wake word is stripped, because the
-    hallucination usually replaces the utterance entirely rather than trailing it.
+    Checked on the WHOLE transcript, before the wake word is stripped, because overheard
+    speech replaces the utterance rather than trailing it.
 
-    Deliberately a small closed list. The general problem - detecting that a transcript
-    is not grounded in the audio - is open-ended, and a loose rule here would discard
-    real questions, which is the failure this project weighs heaviest. These phrases
-    cost nothing to give up: nobody asks PalIntel to like and subscribe.
+    Deliberately a small closed list, and it only covers the video-outro case. Detecting
+    overheard speech in general is not a text problem - a Palworld video would produce
+    Palworld sentences - and a loose rule here would discard real questions, which is the
+    failure this project weighs heaviest. These phrases cost nothing to give up: nobody
+    asks PalIntel to like and subscribe.
     """
-    return bool(_HALLUCINATED.search(text))
+    return bool(_OVERHEARD.search(text))
 
 
 def bare(activation: Activation) -> bool:
