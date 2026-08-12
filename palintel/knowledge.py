@@ -452,6 +452,58 @@ class Mount:
 
 
 @dataclass(frozen=True)
+class BaseFeatures:
+    """What the world says about a place, beyond what is minable there.
+
+    Three signals, all extracted, and the first is worth more than the other two: the game
+    marks 32 spots with `BP_BaseCampPopularArea_C` and that is the designers' own answer
+    to where a base goes. See tools/ingest/build_base_features.py for the two independent
+    corroborations it was given before being used.
+
+    `roughness` is a **proxy** — the height spread of placed actors inside one base radius
+    — and every card built on it has to say so. It separates a plateau from a cliff. It
+    does not know about no-build zones, and it measures the ground where things were
+    placed rather than the ground everywhere.
+    """
+    # Grid cells one base radius across, "gx,gy" -> height standard deviation in cm.
+    roughness: dict[str, int]
+    # The bar for "flat enough", calibrated as the 75th percentile of the 32 marked
+    # areas' own roughness. Derived from the game rather than chosen.
+    flat_cm: int
+    radius: float
+    popular_areas: tuple[tuple[float, float], ...]
+    # (x, y, kind) with kind in {"water", "river", "ocean"}.
+    water: tuple[tuple[float, float, str], ...]
+
+    def roughness_at(self, x: float, y: float) -> int | None:
+        """Ground roughness in cm, or None where too few actors stand to say.
+
+        None is a real answer and must not be rendered as flat: a cell with three actors
+        in it is somewhere nobody placed anything, which is as likely to be a cliff face
+        as a meadow.
+        """
+        return self.roughness.get(f"{int(x // self.radius)},{int(y // self.radius)}")
+
+    def is_flat(self, x: float, y: float) -> bool | None:
+        r = self.roughness_at(x, y)
+        return None if r is None else r <= self.flat_cm
+
+    def nearest_water(self, x: float, y: float) -> tuple[float, str] | None:
+        """(distance in map units, kind) of the closest water, or None if none is loaded."""
+        best = None
+        for wx, wy, kind in self.water:
+            d = math.dist((x, y), (wx, wy))
+            if best is None or d < best[0]:
+                best = (d, kind)
+        return best
+
+    def nearest_marked_area(self, x: float, y: float) -> float | None:
+        if not self.popular_areas:
+            return None
+        return min(math.dist((x, y), a) for a in self.popular_areas)
+
+
+@dataclass(frozen=True)
 class PalAttributes:
     """What a Pal *is*, as opposed to where it is or what it drops.
 
@@ -551,6 +603,10 @@ class KnowledgeBase:
     # base siting off: a radius is the entire question that class asks, and guessing one
     # would put a coordinate on a card backed by nothing.
     base_radius: float | None = None
+    # The other three base-siting signals - marked areas, water, terrain roughness - from
+    # tools/ingest/build_base_features.py. None when base_features.json is absent, which
+    # leaves siting answering on resource density alone: exactly what it did before.
+    base_features: "BaseFeatures | None" = None
 
     @classmethod
     def load(cls, version: str = "1.0.2", root: Path | None = None) -> "KnowledgeBase":
@@ -633,6 +689,20 @@ class KnowledgeBase:
             base_radius = json.loads(
                 base_path.read_text(encoding="utf-8"))["map_units"]
 
+        base_features: BaseFeatures | None = None
+        features_path = base / "base_features.json"
+        if features_path.exists():
+            raw_f = json.loads(features_path.read_text(encoding="utf-8"))
+            base_features = BaseFeatures(
+                roughness=raw_f["roughness"],
+                flat_cm=raw_f["flat_cm"],
+                radius=raw_f["radius_map_units"],
+                popular_areas=tuple((a["map_x"], a["map_y"])
+                                    for a in raw_f["popular_areas"]),
+                water=tuple((w["map_x"], w["map_y"], w["kind"])
+                            for w in raw_f["water"]),
+            )
+
         return cls(game_version=raw["game_version"], lexicon=lexicon, nodes=nodes,
                    spawns=spawns,
                    pals_without_areas=frozenset(spawn_raw["pals_without_areas"]),
@@ -640,7 +710,7 @@ class KnowledgeBase:
                    item_sources=item_sources, ranch=ranch,
                    ranch_source=ranch_source,
                    attributes=attributes, jobs=jobs, mounts=mounts,
-                   base_radius=base_radius)
+                   base_radius=base_radius, base_features=base_features)
 
     def job_label(self, job: str) -> str:
         """The game's word for a job enum, falling back to the enum itself."""

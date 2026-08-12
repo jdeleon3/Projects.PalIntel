@@ -1187,6 +1187,27 @@ def base_site_card(result: BaseSiteResult) -> Card:
         if s.distance is not None:
             bits.append(f"{s.distance:.0f} units away")
         lines.append(SEP.join(bits))
+
+        # The terrain line, and it leads with the strongest signal there is. "The game
+        # marks this as a base camp area" is the designers' own judgement, not ours.
+        terrain = []
+        if s.in_marked_area(result.radius):
+            terrain.append("**the game marks this as a base camp area**")
+        if s.flat is True:
+            terrain.append(f"flat ground (±{s.roughness / 100:.1f}m)")
+        elif s.flat is False:
+            terrain.append(f"_uneven ground (±{s.roughness / 100:.1f}m)_")
+        elif result.features_known:
+            # Never blank and never "flat". Too few placed actors to measure is a real
+            # state, and it is as likely to be a cliff as a meadow.
+            terrain.append("_ground unknown - nothing placed near enough to measure_")
+        if s.water is not None:
+            near_water, kind = s.water
+            terrain.append(f"{kind} {near_water:.0f} units away"
+                           if near_water > result.radius else f"**{kind} in range**")
+        if terrain:
+            lines.append("    " + SEP.join(terrain))
+
         if s.missing:
             lines.append(f"    _no {', '.join(_resource_word(r) for r in s.missing)} "
                          f"in range_")
@@ -1203,10 +1224,23 @@ def base_site_card(result: BaseSiteResult) -> Card:
         # a statistic.
         footer += (f"{SEP}{result.complete_sites} of {result.considered} spots reach "
                    f"all of it")
-    # The sentence the whole card exists to be honest about, on every card and not only
-    # the suspect ones - the card cannot tell which ones are suspect.
-    footer += (f"{SEP}I can't tell you if the ground is flat or buildable - "
-               f"nothing in the game files says")
+    # **The caveat changed and it had to be narrowed, not dropped.** The card used to say
+    # "I can't tell you if the ground is flat or buildable", and half of that is no longer
+    # true: terrain roughness is measured from the height of every placed actor inside the
+    # radius, calibrated against the 32 spots the game itself marks as base camp areas.
+    #
+    # The other half is still true and is now the whole caveat. Roughness separates a
+    # plateau from a cliff; it does not know about no-build zones, and it measures the
+    # ground where things were PLACED rather than the ground everywhere. Weakening the
+    # sentence to match what is actually known is the point - a caveat that overstates is
+    # ignored, and then it is not there when it matters.
+    if result.features_known:
+        footer += (f"{SEP}flat means within ±{result.flat_cm / 100:.1f}m, measured like "
+                   f"the game's own base areas"
+                   f"{SEP}I still can't see no-build zones")
+    else:
+        footer += (f"{SEP}I can't tell you if the ground is flat or buildable - "
+                   f"base_features.json isn't built")
     return Card(title=title, lines=lines, footer=footer, colour=TIER_ADVICE)
 
 

@@ -52,7 +52,8 @@ Console.OutputEncoding = System.Text.Encoding.UTF8;
 // happened when `dotnet run --tables` (no separator) delivered zero arguments and the
 // default was a full World Partition scan.
 var MODES = new[] { "cells", "sheets", "drops", "items", "textures", "paldrops",
-                    "probe", "dump", "tables", "table", "export", "ranch", "settings" };
+                    "probe", "dump", "tables", "table", "export", "ranch", "settings",
+                    "survey" };
 
 var mode = args.Length > 0 && !int.TryParse(args[0], out _) ? args[0] : "";
 var limit = args.Length > 0 && int.TryParse(args[0], out var l) ? l : int.MaxValue;
@@ -83,6 +84,7 @@ if (mode.Length == 0 && limit == int.MaxValue)
           table <name> one table's rows -> data/raw/tables/, and its field list
           export <s>   every table whose path contains <s>, same output
           settings     BP_PalGameSetting's tunables -> data/raw/game_settings.json
+          survey       EVERY actor class and data layer in the world -> world_survey.json
         """);
     return;
 }
@@ -744,6 +746,72 @@ var cells = provider.Files.Keys
     .OrderBy(p => p).Take(limit).ToList();
 Console.WriteLine($"scanning {cells.Count:N0} world partition cells\n");
 
+if (mode == "survey")
+{
+    // Every actor class in the world, counted, with no filter at all.
+    //
+    // The `cells` scan below keeps three prefixes - map object spawners, Pal spawner
+    // sheets and dungeon entrances - which means `placement_class_counts.json` is a
+    // census of what we already collect and NOT of what is out there. Reading it as the
+    // latter is how a search for "is there water data" gets answered "no" by a file that
+    // was never asked the question. This mode is the file that can answer it.
+    //
+    // Data layers are counted alongside, because World Partition uses them as designer
+    // annotations and one of them on this map is called `BaseCampPopularArea`.
+    var seen = new Dictionary<string, int>(StringComparer.Ordinal);
+    var layers = new Dictionary<string, int>(StringComparer.Ordinal);
+    var byLayer = new Dictionary<string, Dictionary<string, int>>(StringComparer.Ordinal);
+    int scanned = 0, failed = 0;
+    var swSurvey = System.Diagnostics.Stopwatch.StartNew();
+
+    foreach (var cell in cells)
+    {
+        try
+        {
+            var pkg = provider.LoadPackage(cell[..cell.LastIndexOf('.')]);
+            foreach (var exp in pkg.GetExports())
+            {
+                var cls = exp.Class?.Name.ToString() ?? exp.ExportType ?? "";
+                if (cls.Length == 0) continue;
+                seen[cls] = seen.GetValueOrDefault(cls, 0) + 1;
+
+                if (!exp.TryGetValue(out FPackageIndex[] assets, "DataLayerAssets")) continue;
+                foreach (var a in assets)
+                {
+                    var name = a.Name ?? "";
+                    var dot = name.LastIndexOf('.');
+                    if (dot >= 0) name = name[(dot + 1)..];
+                    if (name.Length == 0) continue;
+                    layers[name] = layers.GetValueOrDefault(name, 0) + 1;
+                    if (!byLayer.TryGetValue(name, out var inner))
+                        byLayer[name] = inner = new(StringComparer.Ordinal);
+                    inner[cls] = inner.GetValueOrDefault(cls, 0) + 1;
+                }
+            }
+        }
+        catch { failed++; }
+        if (++scanned % 1000 == 0)
+            Console.WriteLine($"  {scanned:N0}/{cells.Count:N0}  {swSurvey.Elapsed:mm\\:ss}");
+    }
+
+    var surveyOut = Path.Combine(outDir, "world_survey.json");
+    File.WriteAllText(surveyOut, JsonConvert.SerializeObject(new
+    {
+        cells_scanned = scanned,
+        cells_failed = failed,
+        distinct_classes = seen.Count,
+        actors = seen.Values.Sum(),
+        classes = seen.OrderByDescending(kv => kv.Value).ToDictionary(kv => kv.Key, kv => kv.Value),
+        data_layers = layers.OrderByDescending(kv => kv.Value).ToDictionary(kv => kv.Key, kv => kv.Value),
+        data_layer_classes = byLayer.ToDictionary(kv => kv.Key,
+            kv => kv.Value.OrderByDescending(x => x.Value).ToDictionary(x => x.Key, x => x.Value)),
+    }, Formatting.Indented), new System.Text.UTF8Encoding(false));
+
+    Console.WriteLine($"\n{seen.Count:N0} distinct classes, {seen.Values.Sum():N0} actors, "
+                      + $"{layers.Count:N0} data layers -> {surveyOut}");
+    return;
+}
+
 static (FVector loc, FRotator rot, FVector scale)? LocalTransform(UObject actor)
 {
     UObject? comp = null;
@@ -764,6 +832,9 @@ static string OwnerName(UObject actor)
 }
 
 var records = new List<object>();
+// Base-siting features, kept apart from `records` so placements.json keeps exactly the
+// three kinds its four consumers already expect.
+var features = new List<object>();
 var classCounts = new Dictionary<string, int>(StringComparer.Ordinal);
 int resolvedViaOwner = 0, unresolvedOwner = 0, failedCells = 0, noTransform = 0;
 var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -791,7 +862,25 @@ foreach (var cell in cells)
             // chain and transform composition are the same problem.
             var isDungeon = cls.StartsWith("BP_DungeonPortalMarker", StringComparison.Ordinal)
                          || cls.StartsWith("BP_DungeonFixedEntrance", StringComparison.Ordinal);
-            if (!isNode && !isSpawn && !isDungeon) continue;
+
+            // World features for base siting, added 2026-08-12 after `survey` showed the
+            // world holds 1,295 actor classes and this scan was looking at three prefixes.
+            //
+            //   BP_BaseCampPopularArea_C  32 of them, and the name is the game's own -
+            //                             this is the designers marking where a base goes
+            //   BP_SimpleWater_C          1,257 placed water bodies
+            //   BP_FishingSpot_*          fishing spots, typed _River_ / _Ocean_ / plain,
+            //                             which only exist where there is water to fish in
+            //
+            // Written to their own file rather than into placements.json: every existing
+            // ingest reads that file and none of them expects a fourth kind, and a silent
+            // extra row in a dataset four ingests consume is not a change worth making
+            // to save a file.
+            var isFeature = cls.StartsWith("BP_BaseCampPopularArea", StringComparison.Ordinal)
+                         || cls.StartsWith("BP_SimpleWater", StringComparison.Ordinal)
+                         || cls.StartsWith("BP_FishingSpot", StringComparison.Ordinal);
+
+            if (!isNode && !isSpawn && !isDungeon && !isFeature) continue;
 
             classCounts[cls] = classCounts.GetValueOrDefault(cls, 0) + 1;
 
@@ -831,9 +920,13 @@ foreach (var cell in cells)
             if (hops > 0) resolvedViaOwner++;
 
             var (mx, my) = ToMap(pos);
-            records.Add(new
+            (isFeature ? features : records).Add(new
             {
-                kind = isNode ? "node" : isSpawn ? "pal_spawn" : "dungeon",
+                kind = isNode ? "node" : isSpawn ? "pal_spawn"
+                     : isDungeon ? "dungeon"
+                     : cls.StartsWith("BP_BaseCampPopularArea", StringComparison.Ordinal) ? "base_area"
+                     : cls.StartsWith("BP_SimpleWater", StringComparison.Ordinal) ? "water"
+                     : "fishing",
                 cls,
                 cell = Path.GetFileNameWithoutExtension(cell),
                 owner_hops = hops,
@@ -859,8 +952,12 @@ Console.WriteLine($"  owner outside cell   : {unresolvedOwner:N0}  (excluded)");
 Console.WriteLine($"  no transform         : {noTransform:N0}  (excluded)");
 Console.WriteLine($"  cells failed         : {failedCells:N0}");
 
+Console.WriteLine($"  world features       : {features.Count:N0}");
+
 File.WriteAllText(Path.Combine(outDir, "placements.json"),
     JsonConvert.SerializeObject(records, Formatting.None));
+File.WriteAllText(Path.Combine(outDir, "world_features.json"),
+    JsonConvert.SerializeObject(features, Formatting.None));
 File.WriteAllText(Path.Combine(outDir, "placement_class_counts.json"),
     JsonConvert.SerializeObject(
         classCounts.OrderByDescending(k => k.Value).ToDictionary(k => k.Key, k => k.Value),
