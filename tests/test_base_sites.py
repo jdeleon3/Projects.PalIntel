@@ -321,6 +321,37 @@ def test_percentiles_use_two_different_yardsticks_on_purpose():
     assert raw["site_deciles"]["deposits"][-1] > 20      # the map has far richer spots
 
 
+def test_a_coordinate_off_the_map_declines_rather_than_scoring_zero(featured):
+    """**0 of 4 is a judgement about a bad base site. "Off my map" is the truth.**
+
+    Outside the extent of everything extracted, every criterion fails for the same
+    uninteresting reason. The two cards look identical to a reader and only one of them
+    is worth acting on.
+    """
+    from palintel.execution import rate_base_site
+
+    rating = rate_base_site(featured, 99_999, 99_999)
+    assert not rating.on_the_map
+    card = cards.base_rating_card(rating)
+    assert "off my map" in card.title.lower()
+    assert card.colour == cards.TIER_DECLINE
+    assert "0 of" not in card.to_text()
+
+
+def test_a_coordinate_on_the_map_is_rated_normally(featured):
+    from palintel.execution import rate_base_site
+
+    assert rate_base_site(featured, 0, 0).on_the_map
+
+
+def test_the_map_extent_comes_from_the_data_not_from_a_constant():
+    """A patch that adds an island moves the bounds without anyone editing a literal."""
+    kb = KnowledgeBase.load("1.0.2")
+    assert kb.within_known_map(229, -487)          # a real base
+    assert kb.within_known_map(-53, -960)          # the far quartz cluster, walked
+    assert not kb.within_known_map(99_999, 99_999)
+
+
 def test_the_criteria_card_sources_every_bar_and_names_its_gaps(featured):
     """**A criterion with an unsourced threshold is the `min_player_level` failure in a
     new coat** - a number that looks calibrated, is not, and gets believed. And the gaps

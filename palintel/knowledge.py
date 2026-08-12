@@ -657,6 +657,9 @@ class KnowledgeBase:
     # tools/ingest/build_base_features.py. None when base_features.json is absent, which
     # leaves siting answering on resource density alone: exactly what it did before.
     base_features: "BaseFeatures | None" = None
+    # Cached bounding box of everything extracted, for `within_known_map`. Computed on
+    # first use because it walks 22,000 rows and most sessions never ask.
+    _extent: tuple[float, float, float, float] | None = field(default=None, repr=False)
 
     @classmethod
     def load(cls, version: str = "1.0.2", root: Path | None = None) -> "KnowledgeBase":
@@ -771,6 +774,28 @@ class KnowledgeBase:
                    ranch_source=ranch_source,
                    attributes=attributes, jobs=jobs, mounts=mounts,
                    base_radius=base_radius, base_features=base_features)
+
+    def within_known_map(self, x: float, y: float, margin: float = 50.0) -> bool:
+        """Whether a coordinate falls inside the extent this project has data for.
+
+        Not the world's extent - **ours**. The bounding box of every node and spawn area
+        we extracted, which runs about x -1987..942 and y -2006..1640, plus a margin for
+        a coastline nobody placed anything on.
+
+        It exists because a rating outside it comes back 0 of 4 - no resources, no water,
+        no marked area - and that is a judgement about a bad base site rather than the
+        truth, which is that the coordinate is not somewhere this can speak about. The
+        two answers look identical on a card and a player would act on the wrong one.
+        """
+        if not self.nodes and not self.spawns:
+            return True
+        if self._extent is None:
+            xs = [n.map_x for n in self.nodes] + [a.map_x for a in self.spawns]
+            ys = [n.map_y for n in self.nodes] + [a.map_y for a in self.spawns]
+            self._extent = (min(xs), max(xs), min(ys), max(ys))
+        lo_x, hi_x, lo_y, hi_y = self._extent
+        return (lo_x - margin <= x <= hi_x + margin
+                and lo_y - margin <= y <= hi_y + margin)
 
     def job_label(self, job: str) -> str:
         """The game's word for a job enum, falling back to the enum itself."""

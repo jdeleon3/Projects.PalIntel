@@ -136,6 +136,61 @@ def test_how_good_is_a_pal_is_not_a_base_rating(router):
     assert name(call(router, "how good is Anubis")) != "rate_base_site"
 
 
+# ------------------------------------------------------------------ stated coordinates
+
+@pytest.mark.parametrize("text,want", [
+    ("rate the base location at 185, -475", (185.0, -475.0)),
+    ("how good is (321, 500) for a base", (321.0, 500.0)),
+    ("how good is [229 -487]", (229.0, -487.0)),
+    ("rate this spot 185 -475", (185.0, -475.0)),
+    ("how good is -53, -960 for a base", (-53.0, -960.0)),
+    ("rate coords 292 243", (292.0, 243.0)),
+])
+def test_a_stated_coordinate_is_read(text, want):
+    """Bracketed, announced, or containing a negative. Three forms, because a bare pair
+    of positive numbers is not distinctive enough to act on."""
+    from palintel.routing import coordinates
+
+    assert coordinates(text) == want
+
+
+@pytest.mark.parametrize("text", [
+    "rate this base at level 60",
+    "how good is this base with 3 pals and 20 stone",
+    "rate this base at level 20, 30 stone",
+    "how good is my base, 4 of 10",
+    "what should I research at level 30",
+    "where should I build my base for coal",
+])
+def test_numbers_that_are_not_a_position_are_not_read_as_one(text):
+    """**The asymmetry that sets the strictness.** Missing a coordinate costs a
+    restatement; reading a level and a Pal count as a position produces a confident card
+    about somewhere nobody mentioned.
+
+    "rate this base at level 20, 30 stone" is the one that broke the first version, which
+    accepted any comma anywhere in the sentence and read (20, 30).
+    """
+    from palintel.routing import coordinates
+
+    assert coordinates(text) is None
+
+
+def test_a_coordinate_is_enough_of_a_subject_on_its_own(router):
+    """"How good is (185, -475)" names no base and no spot. Demanding the noun as well
+    would decline the most precise way there is to point at a place - and it is exactly
+    what a follow-up to a `suggest_base_sites` card looks like, since that card answers
+    in coordinates."""
+    assert name(call(router, "how good is (185, -475)")) == "rate_base_site"
+
+
+def test_a_stated_coordinate_beats_my_base(router):
+    """Both readings are present in "rate my base at 185, -475" and only one of them was
+    said out loud with a number attached."""
+    c = call(router, "how good is my base at 185, -475")
+    assert name(c) == "rate_base_site"
+    assert not c.args.get("own_base")
+
+
 # ------------------------------------------------- the general question, about no place
 
 @pytest.mark.parametrize("text", [
