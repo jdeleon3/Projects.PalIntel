@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Protocol
+from typing import Callable, Protocol
 
 from .knowledge import Candidate, Lexicon
 from .tools import Decline, ToolCall
@@ -424,6 +424,123 @@ _RIDE_ONE_CUE = re.compile(
     r"\b(?:can|could)\s+(?:i|you|we)\s+rid[e]\b|\bis\s+\w+\s+rid(?:e?able)\b"
     r"|\brideable\b|\bridable\b", re.I)
 
+# ------------------------------------------------------------------ Q6 progression
+#
+# "What should I research next". Structurally the safest branch in this file after
+# attribute search, and for the same reason: it abstains whenever the utterance names an
+# entity, so it cannot take a query any other class could answer.
+#
+# The vocabulary is disjoint from every other cue family here. No word below appears in
+# `_CUE_SETS`, `_DROP_CUES`, `_COUNTER_CUES` or `_INFO_CUES`, so the branches cannot fight
+# over an utterance and the order between them is a convenience rather than a tie-break.
+#
+# **"Unlock" is the risky one and it is kept anyway.** "How do I unlock Anubis" is not a
+# technology question, and it is caught by the no-entity guard rather than by the pattern
+# - which is the right place for it, because the pattern cannot know what follows the verb
+# and the candidate list can. What is deliberately NOT here is bare "build" or "make":
+# "what should I build next" is genuinely ambiguous between a base structure and a
+# crafting recipe, and it also reads as a base-siting question.
+_TECH_CUES = re.compile(
+    r"\b(?:research|researching|unlock|unlocks|unlocking)\b"
+    r"|\btech(?:nolog(?:y|ies))?\s*(?:tree|point|points)?\b"
+    r"|\bancient\s+(?:technology\s+)?points?\b", re.I)
+
+# **The topic is not the question.** Swept over the 271 A5 transcripts, the topic cue
+# alone claimed five prompts and stole none - but two of the five were *"can you explain
+# technology points?"* and *"what changes with technology points?"*, which are requests
+# for an explanation, and this class answers them with a shopping list. A wrong-class
+# answer is worse than a decline because it looks like an answer, which is the finding
+# the first play session paid for and `_INFO_CUES` already records.
+#
+# So a claim needs both halves: the topic, and a frame that asks for a RECOMMENDATION.
+# This is the same rule as "a question opener is not an intent", read the other way - the
+# opener has to name what is wanted, and here what is wanted is advice about what to do
+# next. The two explanatory prompts have no frame and go to the model, which can read
+# them; the three that survive are all answerable by the card.
+_TECH_ASK = re.compile(
+    r"\bshould i\b|\bwhat (?:can|could) i\b|\bwhat to\b|\bwhat's next\b"
+    r"|\bnext\b|\bworth\b|\bspend\b|\brecommend\w*\b|\bpriorit\w*\b", re.I)
+
+# Spoken goal words, mapped to the pak's own category. Deliberately short, and every entry
+# is a word a player would actually say - the model path carries the full twelve-value
+# enum, so nothing is lost by leaving `CaptureItemModifier` and `Consume` off a keyword
+# list nobody would trigger.
+_TECH_GOAL_WORDS = {
+    "weapon": "Weapon", "weapons": "Weapon", "gun": "Weapon", "guns": "Weapon",
+    "armor": "Armor", "armour": "Armor",
+    "ammo": "Ammo", "ammunition": "Ammo", "bullets": "Ammo",
+    "food": "Food", "cooking": "Food",
+    "glider": "Glider",
+    "accessory": "Accessory", "accessories": "Accessory", "ring": "Accessory",
+    "sphere": "SpecialWeapon", "spheres": "SpecialWeapon",
+    "saddle": "Essential", "saddles": "Essential",
+    # The player's word for BuildObject is never "build object". These three are, and
+    # "base" is the one they actually say.
+    "base": "BuildObject", "building": "BuildObject", "structure": "BuildObject",
+}
+_TECH_GOAL_ALT = "|".join(sorted(_TECH_GOAL_WORDS, key=len, reverse=True))
+_TECH_GOAL_CUE = re.compile(rf"\b({_TECH_GOAL_ALT})\b", re.I)
+
+# "What should I spend my ancient technology points on" names a POOL, and the first
+# version of this branch dropped that word and answered with ordinary technologies. Same
+# failure as "which dragons can I ride at level 60" answering without the element: a
+# filter the player stated, silently gone, on the fast path. The pak calls them boss
+# technologies and the UI calls them Ancient Technology Points; players say the latter.
+#
+# There is no cue for the ordinary pool, deliberately - "technology points" is how people
+# refer to the system as a whole, so reading it as a filter would narrow half the
+# questions this branch exists for.
+_ANCIENT_CUE = re.compile(r"\bancient\b", re.I)
+
+# ------------------------------------------------------------------ Q7 corpus lookup
+#
+# "How does sanity work". The broadest branch here, and the last one consulted, because
+# it is the only one whose subject is a MECHANIC rather than an entity or a description
+# of one.
+#
+# Two guards, and it needs both:
+#
+# * **No named entity**, the same structural argument attribute search makes. "Tell me
+#   about Shroomer" and "who is Victor" are pal_info's, and this branch must not take
+#   them just because they are also explanatory in shape.
+# * **It only claims what it can actually answer.** The branch calls the corpus and
+#   defers when nothing clears the relevance floor, rather than claiming the utterance
+#   and letting the dispatcher print "not in my sources". That distinction matters
+#   because the fast path preempts the model: a decline this branch produces is a
+#   question the model never got to try, and the corpus is the game's own text, so plenty
+#   of reasonable Palworld questions are honestly outside it. Consulting it costs a
+#   sub-millisecond scan over 3,106 chunks - the data model's own sizing note says exact
+#   search is free at this size - so "claim only what you can answer" is affordable here
+#   in a way it is not for any class behind a network call.
+_EXPLAIN_CUES = re.compile(
+    r"\bhow (?:does|do|is|are)\b"
+    r"|\bwhat (?:is|are|does)\b"
+    r"|\bexplain\b|\bwhat.{0,12}\bmean\b"
+    r"|\bhow (?:do|can) (?:i|you)\b", re.I)
+
+
+# ------------------------------------------------------------------ Q4 base siting
+#
+# "Where should I put a base for coal". Unlike the two branches above, this one NAMES
+# entities - a base is built for something - so the no-entity guard is unavailable and
+# the cue has to carry the whole distinction from an ordinary location question.
+#
+# **The distinction is a placement verb.** "Where's the coal near my base" and "where
+# should I build my base for coal" both say `base` and both say `coal`, and only the
+# second is asking where to put one. So the word `base` on its own claims nothing: it has
+# to be the object of building, putting, placing, setting up, settling or starting. That
+# also means no negative pattern is needed for "near my base" / "at my base" - those have
+# no placement verb and never reach this branch.
+_BASE_CUE = re.compile(
+    r"\b(?:build|building|put|putting|place|placing|set\s*up|settle|start)\b"
+    r"[^.?]{0,25}\bbase\b"
+    r"|\bbase\s+(?:site|sites|spot|spots|location)\b"
+    r"|\b(?:best|good)\s+(?:place|spot|location)\s+for\s+a\s+base\b", re.I)
+
+# How many resources one base question may name. Three is the point at which a card stops
+# being a recommendation and becomes a list of everything within reach of everything.
+MAX_BASE_RESOURCES = 3
+
 _LOCATION_CUES = re.compile(rf"\b({_CUE_SETS[DEFAULT_CUES]})\b", re.I)
 _LEVEL = re.compile(r"\b(?:level|lvl)\s*(\d{1,2})\b", re.I)
 _LEVEL_WORDS = {
@@ -559,7 +676,9 @@ class StubRouter:
                  pal_spawns: bool = True, pal_floor: float = PAL_CONFIDENT,
                  pal_drops: bool = True, counters: bool = False,
                  counterable: set[str] | None = None,
-                 attributes: bool = True, info: bool = True):
+                 attributes: bool = True, info: bool = True,
+                 progression: bool = False, base_sites: bool = False,
+                 corpus: "Callable[[str], bool] | None" = None):
         """`resource_floor` is how well a resource must match to be answered on.
 
         Separate from the Pal guard, which stays at MIN_CONFIDENT, because one constant
@@ -625,6 +744,23 @@ class StubRouter:
         # needs no dataset handed in, and its guard is the ordinary confident-Pal-plus-cue
         # gate the drop branch already uses.
         self._info = info
+        # Q6. OFF by default and passed in by `build_router`, exactly like `counters` and
+        # for the reason `pipeline._counterable` records at length: a branch that names a
+        # tool whose dataset is absent produces a decline the player cannot act on. It is
+        # gated on tech.json existing.
+        #
+        # And it is passed in rather than defaulted true because the omission that left
+        # the counter fast path dark in production for a day was precisely a
+        # `build_router` call that did not pass the flag. Making it explicit does not
+        # prevent that; the test that asserts `build_router` turns it on does.
+        self._progression = progression
+        # Q4, gated the same way and for the same reason: base_camp.json carries the
+        # radius, and a radius is the entire question this class asks.
+        self._base_sites = base_sites
+        # Q7. A CALLABLE rather than a flag, and that is the design: it answers "can the
+        # corpus ground this?", so the branch claims only what it can actually answer
+        # instead of preempting the model with a decline. None turns the branch off.
+        self._corpus = corpus
         # Width, floor and registered classes are all in the name so they reach
         # `/palintel status` and every routing log line. A fast path that quietly widened,
         # or a backstop quietly answering on weaker matches, would be indistinguishable
@@ -633,7 +769,10 @@ class StubRouter:
                      + (f"@{resource_floor:g}" if resource_floor != MIN_CONFIDENT else "")
                      + (f"+pals@{pal_floor:g}" if pal_spawns else "")
                      + ("+attrs" if attributes else "")
-                     + ("+info" if info else ""))
+                     + ("+info" if info else "")
+                     + ("+tech" if progression else "")
+                     + ("+bases" if base_sites else "")
+                     + ("+corpus" if corpus is not None else ""))
 
     def _subject(self, candidates: list[Candidate]) -> tuple[str, str, str] | None:
         """(tool, slot, canonical) for the subject this utterance names, if any.
@@ -857,6 +996,111 @@ class StubRouter:
         return ToolCall(name="find_pals_by_attribute", args=args,
                         rationale=f"attribute cue, no named entity: {args}")
 
+    def _base_call(self, utterance: str,
+                   candidates: list[Candidate]) -> "ToolCall | None":
+        """`suggest_base_sites` when the utterance asks where to PUT a base.
+
+        The only branch here that both names entities and preempts the location gate, so
+        it is the only one whose safety rests entirely on its cue rather than on a
+        structural guard. `_BASE_CUE` requires a placement verb for exactly that reason -
+        see the comment on it.
+
+        Several resources are allowed and that is the point of the class: "a base for ore
+        and coal" is a question about one circle reaching two things, which no other tool
+        here can express. Every named resource must clear the resource floor; one that
+        does not means the sentence named something this router could not place, and
+        answering about the rest would silently drop a filter the player stated - the
+        failure the mount work found and the drop branch's second-entity guard already
+        treats.
+        """
+        if not (self._base_sites and candidates):
+            return None
+        if not _BASE_CUE.search(utterance):
+            return None
+        # **`_locatable`, not `_resources`.** The two differ by exactly the case this
+        # guard is for: `_resources` is everything the player can NAME and includes crude
+        # oil, which has no placed nodes at all. Checking the wrong one let "a base for
+        # crude oil" through with a resource the siting maths has nothing to measure.
+        locatable = set(self._locatable)
+        wanted, weak = [], False
+        for c in candidates:
+            if c.kind != "resource" or c.score < self._floor:
+                continue
+            if c.canonical in locatable:
+                if c.canonical not in wanted:
+                    wanted.append(c.canonical)
+            else:
+                # Named, recognised, and not something with map nodes. The siting question
+                # cannot include it, and quietly answering about the others would drop a
+                # filter the player stated.
+                weak = True
+        if not wanted or weak or len(wanted) > MAX_BASE_RESOURCES:
+            return None
+        return ToolCall(name="suggest_base_sites", args={"resources": wanted},
+                        rationale=f"base placement cue + {len(wanted)} resource(s): "
+                                  f"{', '.join(wanted)}")
+
+    def _tech_call(self, utterance: str,
+                   candidates: list[Candidate]) -> "ToolCall | None":
+        """`suggest_next_unlock` when the utterance asks what to research.
+
+        **The guard is the absence of a named entity**, the same structural argument
+        attribute search makes: every other class here takes something the player said
+        out loud, so an utterance that names one is not this question. That is what
+        keeps "how do I unlock Anubis" and "where do I research coal" out of this branch
+        without the pattern having to know anything about what follows the verb.
+
+        A goal is optional and a level is optional, so unlike every other branch here
+        this one can legitimately return a call with **no arguments at all** - "what
+        should I research next" is a complete question. That is why the cue has to carry
+        the whole decision, and why the vocabulary is narrow enough that it does.
+
+        The level means the PLAYER's, which needs no amendment to STATUS's 2026-08-11
+        decision beyond the one the mount work already made: a `LevelCap` is a gate the
+        game states, so reading it is not the uncalibrated judgement that decision
+        refused.
+        """
+        if not self._progression:
+            return None
+        body = _ADDRESS.sub("", utterance)
+        # BOTH halves. The topic on its own claimed "can you explain technology points",
+        # which this class cannot answer and which reads as an answer anyway.
+        if not (_TECH_CUES.search(body) and _TECH_ASK.search(body)):
+            return None
+        if self._subject(candidates) is not None:
+            return None
+
+        args: dict[str, object] = {}
+        if (m := _TECH_GOAL_CUE.search(body)):
+            args["goal"] = _TECH_GOAL_WORDS[m.group(1).lower()]
+        if _ANCIENT_CUE.search(body):
+            args["currency"] = "ancient"
+        if (level := _spoken_level(body)) is not None:
+            args["player_level"] = level
+        return ToolCall(name="suggest_next_unlock", args=args,
+                        rationale=f"tech cue, no named entity: {args or 'no filters'}")
+
+    def _corpus_call(self, utterance: str,
+                     candidates: list[Candidate]) -> "ToolCall | None":
+        """`lookup_corpus` when the utterance asks how something WORKS and we can say.
+
+        See the comment on `_EXPLAIN_CUES` for both guards. The important one is the
+        second: this branch consults the corpus before claiming, so a question it cannot
+        ground still reaches the model.
+        """
+        if self._corpus is None:
+            return None
+        body = _ADDRESS.sub("", utterance)
+        if not _EXPLAIN_CUES.search(body):
+            return None
+        if self._subject(candidates) is not None:
+            return None
+        if not self._corpus(body):
+            return None
+        return ToolCall(name="lookup_corpus", args={"query": body},
+                        rationale="explanatory cue, no named entity, grounded in the "
+                                  "game's own text")
+
     def _names_an_entity(self, candidates: list[Candidate]) -> bool:
         return self._subject(candidates) is not None
 
@@ -960,9 +1204,33 @@ class StubRouter:
         if info is not None:
             return info
 
+        # Above attribute search because its cue vocabulary is disjoint from every other
+        # family here and strictly narrower than attribute search's - "what tech should I
+        # research for my mining pals" carries a job word AND the word "pal", so the
+        # attribute branch would claim it and answer a technology question with a roster.
+        # Nothing goes the other way: no attribute cue mentions research or unlocking.
+        tech = self._tech_call(utterance, candidates)
+        if tech is not None:
+            return tech
+
+        # Above the location gate because "where should I build my base for coal" carries
+        # `where` and a confident `coal`, so the gate would pass it straight to the
+        # resource branch and answer a siting question with a list of coal spots. The one
+        # branch here whose safety is the cue alone - see `_base_call`.
+        bases = self._base_call(utterance, candidates)
+        if bases is not None:
+            return bases
+
         attribute = self._attribute_call(utterance, candidates)
         if attribute is not None:
             return attribute
+
+        # Last of the pre-gate branches, and deliberately: it is the broadest, its subject
+        # is a mechanic rather than an entity, and every branch above it answers a
+        # narrower reading of the same explanatory phrasings.
+        grounded = self._corpus_call(utterance, candidates)
+        if grounded is not None:
+            return grounded
 
         if not self._cues.search(utterance):
             # Name what we *can* answer here too. The other two branches always did, and

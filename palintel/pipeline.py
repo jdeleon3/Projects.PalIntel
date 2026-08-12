@@ -20,6 +20,7 @@ from .tools import Decline, ToolCall
 if TYPE_CHECKING:  # config imports nothing from here; the runtime import is inside
     from .artwork import Artwork
     from .config import RouterConfig
+    from .progression import PlayerTech
 
 log = logging.getLogger("palintel.pipeline")
 
@@ -44,9 +45,18 @@ class PlayerState:
     # the confidently-wrong answer this project refuses.
     #
     # Absent by default because reading it costs a full Level.sav parse - seconds, not
-    # milliseconds - so it cannot happen per query. Populating it on a slow refresh is
-    # the caller's job.
+    # milliseconds - so it cannot happen per query. `SaveWatcher.poll_roster` fills it on
+    # a slow timer, which is what the bot passes in.
     owned_species: frozenset[str] | None = None
+    # Q6's half of the save: unlocked technologies, both point pools, and which towers
+    # have been beaten. Its own object rather than four more fields here, because they
+    # are read together, used together, and absent together - and because `player_level`
+    # sitting next to a technology's required level in one flat namespace is exactly the
+    # confusion the mount amendment had to spell its way out of.
+    #
+    # None means the save was never read. `progression.PlayerTech()` with everything
+    # absent means it was read and holds nothing, and the two produce different cards.
+    tech: "PlayerTech | None" = None
 
 
 # One answer may be several cards. A Paldeck slot holds a base Pal and its element
@@ -136,6 +146,36 @@ def _counterable(version: str) -> set[str]:
     return names | {l["display"].lower() for l in bosses.get("leaders", [])}
 
 
+def _has_dataset(version: str, filename: str) -> bool:
+    """Whether an optional dataset was built, for gating the branch that needs it.
+
+    A branch naming a tool whose data is missing is worse than one that is off: the
+    router claims the query, the dispatcher declines, and the model never sees a question
+    it could have answered.
+    """
+    present = (REPO / "data" / version / filename).exists()
+    if not present:
+        log.info("no %s - the branch that needs it stays off", filename)
+    return present
+
+
+def _corpus_probe(version: str):
+    """A `query -> bool` the fast path can ask before claiming a Q7 question, or None.
+
+    Returning a callable rather than a flag is what lets the branch claim only what it
+    can ground. The corpus is loaded once here and cached, so the probe is a scan over
+    3,106 chunks and no I/O.
+    """
+    from . import corpus
+
+    try:
+        loaded = corpus.load(version)
+    except corpus.CorpusError:
+        log.info("no corpus.json - the Tier 3 lookup branch stays off")
+        return None
+    return lambda query: loaded.search(query, limit=1).grounded
+
+
 def build_router(kb: KnowledgeBase, prefer: str = "auto",
                  router_config: "RouterConfig | None" = None) -> RouterBackend:
     """Select a router backend.
@@ -192,12 +232,24 @@ def build_router(kb: KnowledgeBase, prefer: str = "auto",
     # failing: every other class still answers, and `plan_counters` is the only one that
     # needs it.
     counterable = _counterable(kb.game_version)
+    # Same gate, same reason, and the same omission it is guarding against: a branch that
+    # names `suggest_next_unlock` with no tech.json produces a decline the player cannot
+    # act on. `tests/test_progression.py` asserts this reaches BOTH stubs, because the
+    # counter branch shipped dark for a day by being wired into one caller and not the
+    # other.
+    tech_available = _has_dataset(kb.game_version, "tech.json")
+    bases_available = kb.base_radius is not None
+    grounds = _corpus_probe(kb.game_version)
 
     fast = StubRouter(kb.lexicon, locatable, cues=cfg.cues,
-                      counters=bool(counterable), counterable=counterable)
+                      counters=bool(counterable), counterable=counterable,
+                      progression=tech_available, base_sites=bases_available,
+                      corpus=grounds)
     backstop = StubRouter(kb.lexicon, locatable, cues="wide",
                           resource_floor=BACKSTOP_CONFIDENT,
-                          counters=bool(counterable), counterable=counterable)
+                          counters=bool(counterable), counterable=counterable,
+                          progression=tech_available, base_sites=bases_available,
+                          corpus=grounds)
 
     def wrapped(primary):
         """Wrap a hosted router with the backstop, and the fast path if enabled.
@@ -524,6 +576,93 @@ class Pipeline:
             self._remember(who, call, {"boss": result.boss_id},
                            f"{len(result.candidates)} counters", enabled=remember)
             return Outcome([cards.counter_card(result)], call, candidates)
+
+        if call.name == "lookup_corpus":
+            from . import corpus
+
+            query = call.args.get("query") or utterance
+            try:
+                # The entities the ranker already resolved, so the boost uses the same
+                # vocabulary the lexicon produces rather than re-matching names here.
+                named = tuple(c.canonical for c in candidates[:3] if c.score >= 0.9)
+                result = corpus.lookup(query, entities=named)
+            except corpus.CorpusError as e:
+                log.info("lookup_corpus declined: %s", e)
+                return self._decline(
+                    Decline(reason="I don't have the knowledge corpus loaded"),
+                    candidates)
+            log.info("lookup_corpus(%r) -> %d passages, best %.2f",
+                     query, len(result.passages), result.best_score)
+            # Not remembered. A quoted passage is not an entity, so there is nothing for
+            # "what about the alpha" to resolve against.
+            return Outcome([cards.corpus_card(result)], call, candidates)
+
+        if call.name == "suggest_base_sites":
+            wanted = [r for r in (call.args.get("resources") or [])
+                      if r in {n.resource for n in self.kb.nodes}]
+            if not wanted:
+                log.warning("router called %s with no locatable resource: %s",
+                            call.name, call.args)
+                return self._decline(
+                    Decline(reason="I didn't catch what the base is for",
+                            known_options=sorted({n.resource for n in self.kb.nodes})),
+                    candidates)
+            if self.kb.base_radius is None:
+                # A radius IS the question this class asks. Guessing one would put a
+                # coordinate on a card backed by nothing.
+                return self._decline(
+                    Decline(reason="I don't know how big a base is - "
+                                   "base_camp.json isn't built"),
+                    candidates)
+
+            result = execution.suggest_base_sites(
+                self.kb, wanted, near=state.player_coords)
+            log.info("suggest_base_sites(%s) -> %d shown, %d of %d spots complete",
+                     wanted, len(result.sites), result.complete_sites,
+                     result.considered)
+            # Not remembered, and for the attribute-search reason: the answer is three
+            # coordinates, and ADR-0013's memory holds one referent per turn.
+            card = cards.base_site_card(result)
+            draw = None
+            if self.artwork is not None and result.sites:
+                # A place, so it gets a map crop like every other coordinate card. A site
+                # belongs to no single resource - it exists because several are in range -
+                # so the points are labelled with what the base is FOR.
+                label = "+".join(result.resources)
+                draw = self.artwork.illustrate_sites(
+                    card, [(s.map_x, s.map_y, label) for s in result.sites],
+                    state.player_coords)
+            return Outcome([card], call, candidates, illustrate=draw)
+
+        if call.name == "suggest_next_unlock":
+            from . import progression
+
+            goal = call.args.get("goal")
+            # Unlike every other class here, this one needs NO argument: "what should I
+            # research next" is complete on its own. So there is no missing-argument
+            # decline - the empty call is the common case, not a model failure.
+            try:
+                result = progression.plan(
+                    state.tech or progression.PlayerTech(),
+                    goal=goal,
+                    player_level=call.args.get("player_level"),
+                    currency=call.args.get("currency"),
+                )
+            except progression.ProgressionError as e:
+                # tech.json absent. Every other class still answers; this one says why.
+                log.info("suggest_next_unlock declined: %s", e)
+                return self._decline(
+                    Decline(reason="I don't have the technology table loaded"),
+                    candidates)
+
+            log.info("suggest_next_unlock(goal=%s, level=%s) -> %d of %d locked "
+                     "(%d researchable now)", goal, result.level, len(result.candidates),
+                     result.total_locked, len(result.researchable))
+            # Deliberately NOT remembered, for the same reason attribute search is not:
+            # this class produces five referents and ADR-0013's memory holds one, so
+            # "what about the alpha" after it would resolve against whichever sorted
+            # first. A follow-up naming one technology resolves on its own name.
+            return Outcome([cards.progression_card(result)], call, candidates)
 
         # A tool the router knows about but the dispatcher does not is a wiring bug.
         # Fail loudly here rather than rendering something plausible.

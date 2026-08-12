@@ -47,6 +47,9 @@ CLASS_TO_TOOL: dict[str, str] = {
     "compare_pals": "compare_pals",
     "boss_counter": "plan_counters",
     "pal_search": "find_pals_by_attribute",
+    "tech_next": "suggest_next_unlock",
+    "base_site": "suggest_base_sites",
+    "general_knowledge": "lookup_corpus",
 }
 
 # What the per-tool descriptions used to say, compressed into one line each. This is the
@@ -66,6 +69,18 @@ CLASS_HELP: dict[str, str] = {
     "boss_counter": "which Pal to use against a boss or tower",
     "pal_search": "which Pals match a DESCRIPTION rather than a name - an element, a "
                   "work job, a level. Use when no specific Pal is named",
+    "tech_next": "what TECHNOLOGY to research or unlock next - \"what should I "
+                 "research\", \"what can I unlock at level 40\", \"what should I spend "
+                 "my technology points on\". Not about Pals at all",
+    "base_site": "where to BUILD a base so named resources are inside it - \"where "
+                 "should I put a base for coal\". Fill `resources` with what the base is "
+                 "for. NOT for \"where's the coal near my base\", which is "
+                 "resource_location",
+    "general_knowledge": "how a game MECHANIC works - \"how does sanity work\", \"what "
+                         "is item rot\", \"explain pal effigies\". Answered by quoting "
+                         "the game's own help text, so it needs no slots at all. Choose "
+                         "a narrower class whenever the question names a Pal, a resource "
+                         "or an item",
 }
 
 # What the dispatcher can actually answer. `boss_counter` joined on 2026-08-11: the
@@ -73,7 +88,8 @@ CLASS_HELP: dict[str, str] = {
 # offering a class the caller cannot dispatch - which is the mistake this function's
 # docstring warns about. `pal_search` joins the same way and on the same day.
 PRODUCTION_CLASSES = ("resource_location", "pal_location", "pal_drops",
-                      "item_source", "boss_counter", "pal_search", "pal_info")
+                      "item_source", "boss_counter", "pal_search", "pal_info",
+                      "tech_next", "base_site", "general_knowledge")
 
 # The pak's element enum. Nine values, so the cost of carrying it is nothing beside the
 # 313-name Pal enum this module exists to stop duplicating. Written out rather than read
@@ -85,6 +101,15 @@ ELEMENTS = ("Dark", "Dragon", "Earth", "Electricity", "Fire", "Ice", "Leaf", "No
 WORK_JOBS = ("Collection", "Cool", "Deforest", "EmitFlame", "GenerateElectricity",
              "Handcraft", "Mining", "MonsterFarm", "OilExtraction", "ProductMedicine",
              "Seeding", "Transport", "Watering")
+# The technology categories, which are the pak's own `TypeA` for whatever a technology
+# grants plus `BuildObject` for the 217 that place a structure. Written out for the same
+# reason ELEMENTS is: a schema is a contract and must not change shape because a data file
+# was regenerated. `progression.categories()` reads the live set and the two are asserted
+# equal in the tests, so a patch that adds one fails loudly instead of silently offering
+# the model a goal the data no longer serves.
+TECH_CATEGORIES = ("Accessory", "Ammo", "Armor", "BuildObject", "CaptureItemModifier",
+                   "Consume", "Essential", "Food", "Glider", "Material",
+                   "SpecialWeapon", "Weapon")
 
 
 def unified_schema(resources: list[str], pals: list[str],
@@ -125,7 +150,9 @@ def unified_schema(resources: list[str], pals: list[str],
                     "type": "array",
                     "items": {"type": "string", "enum": resources},
                     "description": (
-                        "The resource the question names. Empty when it names none."
+                        "The resource the question names. Empty when it names none. "
+                        "For base_site this is what the base is FOR, and it may hold "
+                        "several - \"a base for ore and coal\" is two."
                     ),
                 },
                 "items_named": {
@@ -217,11 +244,31 @@ def unified_schema(resources: list[str], pals: list[str],
                         "player does NOT have yet. False otherwise."
                     ),
                 },
+                "tech_ancient_only": {
+                    "type": "boolean",
+                    "description": (
+                        "tech_next only: true when the question is specifically about "
+                        "ANCIENT technology points (the pool from tower bosses) - "
+                        "\"what should I spend my ancient points on\". False for an "
+                        "ordinary \"what should I research\", which considers both pools."
+                    ),
+                },
+                "tech_goal": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": list(TECH_CATEGORIES)},
+                    "description": (
+                        "tech_next only: what KIND of technology the player asked for. "
+                        "BuildObject is anything you place in a base - a furnace, a "
+                        "breeding farm, a bed. Essential covers Pal gear and saddles. "
+                        "SpecialWeapon is Pal Spheres. Empty when the question just asks "
+                        "what to research next, which is the common case."
+                    ),
+                },
             },
             "required": ["query_class", "pals", "resources", "items_named", "target",
                          "max_player_level", "pal_elements", "pal_work", "pal_level",
                          "mount_query", "mount_medium", "mount_unlock_level",
-                         "mount_unowned"],
+                         "mount_unowned", "tech_goal", "tech_ancient_only"],
             "additionalProperties": False,
         },
     }
@@ -252,6 +299,16 @@ _ARGS: dict[str, tuple[str, ...]] = {
     # fills them by name below rather than by zipping the shared entity lists. The whole
     # point of the class is that it names no entity.
     "find_pals_by_attribute": (),
+    # Same, and more so: this one names no entity AND needs no argument at all. "What
+    # should I research next" is a complete question, so an empty call is correct rather
+    # than a model failing to fill a slot.
+    "suggest_next_unlock": (),
+    # Its resources come as a LIST, not a first-slot scalar - the whole class is about one
+    # circle reaching several - so the zip below would truncate it. Filled by name.
+    "suggest_base_sites": (),
+    # No slots at all. The question IS the query, and the dispatcher uses the utterance -
+    # so there is nothing for a model to fill in and nothing for it to get wrong.
+    "lookup_corpus": (),
 }
 
 
@@ -325,6 +382,25 @@ def unpack(name: str, args: dict[str, Any]) -> tuple[str, dict[str, Any]]:
             # mount question with Pals that happen to spawn at 60.
             if "level" in out and unlock is None:
                 out["player_level"] = out.pop("level")
+    if tool == "suggest_base_sites":
+        out["resources"] = list(args.get("resources") or [])
+
+    if tool == "suggest_next_unlock":
+        # One goal, not several, for the same reason pal_search takes one element: two
+        # categories would be an intersection nobody asked for, and the array exists only
+        # because strict tool use has no clean optional enum.
+        if args.get("tech_goal"):
+            out["goal"] = args["tech_goal"][0]
+        if args.get("tech_ancient_only"):
+            out["currency"] = "ancient"
+        # `max_player_level` is reused rather than given a mount-style twin, and here that
+        # is right rather than lazy: its existing meaning is already the PLAYER's level,
+        # which is exactly what a `LevelCap` gates on. The mount case needed its own slot
+        # because the competing reading was the PAL's level; no such reading exists for a
+        # technology.
+        if args.get("max_player_level") is not None:
+            out["player_level"] = args["max_player_level"]
+
     if tool == "find_resource_nodes" and args.get("max_player_level") is not None:
         out["max_player_level"] = args["max_player_level"]
     if tool == "evaluate_counter" and args.get("target") is not None:
