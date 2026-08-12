@@ -548,16 +548,34 @@ python tools/ingest/build_work.py --version 1.0.2
 # Also optional, and also needs the `tables` extract for DT_ItemDataTable.
 python tools/ingest/build_mounts.py --version 1.0.2
 
+# Technology tree, for Q6. Needs tech_recipe_unlock.json and the `tables` extract for
+# the name resolution; optional, and its absence turns the progression class off.
+python tools/ingest/build_tech.py --version 1.0.2
+
+# How big a base is, for Q4. One number - BaseCampAreaRange - out of BP_PalGameSetting,
+# converted through data/coord_transform.json. Its absence turns base siting off, because
+# a radius is the entire question that class asks.
+dotnet run --project tools/extract/PakExtract -- settings
+python tools/ingest/build_base_camp.py --version 1.0.2
+
 # ORDER MATTERS for these two: build_bosses.py reads lexicon.json to resolve a boss row
 # to a Pal name, and both read the tower leaders out of data/raw via _leaders.py.
 python tools/ingest/build_lexicon.py --version 1.0.2
 python tools/ingest/build_bosses.py  --version 1.0.2
 
-palintel-ingest   --version 1.0.2 --source-config sources.yaml
-palintel-corpus   --version 1.0.2 --embed          # chunk + embed prose
-palintel-validate --version 1.0.2 --compare-to 1.0.1
-palintel-publish  --version 1.0.2                  # writes data/, updates `current`
+# The Tier 3 corpus, LAST: it reads lexicon.json for the entity tags and tech.json for
+# technology titles, so it must follow both. The game's own prose - help guide, Paldeck,
+# journal notes, item and structure descriptions - and nothing from a community source.
+python tools/ingest/build_corpus.py --version 1.0.2
 ```
+
+Four aspirational commands used to close this block — `palintel-ingest`,
+`palintel-corpus --embed`, `palintel-validate` and `palintel-publish`. None was ever
+written, and `build_corpus.py` above now does what the second described **without the
+`--embed`**: the corpus is chunked, entity-tagged and retrieved lexically, and the
+embedding half is a decision recorded in the roadmap rather than a step in this list. The
+other three are still unwritten; each ingest validates its own output and writes straight
+to `data/<version>/`.
 
 Ingestion tooling lives in the repo but is **not** part of the runtime process. The bot
 loads published data and has no scraping or embedding-of-corpus capability at runtime.
