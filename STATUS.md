@@ -33,7 +33,7 @@ mapping and attribute search are on `design-and-phase0` and not yet promoted.*
 | Item source | *"who drops Flame Organ"* | 151 items, enum-only (not in the lexicon) |
 | Boss counters | *"how do I beat Anubis"*, *"how do I beat Victor"* | **Tier 2 — computed advice, amber card.** Filtered to Pals you own when the roster has been read; says so plainly when it has not. A tower leader resolves to the **tower**, not the field alpha of the same species |
 | Pal search by attribute | *"I need a mining pal"*, *"an electric pal at level 60"* | **Tier 1.** Element × job × wild level, all optional. The only class that takes a description instead of a name |
-| Pal info | *"tell me about Shroomer"*, *"what level is Penking"* | **Tier 1.** A summary gathered from the datasets already loaded, pointing at the cards that answer each part properly |
+| Pal info | *"tell me about Shroomer"*, *"what level is Penking"*, *"can I ride Azurobe"* | **Tier 1.** A summary gathered from the datasets already loaded, pointing at the cards that answer each part properly. The rideable line is unconditional, including when the answer is no — silence must not carry it |
 | Mount search | *"the fastest mount I can get at level 60"*, *"which mounts don't I have"* | **Tier 1.** Land (= flying **and** ground) or water or either, gated on the **player's** level via the saddle tech. Declines honestly when the roster is unread |
 
 Voice in via the local microphone, text in via the channel, cards out to Discord.
@@ -346,6 +346,47 @@ markers on each card were walked too, outside the base, with deposits standing t
   show me things that fly". Worth doing only if play shows players asking for that
   specifically, and it needs the inherited-component tree or BP bytecode, which is the
   same wall the ranch spike hit.
+- **Refine a result set with a follow-up** — *"which pals can ranch?"* then *"which ones
+  are for level 60?"*. **Designed, deliberately NOT built 2026-08-11.** One observed
+  instance is not enough to justify the mechanism, and the decision is to wait until play
+  shows whether refinement follow-ups are a habit. Revisit if they become common or
+  annoying.
+
+  Kept because the analysis is the expensive part and it should not be redone:
+
+  *It is a different mechanism from ADR-0013, not an extension of it.* Entity inheritance
+  carries one **name** forward — *"what about the alpha"*. This carries a **filter set**
+  forward and merges a new filter into it. Attribute search stores nothing today, on
+  purpose: "conversation memory holds one referent per turn and this class produces five."
+
+  **The trap, and it is live.** `"ones"` scores **0.80 against stone**, over the 0.78
+  resource floor. `_FOLLOWUP` does not currently match *"which ones are…"*, so the query
+  declines. The moment that phrase becomes a follow-up trigger, `_inherit` sees
+  `_subject()` return stone, concludes the utterance names its own entity, and emits a
+  **stone locations card**. A deferral becomes a confidently wrong answer. Fix that
+  first, not after.
+
+  Three more that would need settling: a turn would hold an entity **or** a filter set
+  but never both, or *"what about the alpha"* after an attribute query has five referents
+  again; the merge inherits the prior class's meaning of "level" (the Pal's after a ranch
+  query, the player's after a mount one), so the card must state which it used; and
+  accumulated filters must be **printed on the card**, because two refinements deep
+  nobody can see what set they are looking at. `_filters_line` already exists for the
+  empty case.
+
+  If built: one refinement only, no chaining, expires with the turn.
+- ~~**A bare element plural as the subject**~~ — *"show me level 60 dragons"*. **Built and
+  reverted the same day, 2026-08-11.** The measurement was clean (fires on 2 of 281
+  transcripts, both genuine) but making it work needed an allowlist of exactly one
+  element, because `plants`, `grounds` and `flames` are ordinary English about other
+  things and *"which plants can I grow"* is not a request for a Grass roster. **A rule
+  with one hand-picked exception is a special case wearing a rule's clothes.**
+
+  Reverting it found a better bug: *"which dragons can I ride at level 60"* was being
+  **answered without the element filter** — every mount at level 60, under a card titled
+  "Mounts", with a stated filter silently dropped on the fast path. The general rule that
+  replaced the exception is *an element word we cannot attach means defer*, which covers
+  the case honestly and is the same principle as the drop branch's second-entity guard.
 - **Find dungeons near me** — spiked, viable, and **thinner than it looked**. The 18
   permanent "Sealed Realm" arenas are already marked on the in-game map; the 13 random
   sites hold a dungeon only ~67% of the time. Does not recover the lost cave coal.
