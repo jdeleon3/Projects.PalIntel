@@ -165,3 +165,26 @@ enabled = false
 # and they key on the message id - so a correction works minutes later and still lands
 # on the right query. Buttons do not survive a bot restart.
 feedback = false
+
+[cost]
+# What the router costs, logged per query to data/sessions/<session>/costs.jsonl and
+# totalled on `/palintel status`. ON by default, unlike capture: a cost row is a number
+# the process already computed and threw away, and it records nothing about you or
+# anyone in the room.
+#
+# Only the router costs money. STT is local and free (ADR-0015), map crops and icons are
+# local CPU, and every card is templated.
+enabled = true
+
+# What you actually loaded onto the API key, in US dollars. Spend is deducted from it and
+# `/palintel status` shows what is left.
+#
+# Leave it at 0 to log and total spend without tracking a balance. Setting it is worth
+# doing because running out is SILENT: a depleted balance arrives as HTTP 429, every 429
+# becomes a Decline, and the roadmap records one eval reading that as a 13-point router
+# regression before anyone thought to check the balance.
+balance_usd = 0.0
+
+# Start shouting about the balance below this. Eval runs are ~$1.40 each, so the default
+# is roughly one run's warning.
+warn_below_usd = 2.0

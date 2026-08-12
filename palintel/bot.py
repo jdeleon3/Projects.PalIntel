@@ -36,6 +36,7 @@ from .activity import ActivityLog
 from .capture import FEEDBACK_KINDS, SessionCapture, Utterance
 from .artwork import Artwork
 from .cards import TIER_DECLINE, Card, recent_card, status_card
+from . import spend as spend_mod
 from .config import Config, ConfigError
 from .knowledge import KnowledgeBase
 from .pipeline import Pipeline, PlayerState, build_router
@@ -183,7 +184,8 @@ async def _answer(channel, pipe: Pipeline, text: str, who: str,
                   activity: ActivityLog | None = None, watcher=None,
                   started: float | None = None, channel_kind: str = "text",
                   capture: SessionCapture | None = None, uid: str | None = None,
-                  feedback: bool = False) -> None:
+                  feedback: bool = False,
+                  spend: "spend_mod.SpendLog | None" = None) -> None:
     """Route `text` and post the cards. Shared by the text and voice paths.
 
     Routing is a network call and transcription is GPU work, so both run in the default
@@ -255,6 +257,19 @@ async def _answer(channel, pipe: Pipeline, text: str, who: str,
                     or args.get("item")),
             score=round(top.score, 3) if top else None,
             outcome="declined" if declined else "answered"))
+    if spend is not None:
+        # **After routing, before posting**, so a Discord failure cannot lose the charge -
+        # the money is spent the moment the router returns, whatever happens to the card.
+        #
+        # `last_usage` is None on the fast path, and that logs a $0 row rather than
+        # nothing: what fraction of play reaches the model at all is the same question as
+        # what it costs, and answering both from one file is why every query is recorded.
+        spend.record(spend_mod.charge_from(
+            getattr(pipe.router, "last_usage", None), tool=kind,
+            path=("fast" if not declined
+                  and "cue" in (outcome.call.rationale or "") else "model"),
+            who=who))
+
     log.info("%s -> %s in %.0fms (%d card%s)", who, kind, route_ms, len(outcome.cards),
              "" if len(outcome.cards) == 1 else "s")
     # One message, several embeds. A query that resolves to a base Pal and its variant
@@ -409,6 +424,9 @@ def run() -> None:
                 voice=_voice_status(cfg, listener["mic"]),
                 save=watcher.describe() if watcher else "not configured",
                 roster=watcher.describe_roster() if watcher else "not configured",
+                spend=(spend_mod.describe(spend, cfg.cost.balance_usd,
+                                          cfg.cost.warn_below_usd)
+                       if cfg.cost.enabled else ""),
                 router=pipe.router.name,
                 artwork=_artwork_status(cfg, pipe))))
             return
@@ -446,7 +464,8 @@ def run() -> None:
         # is not something this process can affect, and charging it to the pipeline would
         # make the number unactionable.
         await _answer(message.channel, pipe, text, message.author.display_name,
-                      activity, watcher, started=time.monotonic(), channel_kind="text")
+                      activity, watcher, started=time.monotonic(),
+                      channel_kind="text", spend=spend)
 
     async def watch_saves() -> None:
         """Re-read the save on a timer for as long as the bot runs.
@@ -472,6 +491,16 @@ def run() -> None:
 
     listener = {"mic": None}   # boxed so on_ready can see it across re-fires
 
+    # One session id for the whole run, shared by capture and spend so a session's
+    # clips, log and bill sit in one directory. Created here rather than inside the
+    # voice block because TYPED queries cost money too, and the first version had the
+    # spend log unreachable from the text handler for exactly that reason.
+    session_id = time.strftime("%Y%m%d-%H%M%S")
+    spend = spend_mod.SpendLog(session_id) if cfg.cost.enabled else None
+    if spend is not None:
+        log.info("spend: %s", spend_mod.describe(
+            spend, cfg.cost.balance_usd, cfg.cost.warn_below_usd))
+
     async def start_voice() -> None:
         """Listen on the local microphone and answer into the text channel.
 
@@ -493,9 +522,12 @@ def run() -> None:
         transcriber = Transcriber(pipe.kb.lexicon)
         log.info("voice: STT on %s", transcriber.device)
 
-        # One session per bot run. Off by default; see CaptureConfig for why capture and
-        # feedback are two flags rather than one.
-        capture = SessionCapture() if cfg.capture.enabled else None
+        # Capture is voice-only: it keeps the WAV the audio path already wrote, and
+        # the text path has no audio to keep. Spend is NOT - a typed query pays the
+        # same model round trip - so the spend log lives at bot scope beside the
+        # listener, and only the session id is shared.
+        capture = (SessionCapture(session=session_id) if cfg.capture.enabled
+                   else None)
         if capture is not None:
             log.info("capture: session %s -> %s", capture.session, capture.dir)
 
@@ -570,7 +602,7 @@ def run() -> None:
             # which Discord user is sitting there would attribute speech to the wrong
             # person in a shared channel, and that is worse than not joining the two.
             await _answer(text_channel, pipe, text, cfg.voice.speaker or "voice",
-                          activity, watcher,
+                          activity, watcher, spend=spend,
                           started=utt.ended_at, channel_kind="voice",
                           capture=capture, uid=uid,
                           feedback=cfg.capture.feedback)
