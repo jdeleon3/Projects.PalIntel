@@ -39,6 +39,7 @@ number was arrived at.
 | Mount search | *"the fastest mount I can get at level 60"*, *"which mounts don't I have"* | **Tier 1.** Land (= flying **and** ground) or water or either, gated on the **player's** level via the saddle tech. Declines honestly when the roster is unread |
 | What to research | *"what should I research next"*, *"what can I unlock at level 30"*, *"what should I spend my ancient points on"* | **Tier 2 — amber.** Set arithmetic over the save's unlocked technologies. Two point pools, never summed. Player level is **inferred as a floor** from what you already have, and the card says so |
 | Base siting | *"where should I put a base for ore and coal"* | **Tier 2 — amber.** Resource coverage inside a base's own 7.63-unit reach, **on flat ground**, with water distance and the 32 spots the game marks as base camp areas. Still cannot see no-build zones, and says so |
+| Base rating | *"how good is my base location"*, *"rate this spot"* | **Tier 2 — amber.** The mirror of siting: judges a place rather than searching for one. Four criteria, each pass/fail/**unknown**, and a **count** — never a weighted score. Percentiles against two reference sets: terrain and water against the game's own 32 marked areas, resources against every node cluster on the map |
 | How a mechanic works | *"how does sanity work"*, *"what is item rot"*, *"what is mutation"* | **Tier 3 — blue.** The game's own help text **and first-party patch notes**, quoted verbatim with a dated citation. No model in the path. Declines rather than improvising, and does so often |
 
 Voice in via the local microphone, text in via the channel, cards out to Discord.
@@ -191,6 +192,15 @@ markers on each card were walked too, outside the base, with deposits standing t
 - **The base radius is read but the circle has never been measured in game.** 3500 world
   units through the fitted transform is 7.63 map units, corroborated only by the cluster
   counts inside your existing bases.
+- **A base rating is relative, and n=32 is a small yardstick.** Terrain and water
+  percentiles are measured against the game's own marked areas, so each one moves in steps
+  of about three points and only 15 of the 32 have a measurable roughness at all. It is a
+  calibration taken from the game rather than invented, and it is not a large sample.
+- **Base camp positions are parsed out of an undecoded blob.** `BaseCampSaveData` has no
+  decoder in 0.24.0, so `saves.base_camps` scans for a unit quaternion followed by an
+  in-bounds translation. That is a structural check rather than a fixed offset — a wrong
+  window is rejected rather than returned — but it is the same class of parsing as
+  `_character_id`, and it found 3 of 3 on one save.
 - **Work-suitability levels are unverified against the UI.** `WorkSuitability_*` runs
   1–8 with one Pal at the top of each job. Lamball's 1/1/1 matches the game exactly, so
   the scale is probably the displayed one — but nobody has opened the Paldeck and counted

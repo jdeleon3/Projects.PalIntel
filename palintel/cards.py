@@ -1148,6 +1148,61 @@ def _resource_word(resource: str) -> str:
     return resource.replace("_", " ")
 
 
+# How a criterion reads. Unknown is its own mark and never a cross: "I could not check"
+# and "no" are different answers, and a rating that shows four crosses when two of them
+# were unmeasurable is overstating what it knows.
+_MARK = {True: "✅", False: "❌", None: "❔"}
+
+
+def base_rating_card(result: "BaseRating") -> Card:
+    """How good one place is. **Tier 2, amber, and deliberately not a score out of ten.**
+
+    "How good is this base location" asks for a judgement, and this project does not ship
+    uncalibrated judgements — the `min_player_level` rule has been one since Phase 1 and
+    STATUS still lists it as unpaid. So there is no 1-10, no letter grade, and no weighted
+    total. What there is:
+
+    * **Four criteria, each pass / fail / unknown** against a bar taken from the game.
+    * **A count**, "3 of 4", which claims that four things were checked and three held —
+      and claims nothing about their relative worth.
+    * **A percentile** beside each, so the reader sees the margin rather than a bare
+      pass. Flatness and water are ranked against the 32 areas the game marks itself;
+      resources against every node cluster on the map, because the marked areas hold a
+      median of three deposits and were plainly not chosen for them.
+
+    A weighted score would be a better-looking card and a worse claim. It would assert
+    that flat ground is worth some fraction of a base site, which nobody has measured.
+    """
+    title = f"{result.label} — {result.score} of {result.checkable}"
+    if result.checkable < len(result.criteria):
+        title += f" ({len(result.criteria) - result.checkable} unknown)"
+
+    lines = [f"**({result.map_x:.0f}, {result.map_y:.0f})**", ""]
+    for c in result.criteria:
+        bits = [f"{_MARK[c.met]} **{c.name}**", c.detail]
+        if c.percentile is not None:
+            # The margin, not just the verdict. "Flat, and flatter than 80% of the
+            # places the game marks" is a different answer from a bare tick.
+            bits.append(f"_better than {c.percentile}%_")
+        lines.append(SEP.join(bits))
+
+    if result.covered:
+        lines += ["", "In range: " + SEP.join(
+            f"{n} {_resource_word(r)}"
+            for r, n in sorted(result.covered.items(), key=lambda kv: (-kv[1], kv[0]))[:5])]
+
+    if result.wild_levels:
+        low, high = result.wild_levels
+        # A fact, not a danger label. The danger RULE is the uncalibrated one; the levels
+        # are extracted from the same spawn dataset every location card reads.
+        lines.append(f"Wild Pals nearby: **level {low}-{high}**")
+
+    footer = (f"within {result.radius:.1f} map units"
+              f"{SEP}a count of criteria met, not a score - nothing here weighs them"
+              f"{SEP}I still can't see no-build zones")
+    return Card(title=title, lines=lines, colour=TIER_ADVICE, footer=footer)
+
+
 def base_site_card(result: BaseSiteResult) -> Card:
     """Where to put a base. **Tier 2, amber, and the caveat is load-bearing.**
 

@@ -87,11 +87,21 @@ def _grid(points, radius: float) -> dict[tuple[int, int], list]:
     return cells
 
 
-def _within(cells, x: float, y: float, radius: float) -> list:
-    cx, cy = int(x // radius), int(y // radius)
+def _within(cells, x: float, y: float, radius: float, cell: float | None = None) -> list:
+    """Points within `radius` of (x, y), from a grid whose cells are `cell` across.
+
+    `cell` defaults to `radius`, which is the common case. **It has to be a separate
+    argument** because a search wider than one cell needs a wider ring of cells, and the
+    version that assumed they were the same silently returned nothing for every water
+    lookup - the marked areas' median water distance is 23 units and a ±1 ring at that
+    cell size reaches about 15.
+    """
+    cell = radius if cell is None else cell
+    cx, cy = int(x // cell), int(y // cell)
+    span = int(radius // cell) + 1
     out = []
-    for dx in (-1, 0, 1):
-        for dy in (-1, 0, 1):
+    for dx in range(-span, span + 1):
+        for dy in range(-span, span + 1):
             for p in cells.get((cx + dx, cy + dy), ()):
                 if math.dist((x, y), (p["map_x"], p["map_y"])) <= radius:
                     out.append(p)
@@ -129,6 +139,71 @@ def build(version: str) -> dict:
     flat_cm = round(marked[int(FLAT_PERCENTILE * (len(marked) - 1))]) if marked else None
 
     all_rough = sorted(roughness.values())
+
+    # **The reference distribution a rating is measured against.**
+    #
+    # "How good is this base location" is a judgement, and this project does not ship
+    # uncalibrated judgements - `min_player_level` has been one since Phase 1 and STATUS
+    # still lists it. The way out is to answer it *relatively*: how does this spot compare
+    # to the 32 the game's own designers marked? A percentile against a game-stated
+    # reference set is not an invented weighting.
+    #
+    # So each marked area's own resource coverage is profiled here, once, and stored. 32
+    # rows, computed against the same node dataset a rating will use, so the comparison
+    # is like for like rather than against a number from somewhere else.
+    nodes = json.loads(
+        (REPO / "data" / version / "resource_nodes.json").read_text(encoding="utf-8"))
+    node_cells = _grid(nodes["nodes"], radius)
+    water_cells = _grid(water, radius)
+
+    def coverage(x: float, y: float) -> tuple[int, int]:
+        by_res: dict[str, int] = {}
+        for n in _within(node_cells, x, y, radius):
+            by_res[n["resource"]] = by_res.get(n["resource"], 0) + n["node_count"]
+        return sum(by_res.values()), len(by_res)
+
+    def water_distance(x: float, y: float) -> float | None:
+        # Only the nine surrounding cells, so this is a NEAR-water distance and is None
+        # when the closest water is further than about one radius away. That is the only
+        # range the answer matters over, and scanning 2,034 points per site is not.
+        near = [math.dist((x, y), (w["map_x"], w["map_y"]))
+                for w in _within(water_cells, x, y, radius * 6, cell=radius)]
+        return round(min(near), 1) if near else None
+
+    profile = []
+    for a in areas:
+        deposits, kinds = coverage(a["map_x"], a["map_y"])
+        profile.append({
+            "map_x": a["map_x"], "map_y": a["map_y"],
+            "deposits": deposits,
+            "resource_kinds": kinds,
+            "roughness_cm": roughness.get(
+                f"{int(a['map_x'] // radius)},{int(a['map_y'] // radius)}"),
+            "water_distance": water_distance(a["map_x"], a["map_y"]),
+        })
+
+    # **A second reference, because the first one is the wrong yardstick for resources.**
+    #
+    # Measured: the 32 marked areas hold a MEDIAN OF THREE DEPOSITS inside a base radius,
+    # against a maximum of 77 - and their median roughness is 24cm. The designers are not
+    # marking resource-rich ground, they are marking flat ground near water. Scoring a
+    # player's 36-deposit site against that set would put it in the 97th percentile,
+    # which is true and useless.
+    #
+    # So flatness and water are scored against the marked areas, which is what they are
+    # good for, and resources are scored against every node cluster on the map - the
+    # actual population of places somebody might build. Deciles rather than 2,668 rows:
+    # the percentile is all a rating needs and the file stays small.
+    site_deposits, site_kinds = [], []
+    for n in nodes["nodes"]:
+        deposits, kinds = coverage(n["map_x"], n["map_y"])
+        site_deposits.append(deposits)
+        site_kinds.append(kinds)
+
+    def deciles(values: list[int]) -> list[int]:
+        values = sorted(values)
+        return [values[min(int(q / 10 * len(values)), len(values) - 1)]
+                for q in range(11)]
 
     def water_kind(cls: str) -> str:
         if "River" in cls:
@@ -178,8 +253,29 @@ def build(version: str) -> dict:
             "roughness_median_cm": all_rough[len(all_rough) // 2] if all_rough else None,
             "marked_area_roughness_median_cm":
                 round(statistics.median(marked)) if marked else None,
+            "marked_area_median_deposits":
+                round(statistics.median(p["deposits"] for p in profile)) if profile else None,
+            "marked_area_median_water_distance":
+                round(statistics.median(p["water_distance"] for p in profile
+                                        if p["water_distance"] is not None), 1),
         },
+        "rating_note": "'How good is this spot' is a judgement, and this project does "
+                       "not ship uncalibrated ones - so it is answered RELATIVELY. A "
+                       "percentile against a stated reference set is not an invented "
+                       "weighting. Note n=32 for the marked areas, which is small: a "
+                       "percentile there moves in steps of about three points.",
+        "yardstick_note": "TWO reference sets, because one is the wrong yardstick for "
+                          "resources. The 32 marked areas hold a MEDIAN OF THREE "
+                          "deposits inside a base radius and have a median roughness of "
+                          "24cm - the designers are marking flat ground near water, not "
+                          "resource-rich ground. Scoring a 36-deposit site against them "
+                          "would return the 97th percentile, which is true and useless. "
+                          "So terrain and water are scored against the marked areas, and "
+                          "resources against every node cluster on the map.",
         "flat_cm": flat_cm,
+        "site_deciles": {"deposits": deciles(site_deposits),
+                         "resource_kinds": deciles(site_kinds)},
+        "marked_area_profile": sorted(profile, key=lambda p: (p["map_x"], p["map_y"])),
         "popular_areas": [{"map_x": a["map_x"], "map_y": a["map_y"]}
                           for a in sorted(areas, key=lambda a: (a["map_x"], a["map_y"]))],
         "water": [{"map_x": w["map_x"], "map_y": w["map_y"], "kind": water_kind(w["cls"])}
@@ -216,6 +312,9 @@ def main() -> None:
           f"   (median {s['roughness_median_cm']} cm map-wide)")
     print(f"  flat bar           {s['flat_cm']} cm"
           f"   ({FLAT_PERCENTILE:.0%} percentile of the marked areas)")
+    print(f"  marked areas hold  {s['marked_area_median_deposits']} deposits at the "
+          f"median - they are flat ground near water, NOT resource-rich ground")
+    print(f"  site deciles       deposits {data['site_deciles']['deposits']}")
 
 
 if __name__ == "__main__":

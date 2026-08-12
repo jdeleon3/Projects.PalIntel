@@ -215,6 +215,7 @@ async def _answer(channel, pipe: Pipeline, text: str, who: str,
         player_coords=watcher.player_coords() if watcher else None,
         owned_species=watcher.roster if watcher else None,
         tech=watcher.player_tech() if watcher else None,
+        base_camps=watcher.base_camps if watcher else None,
     )
 
     loop = asyncio.get_running_loop()

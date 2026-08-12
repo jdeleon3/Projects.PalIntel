@@ -57,6 +57,10 @@ class PlayerState:
     # None means the save was never read. `progression.PlayerTech()` with everything
     # absent means it was read and holds nothing, and the two produce different cards.
     tech: "PlayerTech | None" = None
+    # Where the player's base camps are, in map units, from the same Level.sav read the
+    # roster comes from. None means not read; an empty list means read and they have
+    # none, and "rate my base" has to tell those apart.
+    base_camps: list[tuple[float, float]] | None = None
 
 
 # One answer may be several cards. A Paldeck slot holds a base Pal and its element
@@ -596,6 +600,55 @@ class Pipeline:
             # Not remembered. A quoted passage is not an entity, so there is nothing for
             # "what about the alpha" to resolve against.
             return Outcome([cards.corpus_card(result)], call, candidates)
+
+        if call.name == "rate_base_site":
+            if self.kb.base_features is None:
+                return self._decline(
+                    Decline(reason="I don't have the terrain and water data loaded"),
+                    candidates)
+
+            # Two readings of the same class, and they resolve to different places.
+            # "Rate this spot" means where the player is standing; "how good is my base"
+            # means where they built. Getting them the same way round matters - a player
+            # asking about their base while standing somewhere else would otherwise be
+            # rated on the wrong ground and never know.
+            want_base = bool(call.args.get("own_base"))
+            if want_base:
+                if state.base_camps is None:
+                    return self._decline(
+                        Decline(reason="I haven't read your save, so I don't know "
+                                       "where your bases are"), candidates)
+                if not state.base_camps:
+                    return self._decline(
+                        Decline(reason="your save doesn't have any base camps in it"),
+                        candidates)
+                shown = state.base_camps[:MAX_CARDS]
+                spots = [(x, y, "Your base" if len(state.base_camps) == 1
+                          else f"Your base {i}")
+                         for i, (x, y) in enumerate(shown, 1)]
+            elif state.player_coords is not None:
+                spots = [(*state.player_coords, "Where you're standing")]
+            else:
+                return self._decline(
+                    Decline(reason="I don't know where you are - I need your save to "
+                                   "rate the spot you're on"), candidates)
+
+            built = []
+            for x, y, label in spots:
+                rating = execution.rate_base_site(self.kb, x, y, label=label)
+                log.info("rate_base_site(%.0f, %.0f) -> %d/%d criteria",
+                         x, y, rating.score, rating.checkable)
+                built.append(cards.base_rating_card(rating))
+            # MAX_CARDS truncates silently otherwise, and a player with three bases would
+            # be shown two and told nothing - which reads as "you have two bases".
+            # Only when they ASKED about their bases: computed from `state.base_camps`
+            # unconditionally, this line appeared on the "where you're standing" card and
+            # claimed two more of something the card was not about.
+            extra = (len(state.base_camps or ()) - len(built)) if want_base else 0
+            if extra > 0:
+                built[-1].lines.append(
+                    f"_...and {extra} more base{'s' if extra != 1 else ''} not shown._")
+            return Outcome(built, call, candidates)
 
         if call.name == "suggest_base_sites":
             wanted = [r for r in (call.args.get("resources") or [])

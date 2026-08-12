@@ -131,6 +131,12 @@ def featured(kb) -> KnowledgeBase:
         radius=10.0,
         popular_areas=((2.0, 0.0),),
         water=((40.0, 0.0, "river"),),
+        # The two reference distributions a rating is measured against - see
+        # BaseFeatures. Small and made up, but present, so the card's percentile lines
+        # are exercised rather than silently skipped.
+        marked_roughness=(10, 50, 200),
+        marked_water=(10.0, 30.0, 60.0),
+        deposit_deciles=(0, 1, 2, 3, 5, 8, 12, 20, 30, 45, 80),
     )
     return kb
 
@@ -236,6 +242,92 @@ def test_a_single_resource_card_omits_the_coverage_tautology(kb):
     is a tautology dressed as a statistic."""
     assert "reach all of it" not in cards.base_site_card(
         suggest_base_sites(kb, ["coal"])).to_text()
+
+
+# ------------------------------------------------------- rating one place, not searching
+
+def test_a_rating_is_a_count_of_criteria_and_never_a_weighted_score(featured):
+    """**The design decision this class turns on.**
+
+    "How good is this spot" asks for a judgement, and this project does not ship
+    uncalibrated ones - `min_player_level` has been one since Phase 1. A count claims
+    that four things were checked and three held; a weighted score would claim flat
+    ground is worth some fraction of a base site, which nobody has measured.
+    """
+    from palintel.execution import rate_base_site
+
+    rating = rate_base_site(featured, 0, 0)
+    assert rating.score == sum(1 for c in rating.criteria if c.met)
+    assert rating.score <= rating.checkable <= len(rating.criteria)
+
+
+def test_an_unmeasurable_criterion_is_unknown_and_not_a_fail(kb):
+    """"I could not check" and "no" are different answers, and a rating showing four
+    crosses when two were unmeasurable overstates what it knows."""
+    from palintel.knowledge import BaseFeatures
+    from palintel.execution import rate_base_site
+
+    kb.base_features = BaseFeatures(roughness={}, flat_cm=336, radius=10.0,
+                                    popular_areas=(), water=())
+    rating = rate_base_site(kb, 0, 0)
+    flat = next(c for c in rating.criteria if c.name == "flat ground")
+    assert flat.met is None
+    assert rating.checkable < len(rating.criteria)
+
+
+def test_the_water_bar_comes_from_the_marked_areas_not_from_the_radius(kb):
+    """**The bar was one base radius and the card contradicted itself**: water 11 units
+    away was marked a fail while the same line reported it beat 78% of the marked areas.
+    Measured, those areas sit a median of 23 units from water - three times a radius - so
+    a within-the-radius bar is stricter than the standard the designers build to."""
+    from palintel.knowledge import BaseFeatures
+    from palintel.execution import rate_base_site
+
+    kb.base_features = BaseFeatures(
+        roughness={"0,0": 30}, flat_cm=336, radius=10.0, popular_areas=(),
+        water=((15.0, 0.0, "river"),), marked_water=(10.0, 20.0, 30.0))
+    water = next(c for c in rate_base_site(kb, 0, 0).criteria
+                 if c.name == "water nearby")
+    assert kb.base_features.water_bar == 20.0
+    assert water.met is True          # 15 units, inside the marked areas' median
+
+
+def test_an_empty_site_reports_no_percentile(kb):
+    """"better than 0%" beside "nothing in range" is the same fact twice, and the second
+    telling looks like a score."""
+    from palintel.knowledge import BaseFeatures
+    from palintel.execution import rate_base_site
+
+    kb.base_features = BaseFeatures(roughness={}, flat_cm=336, radius=10.0,
+                                    popular_areas=(), water=(),
+                                    deposit_deciles=(1, 2, 3))
+    res = next(c for c in rate_base_site(kb, 9999, 9999).criteria
+               if c.name == "resources in range")
+    assert res.met is False and res.percentile is None
+
+
+def test_percentiles_use_two_different_yardsticks_on_purpose():
+    """The 32 marked areas hold a median of three deposits, so they are flat ground near
+    water and were plainly not chosen for resources. Scoring resources against them would
+    put a thirty-deposit site near the top of a distribution it does not belong to."""
+    import json
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[1] / "data" / "1.0.2" / "base_features.json"
+    if not path.exists():
+        pytest.skip("base_features.json not built")
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    assert raw["stats"]["marked_area_median_deposits"] <= 5
+    assert raw["site_deciles"]["deposits"][-1] > 20      # the map has far richer spots
+
+
+def test_the_rating_card_shows_the_margin_not_just_the_verdict(featured):
+    from palintel.execution import rate_base_site
+
+    text = cards.base_rating_card(rate_base_site(featured, 0, 0, "Your base")).to_text()
+    assert "Your base" in text
+    assert "better than" in text
+    assert "not a score" in text
 
 
 # ------------------------------------------------------------------ the real dataset

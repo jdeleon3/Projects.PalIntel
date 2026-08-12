@@ -50,6 +50,7 @@ CLASS_TO_TOOL: dict[str, str] = {
     "tech_next": "suggest_next_unlock",
     "base_site": "suggest_base_sites",
     "general_knowledge": "lookup_corpus",
+    "base_rating": "rate_base_site",
 }
 
 # What the per-tool descriptions used to say, compressed into one line each. This is the
@@ -81,6 +82,10 @@ CLASS_HELP: dict[str, str] = {
                          "the game's own help text, so it needs no slots at all. Choose "
                          "a narrower class whenever the question names a Pal, a resource "
                          "or an item",
+    "base_rating": "how good a place ALREADY IS for a base - \"how good is my base "
+                   "location\", \"rate this spot\". Set own_base true when they say MY "
+                   "base, false when they mean where they are standing. The mirror of "
+                   "base_site: that one searches for places, this one judges one",
 }
 
 # What the dispatcher can actually answer. `boss_counter` joined on 2026-08-11: the
@@ -89,7 +94,8 @@ CLASS_HELP: dict[str, str] = {
 # docstring warns about. `pal_search` joins the same way and on the same day.
 PRODUCTION_CLASSES = ("resource_location", "pal_location", "pal_drops",
                       "item_source", "boss_counter", "pal_search", "pal_info",
-                      "tech_next", "base_site", "general_knowledge")
+                      "tech_next", "base_site", "general_knowledge",
+                      "base_rating")
 
 # The pak's element enum. Nine values, so the cost of carrying it is nothing beside the
 # 313-name Pal enum this module exists to stop duplicating. Written out rather than read
@@ -244,6 +250,15 @@ def unified_schema(resources: list[str], pals: list[str],
                         "player does NOT have yet. False otherwise."
                     ),
                 },
+                "own_base": {
+                    "type": "boolean",
+                    "description": (
+                        "base_rating only: true when the question is about the player's "
+                        "OWN base - \"how good is my base\". False when it is about "
+                        "where they are standing - \"rate this spot\". The coordinate "
+                        "itself comes from the save, never from you."
+                    ),
+                },
                 "tech_ancient_only": {
                     "type": "boolean",
                     "description": (
@@ -268,7 +283,8 @@ def unified_schema(resources: list[str], pals: list[str],
             "required": ["query_class", "pals", "resources", "items_named", "target",
                          "max_player_level", "pal_elements", "pal_work", "pal_level",
                          "mount_query", "mount_medium", "mount_unlock_level",
-                         "mount_unowned", "tech_goal", "tech_ancient_only"],
+                         "mount_unowned", "tech_goal", "tech_ancient_only",
+                         "own_base"],
             "additionalProperties": False,
         },
     }
@@ -309,6 +325,10 @@ _ARGS: dict[str, tuple[str, ...]] = {
     # No slots at all. The question IS the query, and the dispatcher uses the utterance -
     # so there is nothing for a model to fill in and nothing for it to get wrong.
     "lookup_corpus": (),
+    # One boolean, filled by name below. Which PLACE is not the model's to choose - the
+    # dispatcher resolves it from the save, because a coordinate a model produced would
+    # be the one thing this project never lets one produce.
+    "rate_base_site": (),
 }
 
 
@@ -382,6 +402,9 @@ def unpack(name: str, args: dict[str, Any]) -> tuple[str, dict[str, Any]]:
             # mount question with Pals that happen to spawn at 60.
             if "level" in out and unlock is None:
                 out["player_level"] = out.pop("level")
+    if tool == "rate_base_site" and args.get("own_base"):
+        out["own_base"] = True
+
     if tool == "suggest_base_sites":
         out["resources"] = list(args.get("resources") or [])
 

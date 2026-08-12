@@ -626,6 +626,140 @@ def _grid(nodes: list[ResourceNode], radius: float) -> dict[tuple[int, int], lis
     return cells
 
 
+@dataclass(frozen=True)
+class Criterion:
+    """One thing a base site is judged on, and whether this one has it."""
+    name: str
+    met: bool | None            # None means it could not be checked
+    detail: str
+    # Where this site falls against the reference set, 0-100, or None where there is no
+    # yardstick. Reported beside `met` because a bare pass/fail hides the margin.
+    percentile: int | None = None
+
+
+@dataclass(frozen=True)
+class BaseRating:
+    """How good one specific place is for a base. **Tier 2, and relative by design.**
+
+    "How good is this spot" is a judgement, and this project does not ship uncalibrated
+    ones — `min_player_level` has been one since Phase 1 and STATUS still lists it. So
+    there is no invented 1-10 score here. Instead:
+
+    * each criterion is **pass, fail or unknown** against a bar taken from the game, and
+    * `score` is a **count of criteria met**, not a weighted total.
+
+    A count claims that four things were checked and three held. A weighted score would
+    claim that flatness is worth 0.3 of a base site, which nobody has measured and this
+    project has been bitten by pretending otherwise before.
+    """
+    map_x: float
+    map_y: float
+    # What the player called it: "your base", "here", or a coordinate.
+    label: str
+    criteria: list[Criterion]
+    covered: dict[str, int]
+    radius: float
+    # Nearby wild Pal levels, as a fact rather than as a danger label. The danger RULE is
+    # the uncalibrated one; the levels themselves are extracted.
+    wild_levels: tuple[int, int] | None = None
+    nearest_marked: float | None = None
+
+    @property
+    def score(self) -> int:
+        return sum(1 for c in self.criteria if c.met)
+
+    @property
+    def checkable(self) -> int:
+        return sum(1 for c in self.criteria if c.met is not None)
+
+
+def rate_base_site(kb: KnowledgeBase, x: float, y: float,
+                   label: str = "here") -> BaseRating:
+    """Judge one place, rather than search for places.
+
+    The mirror of `suggest_base_sites` and a genuinely different question: that one ranks
+    candidates against each other, this one measures a coordinate the player already
+    cares about — where they are standing, or where their base already is.
+
+    Two reference sets, and using the wrong one would produce a confident, useless
+    answer. Terrain and water are scored against the **32 areas the game marks itself**,
+    which is what those markers are good for: measured, they hold a median of three
+    deposits and a median roughness of 24 cm, so the designers are marking flat ground
+    near water. Resources are scored against **every node cluster on the map**, because
+    scoring them against a set that was never chosen for resources would put a
+    thirty-deposit site near the top of a distribution it does not belong to.
+    """
+    f = kb.base_features
+    if f is None:
+        raise ValueError("no base features loaded - run build_base_features.py")
+
+    radius = kb.base_radius or f.radius
+    covered: dict[str, int] = {}
+    for n in kb.nodes:
+        if n.distance_to(x, y) <= radius:
+            covered[n.resource] = covered.get(n.resource, 0) + n.node_count
+    deposits = sum(covered.values())
+
+    roughness = f.roughness_at(x, y)
+    water = f.nearest_water(x, y)
+    marked = f.nearest_marked_area(x, y)
+
+    criteria = [
+        Criterion(
+            name="flat ground",
+            met=None if roughness is None else roughness <= f.flat_cm,
+            detail=("nothing placed near enough to measure" if roughness is None
+                    else f"±{roughness / 100:.1f}m, against a ±{f.flat_cm / 100:.1f}m bar"),
+            percentile=None if roughness is None else f.roughness_percentile(roughness),
+        ),
+        Criterion(
+            name="water nearby",
+            # The bar is the marked areas' MEDIAN distance to water, not one base radius.
+            # See BaseFeatures.water_bar: those areas sit a median of 23 units from water,
+            # so a within-the-radius bar is stricter than the standard the designers build
+            # to, and it made the card mark a fail while reporting the spot beat 78% of
+            # them.
+            met=(None if water is None or f.water_bar is None
+                 else water[0] <= f.water_bar),
+            detail=("no water found nearby" if water is None
+                    else f"{water[1]} {water[0]:.0f} units away"
+                         + (f", against a {f.water_bar:.0f}-unit bar"
+                            if f.water_bar is not None else "")),
+            percentile=None if water is None else f.water_percentile(water[0]),
+        ),
+        Criterion(
+            name="resources in range",
+            # The bar is the median node cluster, so "yes" means this place is at least
+            # as good as half the places on the map you could put a base.
+            met=deposits > 0 and (f.deposit_percentile(deposits) or 0) >= 50,
+            detail=(f"{deposits} deposit{'s' if deposits != 1 else ''} across "
+                    f"{len(covered)} resource{'s' if len(covered) != 1 else ''}"
+                    if deposits else "nothing in range"),
+            # No percentile on an empty site: "better than 0%" beside "nothing in range"
+            # is the same fact twice, and the second telling looks like a score.
+            percentile=f.deposit_percentile(deposits) if deposits else None,
+        ),
+        Criterion(
+            name="the game marks this area",
+            met=None if marked is None else marked <= radius,
+            detail=("no marked area loaded" if marked is None
+                    else f"nearest is {marked:.0f} unit{'s' if round(marked) != 1 else ''}"
+                         f" away"),
+        ),
+    ]
+
+    # Wild levels nearby, from the same spawn dataset the location cards read. A fact,
+    # deliberately not turned into a danger label - that rule is the uncalibrated one.
+    nearby = [a for a in kb.spawns
+              if a.kind == "normal" and a.distance_to(x, y) <= radius * 3]
+    levels = ((min(a.level_min for a in nearby), max(a.level_max for a in nearby))
+              if nearby else None)
+
+    return BaseRating(map_x=x, map_y=y, label=label, criteria=criteria,
+                      covered=covered, radius=radius, wild_levels=levels,
+                      nearest_marked=marked)
+
+
 def suggest_base_sites(
     kb: KnowledgeBase,
     resources: list[str],
