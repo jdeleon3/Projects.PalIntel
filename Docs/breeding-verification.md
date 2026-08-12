@@ -8,7 +8,16 @@ This sheet exists because **no community source can validate this model.** Every
 
 ---
 
-## Before anything: the version must match
+## Before anything: two preconditions, and both have to hold
+
+**1. The tester must have breeding unlocked.** Stated first because it is the one that
+actually bit. A second player was lined up to run this sheet on 2026-08-11 and did not
+have the Breeding Farm — the sheet said "any player on the right build can run this",
+which is true about the *game* and says nothing about how far along a given save is. Check
+this before checking anything else, because it is the cheaper question and it disqualifies
+faster.
+
+**2. The version must match.**
 
 These predictions were computed from a pak dated **2026-07-30**, Steam buildid **`24467282`**.
 
@@ -16,7 +25,9 @@ Breeding ranks are rebalanced between patches — that is the most likely reason
 
 Steam → right-click Palworld → Properties → Updates → the build id is listed there; or read `buildid` in `steamapps/appmanifest_1623730.acf`. Turn off automatic updates for the duration, or a patch mid-session silently splits the results into two datasets.
 
-Nothing else is needed: no save file, no bot, no Discord. Breeding mechanics are global, so any player on the right build can run this — the results are about the game, not about a save.
+Nothing else is needed: no save file, no bot, no Discord. Breeding mechanics are global, so the results are about the game rather than about a save — which is what makes this delegable at all.
+
+**But delegable is not free.** The two preconditions above are a narrower funnel than "anyone on the right build" reads as: the tester needs a playthrough with the Breeding Farm unlocked *and* an install that has not auto-updated past `24467282`. Handing this to someone else does not remove the dependency, it moves it to a different save. Confirm both with the tester before generating a sheet for them — a refreshed sheet is cheap and a wasted session is not.
 
 ---
 
