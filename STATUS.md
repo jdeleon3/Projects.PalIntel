@@ -38,8 +38,8 @@ number was arrived at.
 | Pal info | *"tell me about Shroomer"*, *"what level is Penking"*, *"can I ride Azurobe"* | **Tier 1.** A summary gathered from the datasets already loaded, pointing at the cards that answer each part properly. The rideable line is unconditional, including when the answer is no — silence must not carry it |
 | Mount search | *"the fastest mount I can get at level 60"*, *"which mounts don't I have"* | **Tier 1.** Land (= flying **and** ground) or water or either, gated on the **player's** level via the saddle tech. Declines honestly when the roster is unread |
 | What to research | *"what should I research next"*, *"what can I unlock at level 30"*, *"what should I spend my ancient points on"* | **Tier 2 — amber.** Set arithmetic over the save's unlocked technologies. Two point pools, never summed. Player level is **inferred as a floor** from what you already have, and the card says so |
-| Base siting | *"where should I put a base for ore and coal"* | **Tier 2 — amber.** What falls inside a base's own 7.63-map-unit reach. The only class that answers about several resources at once. Says on every card that it **cannot tell you if the ground is buildable** |
-| How a mechanic works | *"how does sanity work"*, *"what is item rot"*, *"explain technology points"* | **Tier 3 — blue.** The game's own help text, **quoted verbatim** with a citation. No model in the path. Declines rather than improvising, and does so often |
+| Base siting | *"where should I put a base for ore and coal"* | **Tier 2 — amber.** Resource coverage inside a base's own 7.63-unit reach, **on flat ground**, with water distance and the 32 spots the game marks as base camp areas. Still cannot see no-build zones, and says so |
+| How a mechanic works | *"how does sanity work"*, *"what is item rot"*, *"what is mutation"* | **Tier 3 — blue.** The game's own help text **and first-party patch notes**, quoted verbatim with a dated citation. No model in the path. Declines rather than improvising, and does so often |
 
 Voice in via the local microphone, text in via the channel, cards out to Discord.
 One consolidated `answer_query` tool routes all of them.
@@ -157,7 +157,7 @@ have to beat.
 | **Does `item_source` work?** | All 240 eval recordings predate the class. Ten queries were *asked* on 2026-08-11 and all routed to the model as designed — but **only Chillet's card was read back**, so routing is confirmed and correctness is not. |
 | **Does the breeding rank model hold?** | The ADR-0008 gate, and the whole of Phase 3B behind it. **Nothing is left to build**: `build_breeding.py` ingests the ranks, [`Docs/breeding-verification.md`](Docs/breeding-verification.md) is generated, `score_breeding.py` waits to consume it. It needs **eggs hatched in game**, on Steam buildid **`24467282`** with auto-updates off. **The "breeding isn't unlocked" precondition was checked against the save on 2026-08-12 and is wrong** — the Breeding Farm's four stated requirements are all satisfied (level 19 ≤ your floor of 57, ForestBoss beaten, no prerequisite, 2 of your 40 ancient points) and the Egg Incubator is already unlocked. So this is **not** blocked on another player's playthrough, as the failed 2026-08-11 delegation suggested; it is two clicks in the technology menu, then cake production (Ranch + Mill + wheat, eggs, milk, honey) to hatch anything. Note ADR-0008 requires **100% agreement** outside the exception table and refuses partial agreement as a tunable, so one refuted Block 1 row is a decision (the `TableBasedBreedingModel` fallback), not a data point. |
 | ~~**Is the owned-Pal roster reaching the cards?**~~ | **No, and it never had. Fixed 2026-08-12.** `owned_species` was built and tested in Phase 3 and never passed into the bot's `PlayerState`, so every counter card in the 2026-08-11 session said *"I haven't read your Pals"* — including the ones the player pressed feedback buttons on. Now polled on the watcher's own five-minute cadence and shown on `/palintel status`; the reference save reads **194 owned characters**. **Every Q5 reading from that session was taken with the roster filter off.** |
-| **Is a Q4 base site somewhere you can actually build?** | Unmeasurable from the game files, so it is a play-session item by construction. The radius is read (`BaseCampAreaRange`, 3500 world units) and corroborated against your three real base camps, which contain 3, 2 and 1 clusters at that radius — plausible, not proven. Nothing in the pak says whether ground is flat, underwater or inside a no-build zone, and the card says so every time. **Walk to one of the suggested coordinates and see.** |
+| **Is a Q4 base site somewhere you can actually build?** | **Half-closed 2026-08-12, and by the game rather than by play.** Flatness is now measured — the height spread of every placed actor inside the radius, with the bar calibrated as the 75th percentile of the 32 spots the game itself marks `BP_BaseCampPopularArea_C`. What remains unmeasurable is **no-build zones**, and that is now the whole caveat rather than half of it. **Still walk to a suggested coordinate**: the roughness proxy measures the ground where things were *placed*, not the ground everywhere. |
 | ~~The Phase 1 latency criterion~~ | **Measured 2026-08-10 and FAILED**: voice p95 4.2s / 2.5s, text 2.0s / 1.5s. Not a tuning problem — p95 sits in the model population whenever a shipped class has no fast path. See the roadmap. |
 
 The first four are in [`Docs/play-session-protocol.md`](Docs/play-session-protocol.md);
@@ -312,6 +312,21 @@ is the same list at a glance:
 
 ## Backlog
 
+- **"What changed in the latest patch"** — asked of the corpus on 2026-08-12 and it
+  **declined at 0.48**, correctly. Retrieval has no time axis: 156 patch chunks all match
+  "patch" equally and nothing in a lexical score knows which is newest. But
+  `patch_notes.json` carries a version and a date on every entry, so this is a **lookup,
+  not a search** — a deterministic "newest note, its sections" answer with no retrieval in
+  it at all. Not built because it is a new class and a new card on a day that already
+  added three, and because it is the kind of thing play should confirm people ask before
+  it earns one. *"What is mutation" already works*, which is the harder half.
+- **Raid safety, the fourth base-siting lever** — the community names flat terrain,
+  resource density, raid safety and water access. Three are now computed;
+  `BP_RaidBossAreaBaseCampPoint_C` exists at 16 placements and is **not obviously the same
+  concept**, and nothing extracted would let a card claim a site is safe from raids. Left
+  alone rather than approximated. The 1,295-class survey is where a better signal would be
+  found if one exists — `PalLimitVolumeBoxComponent` (360) and `BP_PalNoClimbVolume_C`
+  (311) are the two worth dumping first.
 - ~~**Resolve a boss by its human name**~~ — **shipped 2026-08-11**, and it corrected the
   correction. The previous entry said `DT_UniqueNPCText`'s `_LEADER` / `_LEADER_PAL` pairs
   link a human to a tower by an **inference** on the key suffix, strong at 8 pairs. That
@@ -636,6 +651,16 @@ Kept because each is a class of error worth recognising again, not a list of sca
 
 The pattern in all four: the data was *well-formed and wrong*, and the guard that would
 have caught it was either absent or logging at `debug`.
+
+**And a fifth, from the same day, which is the same lesson in a third file.** The cell
+scan filters to three actor prefixes, so `placement_class_counts.json` is a census of what
+we already collect — and it had been read as a census of what is *in the world*. A `survey`
+mode with no filter at all found **1,295 actor classes and 1.9 million actors**, including
+`BP_BaseCampPopularArea_C` (the game marking 32 base sites), `BP_SimpleWater_C` (1,257
+water bodies) and the fishing spots. None of it was hidden; nothing had asked. That is the
+third time — 81 of 532 data tables, one key in one boss table, and now three prefixes of
+1,295 classes. **"I searched for it" is only as strong as the term searched for**, and in
+this project the term is usually a filter somebody wrote for a different purpose.
 
 Two more from 2026-08-12, both caught by reading output rather than by a passing test:
 

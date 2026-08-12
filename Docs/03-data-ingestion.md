@@ -558,14 +558,26 @@ python tools/ingest/build_tech.py --version 1.0.2
 dotnet run --project tools/extract/PakExtract -- settings
 python tools/ingest/build_base_camp.py --version 1.0.2
 
+# The other three base-siting signals: the 32 spots the game marks itself, 2,034 water
+# points, and a terrain-roughness grid built from the ground height of every placed
+# actor. Needs the `cells` scan above (it writes world_features.json alongside
+# placements.json) and base_camp.json for the radius.
+python tools/ingest/build_base_features.py --version 1.0.2
+
+# First-party patch notes, from the Steam news API. The only ingest here that touches the
+# network: --refresh fetches and caches to data/raw/steam_news.json, every other run
+# reads the cache. Run it before build_corpus.py, which folds the notes in.
+python tools/ingest/build_patch_notes.py --refresh --version 1.0.2
+
 # ORDER MATTERS for these two: build_bosses.py reads lexicon.json to resolve a boss row
 # to a Pal name, and both read the tower leaders out of data/raw via _leaders.py.
 python tools/ingest/build_lexicon.py --version 1.0.2
 python tools/ingest/build_bosses.py  --version 1.0.2
 
-# The Tier 3 corpus, LAST: it reads lexicon.json for the entity tags and tech.json for
-# technology titles, so it must follow both. The game's own prose - help guide, Paldeck,
-# journal notes, item and structure descriptions - and nothing from a community source.
+# The Tier 3 corpus, LAST: it reads lexicon.json for the entity tags, tech.json for
+# technology titles and patch_notes.json for the patch chunks, so it must follow all
+# three. The game's own prose plus first-party patch notes - and nothing from a community
+# source (see Docs/corpus-sources.md, which is a register and not an ingest list).
 python tools/ingest/build_corpus.py --version 1.0.2
 ```
 

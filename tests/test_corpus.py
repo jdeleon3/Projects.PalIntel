@@ -150,6 +150,43 @@ def test_the_built_corpus_publishes_no_markup_and_no_untitled_chunk():
         assert c.title and "_" not in c.title, c.chunk_id
 
 
+def test_patch_notes_carry_their_own_provenance_and_a_date():
+    """**The first chunks here that did not come from the pak.**
+
+    Both sources are first-party - the developers' text tables and the developers' Steam
+    posts - but they arrive by different roads and one of them needed the network. A
+    citation that could not tell them apart would be hiding something a reader should see.
+
+    The date is not decoration either: a patch note is the one kind of chunk in this
+    corpus whose meaning depends on when it was true.
+    """
+    try:
+        loaded = corpus.load("1.0.2")
+    except CorpusError:
+        pytest.skip("corpus.json not built")
+    patches = [c for c in loaded.chunks if c.section == "Patch notes"]
+    if not patches:
+        pytest.skip("patch_notes.json not built")
+    assert all(c.provenance == "steam_news" for c in patches)
+    assert all(c.date for c in patches)
+    assert all(c.provenance == "pak" for c in loaded.chunks
+               if c.section != "Patch notes")
+    assert "(" in patches[0].citation      # the date reaches the citation
+
+
+def test_a_patch_note_answers_something_the_help_guide_never_covered():
+    """Mutation shipped in 1.0 and the in-game help guide has no entry for it. This is
+    the whole argument for the dataset in one query."""
+    try:
+        corpus.load("1.0.2")
+    except CorpusError:
+        pytest.skip("corpus.json not built")
+    result = corpus.lookup("what is mutation")
+    if not result.grounded:
+        pytest.skip("patch_notes.json not built")
+    assert result.passages[0].chunk.section == "Patch notes"
+
+
 def test_the_built_corpus_excludes_npc_dialogue():
     """In-character speech is a character's opinion delivered in their voice, and a
     retrieval index cannot tell that apart from a mechanics explanation. A card citing a

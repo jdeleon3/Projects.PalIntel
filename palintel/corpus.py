@@ -125,13 +125,22 @@ class CorpusError(RuntimeError):
 class Chunk:
     chunk_id: str
     title: str
-    section: str            # "Help guide" | "Paldeck" | "Item" | ...
+    section: str            # "Help guide" | "Paldeck" | "Patch notes" | "Item" | ...
     text: str
     entities: tuple[str, ...]
+    # "pak" or "steam_news". Both first-party; they arrive by different roads and one of
+    # them needed the network, and a reader of a citation should be able to tell.
+    provenance: str = "pak"
+    # Patch notes only: the version and date the note describes. A patch chunk without a
+    # date would be the one kind of chunk here whose meaning depends on when it was true.
+    date: str | None = None
+    url: str | None = None
 
     @property
     def citation(self) -> str:
         """What the card prints as the source. The game's own words for where it lives."""
+        if self.date:
+            return f"{self.section}: {self.title} ({self.date})"
         return f"{self.section}: {self.title}"
 
 
@@ -268,7 +277,9 @@ def load(version: str = "1.0.2") -> Corpus:
             f"missing dataset: {path} - run tools/ingest/build_corpus.py") from e
     return Corpus([Chunk(chunk_id=c["chunk_id"], title=c["title"],
                          section=c["section"], text=c["text"],
-                         entities=tuple(c.get("entities", ())))
+                         entities=tuple(c.get("entities", ())),
+                         provenance=c.get("provenance", "pak"),
+                         date=c.get("date"), url=c.get("url"))
                    for c in raw["chunks"]])
 
 
