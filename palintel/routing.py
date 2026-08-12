@@ -245,6 +245,184 @@ DEFAULT_CUES = "wide"
 # Deliberately narrow, and deliberately disjoint from the location cues - none of these
 # words appears in _CUE_SETS, so the two branches cannot fight over one utterance.
 _DROP_CUES = re.compile(r"\b(drop|drops|dropped|yield|yields|get from|give|gives)\b", re.I)
+# Q5. Deliberately narrow: every word here has to be about *fighting* a named thing,
+# because this branch decides a TIER, not just a tool. A location question answered as
+# a drop question is the wrong fact; a location question answered as a counter plan is
+# a fact request answered with advice, which ADR-0010 separates on purpose.
+#
+# **Only phrasings that put the named entity in the TARGET position.** "What's good
+# against Anubis" and "is Prixter any good against the first tower" share the cue
+# `good against` and mean opposite things - the first names the boss, the second names
+# the Pal you would bring, against a boss it never names. The stub has no way to tell
+# them apart, and measured over the A5 transcripts it claimed three of the second kind
+# and would have produced a plan for fighting Prixter.
+#
+# So `good against`, `strong against` and `use against` are OUT, despite reading like
+# the most natural counter phrasings, and the model keeps them. What is left are verbs
+# that take the boss as their object: you beat Anubis, you do not beat with Anubis.
+#
+# Inflections are part of the cue, not an afterthought. `\bbeat\b` does not match
+# "beats", and the branch missed "what beats Vanwyrm" - a plainer counter question than
+# several it did claim - until the batch measured it.
+_COUNTER_CUES = re.compile(
+    r"\b(?:counter|beat|defeat|kill|fight)(?:s|es|ing|en)?\b"
+    r"|\bweak(?:ness)? (?:to|against)\b"
+    # "What's VICTOR'S weakness" - the possessive puts the named entity in target
+    # position just as firmly as "beat X" does, which is the rule this set is built on.
+    # Asked in play on 2026-08-11 and paid a model round trip for it. Bare "weakness" is
+    # still out: "what's my weakness" names nothing to fight.
+    r"|\b[\w]+'s\s+weak(?:ness)?\b"
+    r"|\btakes? on\b", re.I)
+
+# --------------------------------------------------------------- attribute search
+#
+# The vocabulary for the one class that names no entity. Spoken words on the left, the
+# pak's own enum on the right - "Electric" and "Grass" are what the player says and
+# `Electricity` and `Leaf` are what the tables call them, the same split `cards.
+# ELEMENT_DISPLAY` already carries in the other direction.
+#
+# Deliberately short. Every synonym here is one more way for a Pal name to be read as a
+# type, and the branch is guarded on naming NO entity, so a false positive costs a real
+# question. "Frost" is absent for that reason and "rock" is absent because it is already
+# a resource alias for stone.
+_ELEMENT_WORDS = {
+    "fire": "Fire", "flame": "Fire",
+    "water": "Water", "aqua": "Water",
+    "ice": "Ice", "icy": "Ice",
+    "electric": "Electricity", "electricity": "Electricity", "lightning": "Electricity",
+    "grass": "Leaf", "leaf": "Leaf", "plant": "Leaf",
+    "ground": "Earth", "earth": "Earth",
+    "dark": "Dark",
+    "dragon": "Dragon",
+    "normal": "Normal", "neutral": "Normal",
+}
+
+# Job words, same shape. The keys are what a player says; the values are the
+# `WorkSuitability_*` enum. Bare "mine" is NOT here - "where can I go mining" is a
+# location question, and the `pal` requirement below is what separates them.
+_WORK_WORDS = {
+    "mining": "Mining", "miner": "Mining",
+    "watering": "Watering",
+    "planting": "Seeding", "seeding": "Seeding", "sowing": "Seeding",
+    "handiwork": "Handcraft", "handcraft": "Handcraft", "crafting": "Handcraft",
+    "lumbering": "Deforest", "logging": "Deforest", "woodcutting": "Deforest",
+    "transporting": "Transport", "hauling": "Transport", "carrying": "Transport",
+    "gathering": "Collection", "collecting": "Collection",
+    "kindling": "EmitFlame",
+    "cooling": "Cool",
+    "medicine": "ProductMedicine",
+    # "ranch" as a bare verb came from play: *"which pal's can ranch?"* deferred to the
+    # model on 2026-08-11 because only the -ing form was here.
+    "ranching": "MonsterFarm", "farming": "MonsterFarm", "ranch": "MonsterFarm",
+}
+
+_ELEMENT_ALT = "|".join(sorted(_ELEMENT_WORDS, key=len, reverse=True))
+_WORK_ALT = "|".join(sorted(_WORK_WORDS, key=len, reverse=True))
+
+# "an electric pal", "electric pals", "electric type". The type noun is REQUIRED: bare
+# "fire" appears in questions about kindling, weapons and cooking, and only "fire Pal"
+# is unambiguously about typing.
+_ELEMENT_CUE = re.compile(
+    rf"\b({_ELEMENT_ALT})[- ]?(?:type\s+)?pals?\b|\b({_ELEMENT_ALT})[- ]type\b", re.I)
+# "a mining pal", and the prepositional forms: "best at mining", "a pal for watering".
+# The bare preposition is safe here only because the branch already requires the word
+# "pal" outside the wake address and an utterance that names no entity - "go for mining"
+# on its own reaches neither.
+_WORK_CUE = re.compile(
+    rf"\b({_WORK_ALT})\s+pals?\b"
+    rf"|\b(?:at|for)\s+({_WORK_ALT})\b"
+    # "which pals CAN ranch" - the job trails the subject instead of qualifying it.
+    # Straight from play; the two patterns above both wanted it in front.
+    rf"|\bpals?\b[^.?]{{0,20}}?\bcan\s+({_WORK_ALT})\b", re.I)
+# Two ways to say "generating electricity", which no single word covers.
+_POWER_CUE = re.compile(
+    r"\b(?:generat\w*\s+(?:electricity|power)|power\s+generation"
+    r"|electricity\s+generation)\b", re.I)
+_OIL_CUE = re.compile(r"\b(?:oil\s+extraction|extract\w*\s+oil)\b", re.I)
+
+# The wake word is address, not content, and this branch tests for the word "pal". Left
+# in, "hey pal, where can I go mining" reads as a question about mining Pals - which is
+# a location question answered with a roster. `knowledge.WAKE_WORDS` solves the same
+# problem for entity ranking and cannot be reused here, because that strips the word
+# everywhere and this branch needs it to still count when the player says it themselves.
+_ADDRESS = re.compile(r"^\s*(?:hey|ok|okay)[,\s]+(?:pal|palintel)\b[,\s]*", re.I)
+_PAL_NOUN = re.compile(r"\bpals?\b", re.I)
+
+# NOT here: a bare element plural as the subject noun, "show me level 60 dragons". It was
+# built and reverted the same day. The measurement was fine - the plural fires on 2 of
+# 281 transcripts and both are genuine - but making it work needed an allowlist of ONE
+# element, because `plants`, `grounds` and `flames` are ordinary English about other
+# things and would have turned "which plants can I grow" into a Grass roster.
+#
+# A rule with a single hand-picked exception is not a rule, it is a special case wearing
+# one, and the next person has to learn both. "<element> pal" and "<element> type"
+# already cover every element uniformly; the bare plural defers to the model, which reads
+# the sentence rather than a pattern.
+
+# Mounts. A separate cue family from elements and jobs because it changes what "level"
+# MEANS - a saddle is gated on the player's level, everything else here on the Pal's.
+_MOUNT_CUE = re.compile(r"\b(?:mount|mounts|ride|rideable|ridable|mountable"
+                        r"|saddle|saddles)\b", re.I)
+# Which medium, when the player says. Absent means "either", which ranks a Pal by
+# whichever of its two speeds is higher rather than silently assuming land.
+#
+# "flying" and "ground" both map to `land`, and that is the game's distinction rather
+# than a shortcut: there is no flight-speed column, so a flyer's ridden speed IS the
+# ground speed field. See tools/ingest/build_mounts.py for the seven flight signals that
+# were measured and falsified before grouping them.
+_MEDIUM_CUES = (
+    ("water", re.compile(r"\b(?:swim\w*|water|aquatic|sea|ocean)\b", re.I)),
+    ("land", re.compile(r"\b(?:fly\w*|flight|air|aerial|ground|land|walk\w*|run\w*)\b",
+                        re.I)),
+)
+_MEDIUM_CUES_BY_NAME = dict(_MEDIUM_CUES)
+# "which mounts do I not have yet", "what am I missing". This INVERTS the answer, so a
+# false positive returns the exact complement of what was asked - but it is only ever
+# consulted inside the mount branch, which has already established there is no named
+# entity and a mount cue, so the pattern can afford to read naturally.
+#
+# The negation and the verb are allowed a couple of words apart: "do I not have" puts a
+# pronoun between them, which an adjacent-tokens pattern missed.
+_UNOWNED_CUE = re.compile(
+    r"\b(?:do\s?n[o']?t|have\s?n[o']?t|not|never)\s+(?:\w+\s+){0,2}"
+    r"(?:have|got|own|owned|caught|catch|get)\b"
+    r"|\bmissing\b"
+    r"|\byet\s+to\s+(?:catch|get|own)\b", re.I)
+
+# "Tell me about X". **The most-asked shape in the first play session** - nine of
+# forty-one utterances - and the product had no class for it, so seven were answered by
+# the wrong one: a location card for "tell me about Shroomer", a Tier 2 counter plan for
+# "who is Victor".
+#
+# Disjoint from every other cue family here on purpose. It must sit BEHIND counters and
+# drops in `route`, because "what's Victor's weakness" and "what do I get from X" are
+# more specific readings of the same polite openers, and this branch would otherwise
+# claim them and answer a narrower question with a summary.
+# **"What's X" is NOT on this list, and the first version of it was.** Measured
+# immediately: a generic `what(?:'s| is)` opener took Q2 from 43 to 42 with one wrong
+# card, took claims outside the scored classes from 12 to 28, and broke three counter
+# prompts the branch batch had been passing. It swallowed *"what's the nearest memorist"*
+# (a location question), four *"what's the breeding combo for X"*, *"what's a good
+# partner skill for X"*, and - worst - *"what's strong against Lyleen"*, which
+# `_COUNTER_CUES` deliberately leaves to the model because the named entity may be the
+# attacker rather than the target.
+#
+# The lesson is the one the cue sets keep teaching: a question OPENER is not an intent.
+# Every phrase below names what is being asked for, not merely that something is.
+_INFO_CUES = re.compile(
+    r"\btell me about\b|\bwhat can you tell me\b"
+    r"|\bwho(?:'s| is)\b"
+    r"|\binfo (?:on|about)\b|\bdescribe\b"
+    r"|\bwhat level is\b|\bhow good is\b",
+    re.I)
+
+# "Can I ride X" - a yes/no about ONE named Pal, which mount search cannot answer because
+# it returns lists. Requires a modal, so it cannot collide with "which dragons can I
+# ride", where the subject is a description rather than a name and the entity guard sends
+# it to mount search instead.
+_RIDE_ONE_CUE = re.compile(
+    r"\b(?:can|could)\s+(?:i|you|we)\s+rid[e]\b|\bis\s+\w+\s+rid(?:e?able)\b"
+    r"|\brideable\b|\bridable\b", re.I)
 
 _LOCATION_CUES = re.compile(rf"\b({_CUE_SETS[DEFAULT_CUES]})\b", re.I)
 _LEVEL = re.compile(r"\b(?:level|lvl)\s*(\d{1,2})\b", re.I)
@@ -327,6 +505,25 @@ spot spots place places area areas around here
 """.split())
 
 
+def _spoken_level(utterance: str) -> int | None:
+    """A level out of an utterance, digits or the round words STT prefers.
+
+    Shared by the resource branch, where it means the PLAYER's level, and the attribute
+    branch, where it means the PAL's. That the same regex serves both is not an oversight
+    - it is the inconsistency STATUS names when it records the decision: resource cards
+    print `lvl 28+`, a player requirement, and a spawn card prints `lvl 68-72`, the Pal.
+    The word already means two things in this product, and the 2026-08-11 decision only
+    settled which one the new class uses. Extracting the NUMBER is the same job either
+    way; what it means is the caller's to know.
+    """
+    if (m := _LEVEL.search(utterance)):
+        return int(m.group(1))
+    for word, value in _LEVEL_WORDS.items():
+        if re.search(rf"\blevel\s+{word}\b", utterance, re.I):
+            return value
+    return None
+
+
 def _residue(utterance: str, matched_text: str = "") -> set[str]:
     """Content words left after the opener, the function words and the named entity.
 
@@ -360,7 +557,9 @@ class StubRouter:
     def __init__(self, lexicon: Lexicon, locatable: set[str] | None = None,
                  cues: str = DEFAULT_CUES, resource_floor: float = MIN_CONFIDENT,
                  pal_spawns: bool = True, pal_floor: float = PAL_CONFIDENT,
-                 pal_drops: bool = True):
+                 pal_drops: bool = True, counters: bool = False,
+                 counterable: set[str] | None = None,
+                 attributes: bool = True, info: bool = True):
         """`resource_floor` is how well a resource must match to be answered on.
 
         Separate from the Pal guard, which stays at MIN_CONFIDENT, because one constant
@@ -411,13 +610,30 @@ class StubRouter:
         self._pal_spawns = pal_spawns
         self._pal_drops = pal_drops
         self._pal_floor = pal_floor
+        self._counters = counters
+        # Which Pals have a boss form at all. Passed in rather than derived, because
+        # `BOSS_<name>` meaning "the alpha of" is the derived rule CLAUDE.md flags, and
+        # the router is the wrong place to re-infer it - bosses.json already did, and
+        # recorded that it was an inference.
+        self._counterable = {c.lower() for c in (counterable or ())}
+        # Attribute search. On by default, unlike `counters`, because it needs no dataset
+        # the router has to be handed and because its guard is structural rather than
+        # tuned: the branch abstains whenever anything in the utterance resolves to a
+        # named entity, so it cannot claim a query another class could answer.
+        self._attributes = attributes
+        # "Tell me about X". On by default for the same reason attribute search is: it
+        # needs no dataset handed in, and its guard is the ordinary confident-Pal-plus-cue
+        # gate the drop branch already uses.
+        self._info = info
         # Width, floor and registered classes are all in the name so they reach
         # `/palintel status` and every routing log line. A fast path that quietly widened,
         # or a backstop quietly answering on weaker matches, would be indistinguishable
         # from the model getting worse.
         self.name = (f"stub:{cues}"
                      + (f"@{resource_floor:g}" if resource_floor != MIN_CONFIDENT else "")
-                     + (f"+pals@{pal_floor:g}" if pal_spawns else ""))
+                     + (f"+pals@{pal_floor:g}" if pal_spawns else "")
+                     + ("+attrs" if attributes else "")
+                     + ("+info" if info else ""))
 
     def _subject(self, candidates: list[Candidate]) -> tuple[str, str, str] | None:
         """(tool, slot, canonical) for the subject this utterance names, if any.
@@ -433,6 +649,62 @@ class StubRouter:
             if c.kind == "pal" and self._pal_spawns and c.score >= self._pal_floor:
                 return "find_pal_spawns", "pal", c.canonical
         return None
+
+    def _counter_call(self, utterance: str, candidates: list) -> "ToolCall | None":
+        """`plan_counters` when the utterance clearly asks how to FIGHT a named Pal.
+
+        "Where can I find Anubis" and "how do I beat Anubis" resolve to the same lexicon
+        entity, so the cue carries the whole distinction between a Tier 1 card and a
+        Tier 2 one. Choosing wrongly does not return the wrong fact - it answers a fact
+        request with advice, which is the worse of the two failures.
+
+        **When both cue families fire, that is not ambiguity to resolve - it is two
+        questions.** "Where can I find something to beat Anubis" wants a counter plan
+        *and* a location, and picking one is a coin flip on the tier. So the spawn call
+        is chained behind the counter call and both are answered. That is faster than
+        deferring to the model and it cannot be wrong about the tier, because it does
+        not choose one.
+
+        It still abstains where abstaining is right: a Pal with no boss form cannot be
+        fought as one, and deferring there rather than declining lets the model treat it
+        as the different question it probably is.
+
+        **A tower leader is the other kind of target.** "How do I beat Victor" names a
+        human, not a species, and the lexicon carries the nine of them as their own
+        entity kind precisely so the name survives to here - resolving Victor to
+        Shadowbeak during ranking would hand the dispatcher a species that also has a
+        field alpha, and the two are different fights.
+        """
+        if not (self._counters and candidates):
+            return None
+        if not _COUNTER_CUES.search(utterance):
+            return None
+        top = candidates[0]
+        if top.score < self._pal_floor:
+            return None
+        if top.kind == "pal":
+            if top.canonical.lower() not in self._counterable:
+                return None
+        elif top.kind != "leader":
+            # A resource, or a kind added later. Either way not something to fight.
+            return None
+
+        # `self._cues` is the *wide* set on purpose: the question is whether any hint of
+        # a location question is present, not whether the narrow gate would have claimed
+        # it. Chained only when the spawn tool is actually registered - otherwise this
+        # would name a tool the dispatcher does not have.
+        #
+        # Never chained for a leader. `find_pal_spawns` takes a species and there is no
+        # Victor in the spawn table, so "where do I find Victor to beat him" would ask a
+        # question the dataset cannot answer and get a decline card beside a good one.
+        also_a_location = (bool(self._cues.search(utterance)) and self._pal_spawns
+                           and top.kind == "pal")
+        chained = (ToolCall(name="find_pal_spawns", args={"pal": top.canonical},
+                            rationale="location cue alongside a counter cue")
+                   if also_a_location else None)
+        return ToolCall(name="plan_counters", args={"boss": top.canonical},
+                        rationale=f"counter cue + boss-capable {top.kind} {top}",
+                        then=chained)
 
     def _drops_call(self, utterance: str, candidates: list) -> "ToolCall | None":
         """`find_pal_drops` when the utterance clearly asks what a Pal yields.
@@ -460,6 +732,130 @@ class StubRouter:
             return None
         return ToolCall(name="find_pal_drops", args={"pal": top.canonical},
                         rationale=f"drop cue + pal candidate {top}")
+
+    def _info_call(self, utterance: str, candidates: list) -> "ToolCall | None":
+        """`get_pal_info` when the utterance asks what a named Pal *is*.
+
+        Gated exactly like the drop branch - a confident Pal plus a cue - because the
+        fast path preempts the model and anything it claims wrongly is a wrong card the
+        model never got to prevent.
+
+        **Pal kind only.** A tower leader tops the candidate list at 1.00 on "who is
+        Victor", and there is no info card for a human: what the datasets hold is the
+        Pal she fights with, and answering a question about a person with a Pal's stat
+        line is the wrong-class failure this branch exists to remove, not repeat it.
+        Those defer to the model.
+        """
+        if not (self._info and candidates):
+            return None
+        top = candidates[0]
+        if top.kind != "pal" or top.score < self._pal_floor:
+            return None
+        # "Can I ride X" is an info question about a NAMED Pal, which is this branch's
+        # shape - not mount search, which answers "which Pals" and cannot answer "does
+        # this one". Routed here rather than given its own class because the info card
+        # already holds the fact; it just has to lead with it.
+        if not (_INFO_CUES.search(utterance) or _RIDE_ONE_CUE.search(utterance)):
+            return None
+        return ToolCall(name="get_pal_info", args={"pal": top.canonical},
+                        rationale=f"info cue + pal candidate {top}")
+
+    def _attribute_call(self, utterance: str,
+                        candidates: list[Candidate]) -> "ToolCall | None":
+        """`find_pals_by_attribute` when the utterance describes a Pal instead of naming one.
+
+        **The guard is the absence of an entity, and it is the whole safety argument.**
+        Every other class here takes a Pal or a resource the player said; this one takes
+        a description. So if anything in the utterance clears its own floor as a named
+        entity, this is not that question and the branch abstains - which also means it
+        can never steal from Q1 or Q2, because those are exactly the queries that name
+        something.
+
+        That guard is not theoretical. STATUS records these four questions being asked
+        and declined on 2026-08-11, and the near-misses that made them dangerous: on
+        *"I need a new mining pal"* Anubis ranked **0.77** - the game's best mining Pal,
+        so a location card for it would have read as very nearly a correct answer for
+        entirely the wrong reason. Only the 0.85 floor stopped it. Below that floor
+        `_subject` returns None and this branch answers the question actually asked.
+
+        The word "pal" is required and the wake word is stripped first, because "hey pal,
+        where can I go mining" is a location question and the address must not supply
+        the noun that makes it look like a roster query.
+        """
+        if not self._attributes:
+            return None
+        body = _ADDRESS.sub("", utterance)
+        # "mount" counts as the subject noun in its own right. "What's the fastest mount
+        # I can get at 60" never says "pal" and is unambiguously this class; requiring
+        # the word declined it. The wake word is still stripped first, because "hey pal"
+        # must not be what supplies the noun.
+        if not (_PAL_NOUN.search(body) or _MOUNT_CUE.search(body)):
+            return None
+
+        element = work = None
+        if (m := _ELEMENT_CUE.search(body)):
+            element = _ELEMENT_WORDS[(m.group(1) or m.group(2)).lower()]
+        if (m := _WORK_CUE.search(body)):
+            work = _WORK_WORDS[next(g for g in m.groups() if g).lower()]
+        elif _POWER_CUE.search(body):
+            work = "GenerateElectricity"
+        elif _OIL_CUE.search(body):
+            work = "OilExtraction"
+
+        mount = bool(_MOUNT_CUE.search(body))
+        medium = (next((name for name, cue in _MEDIUM_CUES if cue.search(body)), None)
+                  if mount else None)
+
+        # **An element word we could not attach means defer, not answer without it.**
+        # "Which dragons can I ride at level 60" says `dragons`, which `_ELEMENT_CUE`
+        # cannot claim because the pattern wants "dragon pal" or "dragon type". Answering
+        # anyway returned every mount at level 60 under a card titled "Mounts" - a filter
+        # the player stated, silently dropped, on the fast path. That is the same failure
+        # as the drop branch's second-entity guard: an unresolved signal is a reason to
+        # hand the sentence to something that can read it.
+        #
+        # `ground` and `water` name an element AND a medium, so a word the medium cue
+        # already consumed does not count as unattached - otherwise "the fastest ground
+        # mount" would defer for saying "ground".
+        consumed = _MEDIUM_CUES_BY_NAME[medium] if medium else None
+        loose = {w for w in _ELEMENT_WORDS
+                 if re.search(rf"\b{w}s?\b", body, re.I)
+                 and not (consumed and consumed.search(w))}
+        if loose and element is None:
+            return None
+
+        level = _spoken_level(body)
+        if element is None and work is None and not mount:
+            # A level alone is not this class. "what level should Shroomer be" names a
+            # Pal and asks something else entirely, and "any pals at level 60" is a list
+            # of ninety, which is an index rather than an answer.
+            return None
+        if self._subject(candidates) is not None:
+            return None
+
+        args: dict[str, object] = {}
+        if element:
+            args["element"] = element
+        if work:
+            args["work"] = work
+        if mount:
+            args["mount"] = True
+            if medium:
+                args["medium"] = medium
+            if _UNOWNED_CUE.search(body):
+                args["unowned"] = True
+            # **The level means the PLAYER's here, and only here.** A saddle is a
+            # technology gated on player level, which is why STATUS's 2026-08-11 decision
+            # is amended rather than kept whole: that decision rejected player level
+            # because filtering by it needed an uncalibrated headroom constant, and a
+            # saddle gate needs none - the game states the number. Two argument names so
+            # the dispatcher cannot confuse them.
+            if level is not None:
+                args["player_level"] = level
+        elif level is not None:
+            args["level"] = level
+        return ToolCall(name="find_pals_by_attribute", args=args,
+                        rationale=f"attribute cue, no named entity: {args}")
 
     def _names_an_entity(self, candidates: list[Candidate]) -> bool:
         return self._subject(candidates) is not None
@@ -538,9 +934,35 @@ class StubRouter:
         # no location cue by construction - "what does Vanwyrm drop" contains none of
         # `where|nearest|find|...`, so the gate declined it before this branch could see
         # it. Measured: the branch claimed exactly nothing until it moved up here.
+        # Counters go above the location gate for the same reason drops do - "how do I
+        # beat Anubis" carries no `where|nearest|find` - and above drops because the two
+        # cue sets do not overlap, so the order between them is arbitrary and this one
+        # is the more selective.
+        counters = self._counter_call(utterance, candidates)
+        if counters is not None:
+            return counters
+
         drops = self._drops_call(utterance, candidates)
         if drops is not None:
             return drops
+
+        # Attribute search goes above the location gate for the third time in a row and
+        # for a new reason: "give me an electric pal that is level 60" DOES carry a wide
+        # cue ("give me"), so the gate lets it through and then the branches below find
+        # no entity to answer about and decline. It goes last among the three because its
+        # guard is the strictest - it requires every other branch to have found nothing
+        # nameable - so nothing it claims was ever available to them.
+        # Behind counters and drops, ahead of the location gate. "What's Victor's
+        # weakness" and "what do I get from X" are more specific readings of the same
+        # polite openers, and this branch must not claim them; "tell me about Shroomer"
+        # carries no location cue, so the gate below would decline it.
+        info = self._info_call(utterance, candidates)
+        if info is not None:
+            return info
+
+        attribute = self._attribute_call(utterance, candidates)
+        if attribute is not None:
+            return attribute
 
         if not self._cues.search(utterance):
             # Name what we *can* answer here too. The other two branches always did, and
@@ -604,13 +1026,9 @@ class StubRouter:
                            known_options=list(self._locatable))
 
         args: dict[str, object] = {"resource": resource.canonical}
-        if (m := _LEVEL.search(utterance)):
-            args["max_player_level"] = int(m.group(1))
-        else:
-            for word, value in _LEVEL_WORDS.items():
-                if re.search(rf"\blevel\s+{word}\b", utterance, re.I):
-                    args["max_player_level"] = value
-                    break
+        # Here the number means the PLAYER's level - see `_spoken_level`.
+        if (level := _spoken_level(utterance)) is not None:
+            args["max_player_level"] = level
 
         return ToolCall(
             name="find_resource_nodes",

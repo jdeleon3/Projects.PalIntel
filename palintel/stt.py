@@ -80,7 +80,13 @@ def hotword_order(lexicon) -> list[str]:
     resources = set(lexicon.resources())
     core = [r for r in VOICE_RESOURCES if r in resources]
     rest = sorted(resources - set(core))
-    return core + sorted(lexicon.pals()) + rest
+    # The eight tower leaders go LAST, and the position is the whole decision. They are
+    # proper nouns STT has every reason to mangle - "Bjorn", "Auri" - so leaving them out
+    # would guarantee the counter branch never sees them. But the finding above is that
+    # hoisting is a budget paid in displaced Pal names, and there is not one recorded
+    # clip of any of these eight to settle where they belong. The tail is the position
+    # that cannot cost anything already measured; it moves once there are clips.
+    return core + sorted(lexicon.pals()) + rest + sorted(lexicon.leaders())
 
 
 class Transcriber:

@@ -137,3 +137,31 @@ version = "1.0.2"
 #   save_dir = 'C:\Users\you\AppData\Local\Pal\Saved\SaveGames\<steamid>\<worldid>'
 #   save_dir = "C:/Users/you/AppData/Local/Pal/Saved/SaveGames/..."   # also fine
 save_dir = ''
+
+# --- Gameplay capture -------------------------------------------------------
+#
+# Keeps the utterance audio the voice pipeline already writes, plus a log line saying
+# what the router decided, so a play session builds an evaluation set as a side effect.
+#
+# Why it is worth having: every recording in data/stt_eval/ is a prompt READ ALOUD from
+# a list, and read speech is hyperarticulated. The 68% entity accuracy measured there is
+# therefore more likely optimistic than pessimistic, and real play is the only source of
+# natural phrasing, game audio bleed and half-spoken questions.
+#
+# Cost is nil. bot.py already writes a WAV per utterance because faster-whisper reads a
+# file rather than a buffer; capture means not deleting it. 16 kHz mono is 32 KB/s, so a
+# long session is a few MB. Everything stays local - data/ is gitignored.
+#
+# TWO flags, deliberately. Saving audio and putting buttons on every card are different
+# features with different costs, and this project has already learned that lesson once
+# with [cards] maps/icons.
+[capture]
+# Save the clip and the log line. Records whatever is near the microphone, including
+# other people in the room - which is why it is off unless you say otherwise.
+enabled = false
+
+# Show three labelling buttons under each answer card: mis-heard me, wrong Pal, wrong
+# question. They ride in the same message as the card, so they cost no extra round trip,
+# and they key on the message id - so a correction works minutes later and still lands
+# on the right query. Buttons do not survive a bot restart.
+feedback = false

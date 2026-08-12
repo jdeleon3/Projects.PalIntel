@@ -62,7 +62,13 @@ WAKE_WORDS = frozenset({"hey", "pal", "palintel", "ok", "okay"})
 class Candidate:
     """A possible entity reading of part of an utterance."""
     canonical: str
-    kind: str          # "pal" | "resource"
+    # "pal" | "resource" | "leader". A leader is one of the eight humans who owns a tower
+    # - Victor, Zoe - and it is a third kind rather than an alias of the Pal they fight
+    # with because those are different fights: `BOSS_BlackGriffon` is a field alpha and
+    # `GYM_BlackGriffon` is Victor's tower, and both are called Shadowbeak. Every check
+    # in this project tests for "pal" or "resource" explicitly, so the new value is inert
+    # everywhere it has not been asked for.
+    kind: str
     score: float
     matched_text: str
 
@@ -91,6 +97,11 @@ class Lexicon:
         # than matching on a name prefix, which only happens to agree.
         self._family: dict[str, int] = {}
 
+        # Tower leader -> the Pal they fight with. Not used to resolve the fight - that
+        # goes through bosses.json, which names a character id and so cannot confuse the
+        # tower with the field alpha - but the pair is what a card says out loud.
+        self._leader_pal: dict[str, str] = {}
+
         for p in data["pals"]:
             surfaces = [p["canonical"].lower(), *(a.lower() for a in p["aliases"])]
             self._forms[p["canonical"]] = ("pal", [(s, squash(s)) for s in surfaces])
@@ -100,6 +111,16 @@ class Lexicon:
             surfaces = [r["canonical"].replace("_", " ").lower(),
                         *(a.lower() for a in r["aliases"])]
             self._forms[r["canonical"]] = ("resource", [(s, squash(s)) for s in surfaces])
+
+        # Optional, so a lexicon.json built before the leader ingest still loads. The
+        # eight are an enrichment: without them "how do I beat Victor" declines, which
+        # is what it did before and is not wrong, only unhelpful.
+        for lead in data.get("leaders", []):
+            surfaces = [lead["canonical"].lower(),
+                        *(a.lower() for a in lead["aliases"])]
+            self._forms[lead["canonical"]] = ("leader",
+                                              [(s, squash(s)) for s in surfaces])
+            self._leader_pal[lead["canonical"]] = lead["pal"]
 
         self._phonetic = {c: phonetic(c) for c in self._forms}
 
@@ -112,6 +133,15 @@ class Lexicon:
 
     def resources(self) -> list[str]:
         return sorted(c for c, (k, _) in self._forms.items() if k == "resource")
+
+    def leaders(self) -> list[str]:
+        """The eight tower leaders. Deliberately absent from `pals()`, which generates
+        the routers' Pal enum - Victor is not a species and must not become selectable
+        as one."""
+        return sorted(self._leader_pal)
+
+    def leader_pal(self, leader: str) -> str | None:
+        return self._leader_pal.get(leader)
 
     def same_family(self, a: str, b: str) -> bool:
         """True when two Pals are the base and variant of one Paldeck slot.
@@ -303,6 +333,176 @@ class SpawnArea:
         return self.spawn_points * self.encounter_share
 
 
+# The order a Pal's wild level band falls through, identical to execution.SPAWN_KINDS and
+# for the same reason: a Pal only ever placed as a field alpha (Necromus, Paladius) has a
+# real level, and reporting "no level" for it would be a different and wrong answer.
+_BAND_KINDS = ("normal", "alpha", "predator")
+
+
+def _load_attributes(base: Path,
+                     spawns: list["SpawnArea"]) -> tuple[dict[str, "PalAttributes"], dict[str, str]]:
+    """Join typing, work suitability and wild level into one row per Pal.
+
+    Optional in exactly the way the drop and ranch datasets are: `work.json` has its own
+    ingest step, and a checkout that has not run it answers every other class normally
+    and declines this one.
+
+    **The level band is computed from `spawns`, not stored.** It is the same list the
+    location card reads, so "Anubis, lvl 68-72" on a spawn card and a level filter here
+    cannot drift apart - which they would the moment a second file recorded the same
+    fact. `elements.json` is read here even though `counters.py` already reads it,
+    because the two need different keys: a boss is a character id and a card names a
+    species.
+    """
+    work_path = base / "work.json"
+    if not work_path.exists():
+        return {}, {}
+    work_raw = json.loads(work_path.read_text(encoding="utf-8"))
+    jobs: dict[str, str] = work_raw.get("jobs", {})
+
+    typing: dict[str, tuple[str, ...]] = {}
+    elements_path = base / "elements.json"
+    if elements_path.exists():
+        for p in json.loads(elements_path.read_text(encoding="utf-8"))["pals"]:
+            if p.get("name"):
+                # 439 of the 739 typed rows have no display name - summons, quest actors,
+                # boss variants. setdefault keeps the first, which is the base row.
+                typing.setdefault(p["name"], tuple(p["elements"]))
+
+    # The DISTINCT bands, not their min and max. Collapsing them is the trap: Grizzbolt
+    # is 18-22 in three areas and 80 in seventeen, so "lvl 18-80" is arithmetically true,
+    # reads as one continuous range, and would answer "an electric Pal at level 45" with
+    # a species that appears at no such level anywhere. Well-formed and wrong, which is
+    # the shape CLAUDE.md says bad data takes in this project.
+    bands: dict[str, dict[str, set[tuple[int, int]]]] = {}
+    for a in spawns:
+        bands.setdefault(a.pal, {}).setdefault(a.kind, set()).add(
+            (a.level_min, a.level_max))
+
+    suitability = {e["name"]: e for e in work_raw["entries"]}
+
+    out: dict[str, PalAttributes] = {}
+    for name in set(suitability) | set(typing):
+        by_kind = bands.get(name, {})
+        kind = next((k for k in _BAND_KINDS if k in by_kind), None)
+        found = sorted(by_kind.get(kind, ()))
+        entry = suitability.get(name)
+        out[name] = PalAttributes(
+            name=name,
+            elements=typing.get(name, ()),
+            work=dict(entry["levels"]) if entry else {},
+            best_work=entry["best"] if entry else None,
+            bands=tuple(found), level_kind=kind,
+        )
+    return out, jobs
+
+
+@dataclass(frozen=True)
+class Mount:
+    """A Pal you can ride, and the two speeds the game actually distinguishes.
+
+    **`unlock_level` is the PLAYER's level**, from the saddle's technology - the one
+    place in this project where a level on a card is not the Pal's. That is what makes
+    *"the fastest mount I can get at level 60"* answerable as a fact rather than as the
+    uncalibrated judgement STATUS's 2026-08-11 decision refused: the saddle unlocks at a
+    stated level, and no "how far above your level can you cope" constant is involved.
+
+    `None` means no technology row unlocks this saddle - two of the 108 - and it must
+    never be read as "available now". A level filter excludes them and says how many.
+
+    **There is no flight speed.** A flying mount's ridden speed is `ride`, the same field
+    a ground mount uses, so flying and ground are one category here. That is the pak's
+    distinction, not a simplification: see tools/ingest/build_mounts.py for the seven
+    flight signals that were measured and falsified.
+    """
+    name: str
+    character_id: str
+    unlock_level: int | None
+    ride: int | None           # RideSprintSpeed - on land AND in the air
+    swim: int | None           # SwimDashSpeed
+
+    def speed(self, medium: str | None) -> int | None:
+        """Speed in `medium`, or the better of the two when none was asked for.
+
+        "The fastest mount I can get" with no medium named is asking how fast you can
+        travel on it, so the answer is whichever of its two speeds is higher - a max over
+        two stated numbers, with `fastest_medium` naming which one won so the card never
+        implies a boat is fast on land.
+        """
+        if medium == "land":
+            return self.ride
+        if medium == "water":
+            return self.swim
+        return max((s for s in (self.ride, self.swim) if s), default=None)
+
+    @property
+    def fastest_medium(self) -> str | None:
+        if self.ride is None and self.swim is None:
+            return None
+        return "water" if (self.swim or 0) > (self.ride or 0) else "land"
+
+    def available_at(self, player_level: int) -> bool:
+        """True when the saddle's technology is unlocked at `player_level`.
+
+        False for the two with no technology row. Excluding them is the conservative
+        reading: their availability is unknown, and a card claiming you can get one at
+        level 60 would be asserting something the pak does not say.
+        """
+        return self.unlock_level is not None and self.unlock_level <= player_level
+
+
+@dataclass(frozen=True)
+class PalAttributes:
+    """What a Pal *is*, as opposed to where it is or what it drops.
+
+    The three axes the attribute search filters on, joined into one row so a query can
+    apply all three without three lookups. Every field is extracted: `elements` from
+    `ElementType1/2`, `work` from the `WorkSuitability_*` columns, and the level band
+    from the same spawn areas the location card reads - so a level printed here and a
+    level printed on a spawn card cannot disagree.
+
+    `bands` is empty for the Pals the overworld never places. That is a real state and
+    not missing data: a tower boss has no wild level, so it cannot match a level filter
+    and the card must not imply it was considered and rejected.
+    """
+    name: str
+    elements: tuple[str, ...]
+    # Job enum ("Mining") -> level. Only jobs the Pal can actually do; absent means zero.
+    work: dict[str, int]
+    best_work: str | None
+    # Every DISTINCT (low, high) this Pal is placed at, ascending. Several rather than
+    # one because the ranges are disjoint: Grizzbolt is (18, 22) and (70, 72) and
+    # (70, 80) and (80, 80), and merging those into 18-80 claims levels it never has.
+    bands: tuple[tuple[int, int], ...] = ()
+    # Which encounter the bands came from. "normal" for almost everything; "alpha" or
+    # "predator" for the handful only ever placed as one, mirroring `find_pal_spawns`'
+    # fall-through so the two answers describe the same creature.
+    level_kind: str | None = None
+
+    @property
+    def level_min(self) -> int | None:
+        return self.bands[0][0] if self.bands else None
+
+    @property
+    def level_max(self) -> int | None:
+        return max(hi for _, hi in self.bands) if self.bands else None
+
+    def band_at(self, level: int) -> tuple[int, int] | None:
+        """The band containing `level`, or None.
+
+        Containment, not a ceiling. STATUS's 2026-08-11 decision is that "level" means
+        the PAL's level, and the exact reading of "an electric Pal that is level 60" is
+        one that actually turns up at 60 - not every Pal weaker than 60, which is a
+        different question and one the player can still ask ("Pals up to 60"). The
+        matching band is returned rather than a bool because the card should print the
+        range the player will actually meet, not the species' whole spread.
+        """
+        return next((b for b in self.bands if b[0] <= level <= b[1]), None)
+
+    def spawns_at(self, level: int) -> bool:
+        return self.band_at(level) is not None
+
+
 @dataclass
 class KnowledgeBase:
     game_version: str
@@ -334,6 +534,17 @@ class KnowledgeBase:
     # Where the ranch facts came from, carried so the card can attribute them. Empty
     # string when there is no ranch data to attribute.
     ranch_source: str = ""
+    # Pal -> element, work and wild level band. What the attribute search selects over.
+    # Empty when work.json is absent, which turns that one class off and leaves every
+    # other answer intact.
+    attributes: dict[str, "PalAttributes"] = field(default_factory=dict)
+    # Job enum -> the game's own label ("EmitFlame" -> "Kindling"). From the UI text
+    # table, so a card prints what the player reads in game rather than a pak enum.
+    jobs: dict[str, str] = field(default_factory=dict)
+    # Pal -> saddle, unlock level and speeds, for the 108 that can be ridden. Empty when
+    # mounts.json is absent, which turns the mount filter off and leaves the rest of the
+    # attribute search working.
+    mounts: dict[str, "Mount"] = field(default_factory=dict)
 
     @classmethod
     def load(cls, version: str = "1.0.2", root: Path | None = None) -> "KnowledgeBase":
@@ -398,12 +609,29 @@ class KnowledgeBase:
                 per_cycle=e["per_cycle"], food=e["food"],
                 verified=e.get("roster_verified", True)) for e in ranch_raw["entries"]}
 
+        attributes, jobs = _load_attributes(base, spawns)
+
+        mounts: dict[str, Mount] = {}
+        mount_path = base / "mounts.json"
+        if mount_path.exists():
+            mounts = {m["name"]: Mount(
+                name=m["name"], character_id=m["character_id"],
+                unlock_level=m["unlock_level"],
+                ride=m["ride_speed"], swim=m["swim_speed"])
+                for m in json.loads(
+                    mount_path.read_text(encoding="utf-8"))["entries"]}
+
         return cls(game_version=raw["game_version"], lexicon=lexicon, nodes=nodes,
                    spawns=spawns,
                    pals_without_areas=frozenset(spawn_raw["pals_without_areas"]),
                    droppers=droppers, pal_drops=pal_drops,
                    item_sources=item_sources, ranch=ranch,
-                   ranch_source=ranch_source)
+                   ranch_source=ranch_source,
+                   attributes=attributes, jobs=jobs, mounts=mounts)
+
+    def job_label(self, job: str) -> str:
+        """The game's word for a job enum, falling back to the enum itself."""
+        return self.jobs.get(job, job)
 
     def summary(self) -> dict[str, object]:
         by_res: dict[str, int] = {}
@@ -417,4 +645,10 @@ class KnowledgeBase:
             "by_resource": dict(sorted(by_res.items())),
             "spawn_areas": len(self.spawns),
             "pals_locatable": len({s.pal for s in self.spawns}),
+            # Both are optional datasets, so 0 here is the difference between "nothing
+            # matched" and "that class is not loaded" - which is otherwise invisible from
+            # the outside, and is exactly the distinction `/palintel status` exists for.
+            "pals_with_attributes": len(self.attributes),
+            "work_jobs": len(self.jobs),
+            "tower_leaders": len(self.lexicon.leaders()),
         }

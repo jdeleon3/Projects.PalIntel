@@ -134,6 +134,83 @@ Bosses need elements, level, location, and `tower_order`. Tower bosses are a sho
 enumerable list; field alphas are larger but still bounded. `tower_order` must be correct —
 conversation memory relies on it to resolve *"the next tower"*.
 
+**`tower_order` is still absent and cannot be extracted.** Nothing in the pak states that
+Victor's is the fifth tower. What *is* extractable, ingested 2026-08-11, is **who owns
+each tower**: `pal_names_flat.json` names the pair in one string
+(`PAL_NAME_SnowBoss` → `"Victor & Shadowbeak"`) for all nine, and `DT_UniqueNPCText`'s
+`BOSSNAME_DEMO_<REGION>_LEADER` / `_LEADER_PAL` rows reach eight of the same nine
+independently. `tools/ingest/_leaders.py` reads both and fails the build if they
+disagree. That makes *"how do I beat Victor"* answerable and *"how do I beat the fifth
+tower"* still not.
+
+Two traps recorded there rather than rediscovered:
+
+- The leader must resolve to a **character id**, not to the Pal's name. `bosses.json` is
+  sorted by `(kind, character_id)`, so a name index reaches `BOSS_BlackGriffon` — the
+  field alpha — before `GYM_BlackGriffon`. Both are called Shadowbeak and they are
+  different fights.
+- Astralym carries `ElementType::None` on every row, so Zenara's tower resolves and then
+  declines. That is the pak's answer, not a gap to fill.
+
+### 3.2b Work suitability (Pal search by attribute)
+
+Thirteen `WorkSuitability_*` integer columns on the Pal row, with the job labels taken
+from the game's own UI strings (`en_DT_UI_Common_Text_Common`,
+`COMMON_WORK_SUITABILITY_*`) rather than a hand map — so a card prints "Kindling" and not
+`EmitFlame`. `tools/ingest/build_work.py`. Nothing here is derived.
+
+`COMMON_WORK_SUITABILITY_Mining_Stone` / `_Copper` / `_Iron` / `_Platinum` have UI keys
+and are **not** jobs: their text is the untranslated `en Text` placeholder and no Pal row
+carries a column for them. They gate which ore a Mining level can work.
+
+**Unverified against the UI:** the columns run 1–8 with one Pal at the top of each job.
+Lamball's 1/1/1 matches the game exactly, but nobody has opened the Paldeck and counted
+the icons on a high-level Pal, so whether the internal integer *is* the displayed rank is
+a one-glance check that has not been made. Cards print the number and never call it a
+star count.
+
+### 3.2c Mounts (mount search)
+
+Which Pals can be ridden, from what **player** level, and how fast.
+`tools/ingest/build_mounts.py`. Three stated sources, nothing derived:
+
+| Field | From |
+|---|---|
+| rideable | a `SkillUnlock_<Tribe>` item with `IconName = SkillUnlock_Saddle` — 108 |
+| `unlock_level` | that saddle's technology row, `LevelCap` — the **player's** level |
+| `ride_speed` / `swim_speed` | `RideSprintSpeed` / `SwimDashSpeed` |
+
+**The saddle is the authority on rideability, never the speed field.** `RideSprintSpeed`
+is populated on 693 of 753 rows and only 107 of those have a saddle, so a ride speed says
+nothing about whether a Pal can be ridden — the number just never gets used. The reverse
+holds cleanly: all 108 saddled Pals have one, and the build fails if that stops being
+true.
+
+**`-1` is "not applicable", not a speed**, on 52–105 rows depending on the field. Stored
+as null, because a fastest-first sort that kept it would rank "no such movement" above
+real numbers.
+
+**The join is case-insensitive, and that is a bug this build had.** The item is
+`SkillUnlock_Thunderdog_Ice`; the stat row is `ThunderDog_Ice`. One capital letter, and an
+exact lookup silently dropped Rayhound Cryst from the roster. Second occurrence in this
+project after `Boss_Anubis` (§3.3), so **the pak's casing is not trustworthy on any join.**
+
+**Two saddles have no technology row at all** (Boltmane, Broncherry Aqua), so
+`unlock_level` is null and how you get them is genuinely unknown from the pak. A
+player-level filter excludes them and the card reports how many it could not check —
+"unknown" and "too high a level" are different answers.
+
+#### Flying and ground are one category, and that is the game's doing
+
+There is no flight flag and, more to the point, **no flight speed**: a flyer's ridden
+speed is `RideSprintSpeed`, the same column a ground mount uses. Seven candidate signals
+were measured against a hand-labelled set on 2026-08-11 and all failed — see STATUS's
+backlog entry for the table. The decisive one: the set of component classes present in
+every labelled flyer and no labelled ground Pal is **empty**. All 532 data tables in the
+pak were listed; none concerns movement.
+
+Water is separate because `SwimDashSpeed` is a separate column.
+
 ### 3.4 Breeding data (Q3)
 
 Strategy depends entirely on assumption **A3**
@@ -462,6 +539,19 @@ python tools/ingest/build_pal_drops.py --version 1.0.2
 # cached at data/raw/ranch_wiki.md (section 3.9), so refresh that file on a patch.
 dotnet run --project tools/extract/PakExtract -- ranch
 python tools/ingest/build_ranch.py --version 1.0.2
+
+# Work suitability, for Pal search by attribute. Needs the `tables` extract for the job
+# labels; optional, and its absence turns that one query class off (section 3.2b).
+python tools/ingest/build_work.py --version 1.0.2
+
+# Mounts: the saddle roster, its player-level gate and the two ride speeds (section 3.2c).
+# Also optional, and also needs the `tables` extract for DT_ItemDataTable.
+python tools/ingest/build_mounts.py --version 1.0.2
+
+# ORDER MATTERS for these two: build_bosses.py reads lexicon.json to resolve a boss row
+# to a Pal name, and both read the tower leaders out of data/raw via _leaders.py.
+python tools/ingest/build_lexicon.py --version 1.0.2
+python tools/ingest/build_bosses.py  --version 1.0.2
 
 palintel-ingest   --version 1.0.2 --source-config sources.yaml
 palintel-corpus   --version 1.0.2 --embed          # chunk + embed prose

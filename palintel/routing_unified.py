@@ -45,7 +45,8 @@ CLASS_TO_TOOL: dict[str, str] = {
     "breeding_pair": "check_breeding_pair",
     "pal_info": "get_pal_info",
     "compare_pals": "compare_pals",
-    "boss_counter": "evaluate_counter",
+    "boss_counter": "plan_counters",
+    "pal_search": "find_pals_by_attribute",
 }
 
 # What the per-tool descriptions used to say, compressed into one line each. This is the
@@ -58,13 +59,32 @@ CLASS_HELP: dict[str, str] = {
     "item_source": "which Pals drop a named item (Flame Organ, Leather, Bone)",
     "breeding_combo": "which parent Pals breed to produce a target Pal",
     "breeding_pair": "what two named Pals produce when bred together",
-    "pal_info": "a Pal's element, stats or work suitability",
+    "pal_info": "a summary of ONE named Pal - \"tell me about X\", \"who is X\", "
+                "\"what level is X\". Prefer a narrower class when the question names "
+                "one: where it is, what it drops, how to fight it",
     "compare_pals": "which of two named Pals is better at something",
     "boss_counter": "which Pal to use against a boss or tower",
+    "pal_search": "which Pals match a DESCRIPTION rather than a name - an element, a "
+                  "work job, a level. Use when no specific Pal is named",
 }
 
+# What the dispatcher can actually answer. `boss_counter` joined on 2026-08-11: the
+# pipeline gained a plan_counters branch, so offering it to the model is no longer
+# offering a class the caller cannot dispatch - which is the mistake this function's
+# docstring warns about. `pal_search` joins the same way and on the same day.
 PRODUCTION_CLASSES = ("resource_location", "pal_location", "pal_drops",
-                      "item_source")
+                      "item_source", "boss_counter", "pal_search", "pal_info")
+
+# The pak's element enum. Nine values, so the cost of carrying it is nothing beside the
+# 313-name Pal enum this module exists to stop duplicating. Written out rather than read
+# from elements.json because a schema is a contract and should not change shape because
+# a data file was regenerated.
+ELEMENTS = ("Dark", "Dragon", "Earth", "Electricity", "Fire", "Ice", "Leaf", "Normal",
+            "Water")
+# The `WorkSuitability_*` columns, thirteen of them, in the enum spelling the tables use.
+WORK_JOBS = ("Collection", "Cool", "Deforest", "EmitFlame", "GenerateElectricity",
+             "Handcraft", "Mining", "MonsterFarm", "OilExtraction", "ProductMedicine",
+             "Seeding", "Transport", "Watering")
 
 
 def unified_schema(resources: list[str], pals: list[str],
@@ -122,7 +142,9 @@ def unified_schema(resources: list[str], pals: list[str],
                     "type": ["string", "null"],
                     "description": (
                         "The boss or tower the question names, VERBATIM as spoken - "
-                        "not resolved to a Pal name. Null when none is named."
+                        "not resolved to a Pal name. Use it for a tower LEADER, who is "
+                        "a person and not a species: \"how do I beat Victor\" is "
+                        "target=\"Victor\" with pals empty. Null when none is named."
                     ),
                 },
                 "max_player_level": {
@@ -132,9 +154,74 @@ def unified_schema(resources: list[str], pals: list[str],
                         "only when the player states a level; otherwise null."
                     ),
                 },
+                "pal_elements": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": list(ELEMENTS)},
+                    "description": (
+                        "pal_search only: the element being asked FOR. The player says "
+                        "Electric for Electricity, Grass for Leaf, Ground for Earth. "
+                        "Empty when no element is described."
+                    ),
+                },
+                "pal_work": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": list(WORK_JOBS)},
+                    "description": (
+                        "pal_search only: the base job being asked for. Kindling is "
+                        "EmitFlame, Planting is Seeding, Handiwork is Handcraft, "
+                        "Gathering is Collection, Lumbering is Deforest, Farming is "
+                        "MonsterFarm. Empty when no job is described."
+                    ),
+                },
+                "pal_level": {
+                    "type": ["integer", "null"],
+                    "description": (
+                        "pal_search only: the level of the PAL being looked for, never "
+                        "the player's - \"an electric pal that is level 60\" is 60. "
+                        "Null when none is stated. For a MOUNT question use "
+                        "mount_unlock_level instead: a saddle is gated on the player."
+                    ),
+                },
+                "mount_query": {
+                    "type": "boolean",
+                    "description": (
+                        "pal_search only: true when the question is about Pals you can "
+                        "RIDE - mounts, saddles, \"what can I fly on\". False otherwise."
+                    ),
+                },
+                "mount_medium": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": ["land", "water"]},
+                    "description": (
+                        "pal_search only. \"land\" covers flying AND ground - the game "
+                        "gives them one speed and has no separate flight speed. "
+                        "\"water\" is swimming. LEAVE EMPTY when the question names no "
+                        "medium, which ranks each Pal by whichever of its two speeds is "
+                        "higher. An array rather than a nullable enum because strict "
+                        "tool use has no clean form for the latter."
+                    ),
+                },
+                "mount_unlock_level": {
+                    "type": ["integer", "null"],
+                    "description": (
+                        "pal_search only: the PLAYER's level in a mount question - "
+                        "\"the fastest mount I can get at level 60\" is 60. A saddle is "
+                        "a technology unlocked at a player level, so this is NOT the "
+                        "Pal's level. Null otherwise."
+                    ),
+                },
+                "mount_unowned": {
+                    "type": "boolean",
+                    "description": (
+                        "pal_search only: true when the question asks which mounts the "
+                        "player does NOT have yet. False otherwise."
+                    ),
+                },
             },
             "required": ["query_class", "pals", "resources", "items_named", "target",
-                         "max_player_level"],
+                         "max_player_level", "pal_elements", "pal_work", "pal_level",
+                         "mount_query", "mount_medium", "mount_unlock_level",
+                         "mount_unowned"],
             "additionalProperties": False,
         },
     }
@@ -150,7 +237,21 @@ _ARGS: dict[str, tuple[str, ...]] = {
     "check_breeding_pair": ("parent_a", "parent_b"),
     "get_pal_info": ("pal",),
     "compare_pals": ("pal_a", "pal_b"),
-    "evaluate_counter": ("pal",),
+    # The boss arrives through the `pals` enum when it IS a Pal, and through the verbatim
+    # `target` slot when it is not - see the fallback in `unpack`. Adding the eight tower
+    # leaders to the Pal enum was the alternative and it is worse twice over: Victor is
+    # not a species and would become selectable as one by every other class, and the enum
+    # is the single largest thing in the request (~2,630 tokens) that this whole module
+    # exists to stop duplicating.
+    #
+    # Either way the dispatcher does the resolving, which is what lets an unnamed tower
+    # ("the first tower") decline honestly instead of being guessed at: counters.plan
+    # raises on a target it has no row for.
+    "plan_counters": ("boss",),
+    # Nothing positional: its three slots are all its own and all optional, so `unpack`
+    # fills them by name below rather than by zipping the shared entity lists. The whole
+    # point of the class is that it names no entity.
+    "find_pals_by_attribute": (),
 }
 
 
@@ -181,6 +282,49 @@ def unpack(name: str, args: dict[str, Any]) -> tuple[str, dict[str, Any]]:
     # a dispatcher that only understands `pal` still finds it in the first slot.
     if len(named_pals) > 1 and _ARGS[tool] == ("pal",):
         out["pals"] = named_pals
+
+    # A counter target that is not a Pal - one of the eight tower leaders. Only when the
+    # resolved slots produced nothing, so a question naming both a leader and a species
+    # keeps the species: the enum is constrained and the free string is not, and between
+    # a validated value and an unvalidated one the validated one wins.
+    if tool == "plan_counters" and not out.get("boss") and args.get("target"):
+        out["boss"] = args["target"]
+
+    if tool == "find_pals_by_attribute":
+        # One element and one job, not several. Two elements would mean an intersection
+        # nobody asked for ("a fire AND water Pal" is four species) and the arrays exist
+        # only because strict tool use has no clean optional enum - see the module
+        # docstring. The dispatcher declines when all three come back empty.
+        if args.get("pal_elements"):
+            out["element"] = args["pal_elements"][0]
+        if args.get("pal_work"):
+            out["work"] = args["pal_work"][0]
+        if args.get("pal_level") is not None:
+            out["level"] = args["pal_level"]
+
+        # Any of the four slots marks a mount question, not just the boolean: a model
+        # that sets `mount_medium` and forgets `mount_query` would otherwise get an
+        # ordinary attribute search carrying a medium nothing could use.
+        medium = list(args.get("mount_medium") or [])
+        unlock = args.get("mount_unlock_level")
+        unowned = bool(args.get("mount_unowned"))
+        if args.get("mount_query") or medium or unlock is not None or unowned:
+            out["mount"] = True
+            # One medium. Two would be an intersection - a mount that is fastest on land
+            # AND in water is one ranking, not two - and the array exists only because
+            # strict tool use has no clean optional enum.
+            if medium:
+                out["medium"] = medium[0]
+            if unlock is not None:
+                out["player_level"] = unlock
+            if unowned:
+                out["unowned"] = True
+            # A mount question's level is the PLAYER's. If the model put it in the Pal
+            # slot anyway - the two are one word apart in the utterance - move it rather
+            # than filtering wild spawn bands by a saddle level, which would answer a
+            # mount question with Pals that happen to spawn at 60.
+            if "level" in out and unlock is None:
+                out["player_level"] = out.pop("level")
     if tool == "find_resource_nodes" and args.get("max_player_level") is not None:
         out["max_player_level"] = args["max_player_level"]
     if tool == "evaluate_counter" and args.get("target") is not None:

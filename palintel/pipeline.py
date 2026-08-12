@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Callable
 
 from . import cards, execution
 from .cards import Card
-from .knowledge import Candidate, KnowledgeBase
+from .knowledge import REPO, Candidate, KnowledgeBase
 from .memory import Memory, Turn
 from .routing import RouterBackend
 from .tools import Decline, ToolCall
@@ -38,6 +38,15 @@ class PlayerState:
     """
     player_level: int | None = None
     player_coords: tuple[float, float] | None = None
+    # Owned Pal species, lower-cased, from `saves.owned_species`. None means NOT READ,
+    # which is different from "owns nothing" and must stay different all the way to the
+    # card: telling a player nothing they own works, when we never looked, is exactly
+    # the confidently-wrong answer this project refuses.
+    #
+    # Absent by default because reading it costs a full Level.sav parse - seconds, not
+    # milliseconds - so it cannot happen per query. Populating it on a slow refresh is
+    # the caller's job.
+    owned_species: frozenset[str] | None = None
 
 
 # One answer may be several cards. A Paldeck slot holds a base Pal and its element
@@ -102,6 +111,31 @@ class Outcome:
             self.illustrate = None
 
 
+def _counterable(version: str) -> set[str]:
+    """Display names that name a fight, lower-cased. Empty when bosses.json is missing.
+
+    **The counter fast path was dark until 2026-08-11.** `StubRouter` grew the branch,
+    `score_branches.py` measured it at 16/16 on the written prompts it can claim, and
+    `build_router` never passed `counters=True` - so every counter question in play paid
+    a model round trip for an answer the stub had. That was an omission rather than a
+    decision: no commit or ADR argues for leaving it off, and the branch abstains
+    wherever the tier is in doubt, which is what the measurement was for.
+    """
+    import json
+
+    path = REPO / "data" / version / "bosses.json"
+    if not path.exists():
+        log.info("no bosses.json - the counter fast path stays off")
+        return set()
+    bosses = json.loads(path.read_text(encoding="utf-8"))
+    names = {b["name"].lower() for b in bosses["entries"] if b.get("name")}
+    # And the game's own name for each tower fight - "Axel & Orserk". It is a PAL_NAME_
+    # row, so the lexicon ranks it as a Pal and the fast path checks it against this set;
+    # without it the most explicit way there is to name a tower paid a model round trip,
+    # which is what it did in play on 2026-08-11.
+    return names | {l["display"].lower() for l in bosses.get("leaders", [])}
+
+
 def build_router(kb: KnowledgeBase, prefer: str = "auto",
                  router_config: "RouterConfig | None" = None) -> RouterBackend:
     """Select a router backend.
@@ -150,9 +184,20 @@ def build_router(kb: KnowledgeBase, prefer: str = "auto",
     # nothing outside the two query classes and produced no wrong card - which is the
     # result that had to be established rather than assumed, since Phase 1's "claimed
     # nothing outside Q1" was scored when there was no other tool to claim for.
-    fast = StubRouter(kb.lexicon, locatable, cues=cfg.cues)
+    # Which Pals have a boss form, read from the dataset rather than re-derived here.
+    # `BOSS_<name>` meaning "the alpha of" is the inference CLAUDE.md flags by name, and
+    # bosses.json already made it and recorded that it did.
+    #
+    # Empty when the dataset is absent, which turns the counter branch off rather than
+    # failing: every other class still answers, and `plan_counters` is the only one that
+    # needs it.
+    counterable = _counterable(kb.game_version)
+
+    fast = StubRouter(kb.lexicon, locatable, cues=cfg.cues,
+                      counters=bool(counterable), counterable=counterable)
     backstop = StubRouter(kb.lexicon, locatable, cues="wide",
-                          resource_floor=BACKSTOP_CONFIDENT)
+                          resource_floor=BACKSTOP_CONFIDENT,
+                          counters=bool(counterable), counterable=counterable)
 
     def wrapped(primary):
         """Wrap a hosted router with the backstop, and the fast path if enabled.
@@ -233,8 +278,54 @@ class Pipeline:
         if isinstance(call, Decline):
             return self._decline(call, candidates)
 
-        # 3. Dispatch. Player state is injected here, never parsed from the utterance -
-        #    "nearest" must resolve against where the player actually is.
+        # 3. Dispatch, once or twice. A chained call answers a question that is genuinely
+        #    two questions - "where can I find something to beat Anubis" is a location
+        #    question and a counter question, and choosing one gambles the TIER rather
+        #    than the fact.
+        outcome = self._dispatch(call, utterance, state, who, candidates)
+        if call.then is None or isinstance(outcome.call, Decline):
+            return outcome
+
+        second = self._dispatch(call.then, utterance, state, who, candidates,
+                                remember=False)
+        return self._merge(outcome, second)
+
+    def _merge(self, primary: Outcome, secondary: Outcome) -> Outcome:
+        """Two answers on one message, or the primary alone.
+
+        The secondary is dropped rather than shown whenever it did not answer: a
+        decline card sitting beside a good answer reads as though part of the question
+        failed, when in fact the part worth answering was answered. The cap is honoured
+        too - past MAX_CARDS the extra answer stops being a second opinion and becomes
+        a wall - and the primary wins, because it is the branch the cue actually led with.
+        """
+        if isinstance(secondary.call, Decline) or not secondary.cards:
+            return primary
+        if len(primary.cards) + len(secondary.cards) > MAX_CARDS:
+            return primary
+
+        draws = [o.illustrate for o in (primary, secondary) if o.illustrate is not None]
+
+        def draw_all() -> None:
+            for one in draws:
+                one()
+
+        return Outcome(primary.cards + secondary.cards, primary.call,
+                       primary.candidates,
+                       illustrate=draw_all if draws else None)
+
+    def _dispatch(self, call: ToolCall, utterance: str, state: PlayerState,
+                  who: str, candidates: list[Candidate],
+                  remember: bool = True) -> Outcome:
+        """Run one tool. Player state is injected here, never parsed from the utterance -
+        "nearest" must resolve against where the player actually is.
+
+        `remember` is off for a chained second call. Conversation memory holds one
+        referent per turn, so storing both would make "what about the alpha?" ambiguous
+        in exactly the way [ADR-0013](../Docs/adr/0013-conversation-memory.md) exists to
+        prevent - the follow-up would resolve against whichever call happened to be
+        stored last rather than against the question the player led with.
+        """
         if call.name == "find_resource_nodes":
             args = dict(call.args)
             # The model can name a registered tool and still omit a required argument -
@@ -257,7 +348,8 @@ class Pipeline:
             log.info("find_resource_nodes(%s) -> %d/%d",
                      args, len(result.nodes), result.total_available)
             self._remember(who, call, {"resource": result.resource},
-                           f"{len(result.nodes)} of {result.total_available} clusters")
+                           f"{len(result.nodes)} of {result.total_available} clusters",
+                           enabled=remember)
             card = cards.resource_card(result)
             draw = (self.artwork.illustrate_resource(card, result)
                     if self.artwork is not None else None)
@@ -301,7 +393,7 @@ class Pipeline:
             # as though the speaker had named both would let "what about the alpha" pick
             # the wrong one of the two.
             self._remember(who, call, {"pal": pal},
-                           f"{kind or 'normal'} spawns")
+                           f"{kind or 'normal'} spawns", enabled=remember)
             built = self._cards_for(self.kb.lexicon.family(pal), render)
 
             def draw_all() -> None:
@@ -335,7 +427,7 @@ class Pipeline:
             named = call.args.get("pals") or []
             subjects = named if len(named) > 1 else self.kb.lexicon.family(pal)
 
-            self._remember(who, call, {"pal": pal}, "drops")
+            self._remember(who, call, {"pal": pal}, "drops", enabled=remember)
             return Outcome(self._cards_for(subjects, render_drops), call, candidates)
 
         if call.name == "find_item_source":
@@ -345,22 +437,113 @@ class Pipeline:
                 return self._decline(Decline(reason="no item identified"), candidates)
             result = execution.find_item_source(self.kb, item)
             log.info("find_item_source(%s) -> %d sources", item, result.total)
-            self._remember(who, call, {"item": item}, f"{result.total} sources")
+            self._remember(who, call, {"item": item}, f"{result.total} sources",
+                           enabled=remember)
             return Outcome([cards.item_source_card(result)], call, candidates)
+
+        if call.name == "get_pal_info":
+            pal = call.args.get("pal")
+            if not pal:
+                log.warning("router called %s with no pal: %s", call.name, call.args)
+                return self._decline(Decline(reason="no Pal identified"), candidates)
+
+            def render_info(name: str) -> Card:
+                result = execution.get_pal_info(self.kb, name)
+                log.info("get_pal_info(%s) -> known=%s, %d work, %d drops",
+                         name, result.known, len(result.work), result.drops)
+                card = cards.pal_info_card(result, self.kb.job_label)
+                if self.artwork is not None and self.artwork.icons:
+                    # The icon only. This card describes a creature, not a place.
+                    card.thumbnail = self.artwork.assets.icon(name)
+                return card
+
+            self._remember(who, call, {"pal": pal}, "info", enabled=remember)
+            # A Paldeck slot with a variant has two answers here for the same reason it
+            # does on a spawn card: Menasting and Menasting Terra have different elements
+            # and different work levels, so one card would be wrong half the time.
+            return Outcome(self._cards_for(self.kb.lexicon.family(pal), render_info),
+                           call, candidates)
+
+        if call.name == "find_pals_by_attribute":
+            args = {k: v for k, v in call.args.items()
+                    if k in ("element", "work", "level", "medium", "player_level")
+                    and v is not None}
+            # `mount` and `unowned` are flags rather than filters, so they are read
+            # separately - an absent one is False, not "no filter given".
+            mounts_only = bool(call.args.get("mount"))
+            unowned = bool(call.args.get("unowned"))
+            if mounts_only:
+                args["mounts_only"] = True
+                args["unowned_only"] = unowned
+                # The roster, when it has been read. None stays None all the way to the
+                # card, which says it has not looked rather than claiming you own none.
+                args["owned"] = state.owned_species
+            if not args:
+                # Every filter empty means the model chose the class and described
+                # nothing, which would return the whole Paldeck sorted by level. Same
+                # shape as the missing-argument declines above, and the same answer.
+                log.warning("router called %s with no filters: %s", call.name, call.args)
+                return self._decline(
+                    Decline(reason="I didn't catch what kind of Pal you're after"),
+                    candidates)
+            if not self.kb.attributes:
+                return self._decline(
+                    Decline(reason="I don't have work and element data loaded"),
+                    candidates)
+
+            result = execution.find_pals_by_attribute(self.kb, **args)
+            log.info("find_pals_by_attribute(%s) -> %d/%d%s", args,
+                     len(result.matches), result.total_available,
+                     "" if result.level_exact else " (widened)")
+            # Deliberately NOT remembered. Conversation memory holds one referent per
+            # turn and this class produces five, so "what about the alpha?" after it has
+            # no single thing to resolve against - and picking the first would answer
+            # about whichever Pal happened to sort highest. ADR-0013's failure mode
+            # exactly. A follow-up naming one of them resolves on its own name.
+            return Outcome([cards.attribute_card(result)], call, candidates)
+
+        if call.name == "plan_counters":
+            boss = call.args.get("boss")
+            if not boss:
+                log.warning("router called %s with no boss: %s", call.name, call.args)
+                return self._decline(Decline(reason="no boss identified"), candidates)
+
+            from . import counters
+            try:
+                result = counters.plan(boss, state.owned_species)
+            except counters.CounterError as e:
+                # A Pal with no boss form, or a boss with no element at all - seven of
+                # them have none. Declining is the honest answer; returning an empty
+                # shortlist would read as "nothing works", which is a claim.
+                log.info("plan_counters(%s) declined: %s", boss, e)
+                return self._decline(Decline(reason=str(e)), candidates)
+
+            log.info("plan_counters(%s) -> %d candidates (roster %s)", boss,
+                     len(result.candidates),
+                     "read" if result.roster_known else "not read")
+            self._remember(who, call, {"boss": result.boss_id},
+                           f"{len(result.candidates)} counters", enabled=remember)
+            return Outcome([cards.counter_card(result)], call, candidates)
 
         # A tool the router knows about but the dispatcher does not is a wiring bug.
         # Fail loudly here rather than rendering something plausible.
         raise RuntimeError(f"router produced unregistered tool: {call.name!r}")
 
     def _remember(self, who: str, call: ToolCall, entities: dict[str, str],
-                  summary: str) -> None:
+                  summary: str, enabled: bool = True) -> None:
         """Record an ANSWERED turn. Declines are deliberately not stored.
 
         A decline resolved nothing, so it has no referent to offer a follow-up - and
         storing its best-guess candidate would manufacture one, which is precisely the
         failure ADR-0013 warns about. After a decline, "what about the alpha" correctly
         reaches back past it to the last real answer, or asks for restatement.
+
+        `enabled` is False for the second half of a chained call. Memory holds one
+        referent per turn, so storing both would leave "what about the alpha?" resolving
+        against whichever ran last rather than against what the player led with.
         """
+        if not enabled:
+            return
         self.memory.remember(Turn(who=who, tool=call.name, entities=entities,
                                   summary=summary))
 

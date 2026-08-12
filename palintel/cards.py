@@ -13,8 +13,8 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .execution import (DropsResult, ItemSourceResult, ResourceResult,
-                        SpawnResult)
+from .execution import (AttributeResult, DropsResult, ItemSourceResult,
+                        PalInfoResult, ResourceResult, SpawnResult)
 from .tools import Decline
 
 # Tier colours, so a reader can tell fact from recommendation from reference at a glance
@@ -603,3 +603,387 @@ def item_source_card(result: ItemSourceResult) -> Card:
     return Card(title=f"{result.item} comes from", lines=lines,
                 footer=f"{result.total} source{'s' if result.total != 1 else ''}",
                 colour=TIER_FACT)
+
+
+# Display names for the pak's element enum. `Electricity` and `Leaf` are the game's
+# internal spellings; the player sees Electric and Grass in game, and a card that says
+# "Leaf" is describing a table rather than answering a question.
+ELEMENT_DISPLAY = {"Electricity": "Electric", "Leaf": "Grass", "Earth": "Ground",
+                   "Normal": "Neutral"}
+
+
+def _element(name: str) -> str:
+    return ELEMENT_DISPLAY.get(name, name)
+
+
+def _elements(names) -> str:
+    return "/".join(_element(n) for n in names)
+
+
+def pal_info_card(result: PalInfoResult, job_label=lambda j: j) -> Card:
+    """What we know about one Pal, on one card. **Tier 1 — gathered, not computed.**
+
+    Deliberately a summary and deliberately not exhaustive: it exists because "tell me
+    about X" was the most-asked shape in the first play session and every one of them got
+    a card built for a different question. Each line here points at a card that answers
+    that part properly, so this is an index rather than a replacement.
+
+    It says what it does NOT have, too. A Pal with no wild spawn, no ranch output and no
+    drops is a real answer - the Terraria collab Pals are exactly that - and a card that
+    just omitted the missing lines would read as though nobody had looked.
+    """
+    if not result.known:
+        return Card(title=f"I don't have anything on {result.pal}",
+                    lines=[f"**{result.pal}** is a name I know, and it isn't in any of "
+                           f"my datasets - no spawns, no drops, no stats."],
+                    colour=TIER_DECLINE)
+
+    lines = []
+    head = f"**{result.pal}**"
+    if result.elements:
+        head += f" is {_elements(result.elements)}"
+    if result.bands:
+        # The bands the location card would print, in the same words, so two cards about
+        # one Pal cannot appear to disagree about its level.
+        span = ", ".join(f"{lo}-{hi}" if lo != hi else str(lo)
+                         for lo, hi in result.bands[:3])
+        kind = "" if result.level_kind == "normal" else f" ({result.level_kind})"
+        head += f", found at level {span}{kind}"
+    lines.append(head + ".")
+
+    if not result.in_overworld:
+        # Same sentence the spawn card leads with, for the same reason: "keep looking" is
+        # wrong advice for a tower boss.
+        lines.append("_No wild spawn - it comes from a tower, a raid, a dungeon or "
+                     "breeding._")
+
+    if result.work:
+        lines.append("")
+        lines.append("Works: " + SEP.join(f"**{job_label(j)}** {v}"
+                                          for j, v in result.work))
+
+    lines.append(_mount_line(result))
+
+    lines += _ranch_summary(result)
+
+    if result.drops:
+        lines.append(f"Drops **{result.drops}** different item"
+                     f"{'s' if result.drops != 1 else ''}.")
+
+    # Point at the cards that answer each part properly. This card is an index.
+    lines += ["", f"_Ask \"where can I find {result.pal}\" or \"what does "
+                  f"{result.pal} drop\" for the detail._"]
+    return Card(title=result.pal, lines=lines, colour=TIER_FACT)
+
+
+def _mount_line(result: PalInfoResult) -> str:
+    """Rideability, **always present, including when the answer is no.**
+
+    This line is unconditional and that is the whole design. *"Can I ride X"* routes
+    here, and an info card that simply omitted the line when a Pal has no saddle would
+    make silence carry the answer - which reads as "nobody looked", not as "no". Stating
+    it costs one line on every card and removes the ambiguity from all of them.
+
+    Preferred over a special rendering mode for the same reason. A card that reshapes
+    itself depending on which question was asked has two behaviours to learn and two to
+    keep right; a card that always says everything has one.
+
+    Which medium is named the way `build_mounts.py` names it: land covers flying and
+    ground because the pak gives them one speed column, and water is separate because
+    `SwimDashSpeed` is separate.
+    """
+    m = result.mount
+    if m is None:
+        return "Not rideable - it has no saddle."
+    at = (f", saddle at player level {m.unlock_level}"
+          if m.unlock_level is not None
+          else ", though nothing in the game files unlocks its saddle")
+    where = "faster in water" if m.fastest_medium == "water" else "a land mount"
+    return f"Rideable{at} - {where}."
+
+
+def _ranch_summary(result: PalInfoResult) -> list[str]:
+    """The ranch line, carrying the same `(unofficial)` marker the spawn card uses.
+
+    Not a shortcut: those facts are community-sourced where everything else on this card
+    is extracted (ADR-0014's amendment), and the marker is the whole point of the line
+    rather than a hedge on it.
+    """
+    if result.ranch is None:
+        return []
+    shown = result.ranch.drops[:MAX_RANCH_ITEMS]
+    rest = len(result.ranch.drops) - len(shown)
+    items = ", ".join(f"**{d.label()}**" for d in shown)
+    return [f"Ranch: {items}{f' _+{rest} more_' if rest > 0 else ''} _(unofficial)_"]
+
+
+# How many matches to list. Five fits the glance a card gets mid-play, and the filters
+# routinely leave 40+ - "44 Fire Pals" is an index, not an answer. Same reasoning as
+# MAX_DROPPERS and MAX_NAMED_OPTIONS, and the footer always says how many were behind it.
+MAX_MATCHES = 5
+
+
+def attribute_card(result: AttributeResult) -> Card:
+    """Which Pals match a description. **Tier 1, and green, despite reading like advice.**
+
+    The colour is the honest call and it is worth stating why, because the counter card
+    next door is amber for what looks like the same shape. That one *computes* a
+    recommendation: it reasons about type effectiveness and produces something the game
+    never said. This one selects rows and orders them by an integer the game states -
+    Mining 6 is a column, not a conclusion - so it is the same kind of claim as a
+    coordinate.
+
+    What the card must therefore be careful about is the ORDER, not the values. Two
+    caveats earn their space:
+
+    * **Highest level first is not a ranking.** STATUS's decision, with its own caveat
+      attached: highest is a proxy for strongest and nothing more. The footer says so
+      rather than letting "1." imply the card knows which Pal is better.
+    * **A widened level filter is a different answer.** When nothing spawns at exactly
+      the level asked for, the nearest bands come back - and the card leads with the
+      fact, because "the closest thing to an electric Pal at 60" and "an electric Pal at
+      60" are not the same claim.
+    """
+    if result.mounts_only:
+        noun = {"land": "land mounts", "water": "water mounts"}.get(
+            result.medium, "mounts")
+        title = f"{_element(result.element)} {noun}" if result.element else noun.title()
+        if result.unowned_only:
+            title = f"{noun.title()} you don't have yet"
+        elif result.player_level is not None:
+            # "player level", spelled out. Every other card in this file prints a Pal's
+            # level, and one word meaning two things across two cards is the ambiguity
+            # STATUS's decision exists to contain.
+            title += f" at player level {result.player_level}"
+    else:
+        title = f"{_element(result.element)} Pals" if result.element else "Pals"
+    if result.work:
+        title += f" for {result.work_label or result.work}"
+    if result.level is not None:
+        # "at", not "around", even when the filter widened. The leading line below owns
+        # that caveat, and a title that hedges makes every card read as approximate.
+        title += f" at level {result.level}"
+
+    if result.unowned_only and not result.roster_known:
+        # **Not a list of every mount.** "Which ones don't I have" against an unread
+        # roster would return all 108 and read as "you own none of these" - a confident
+        # claim about a set nobody looked at, which is the same failure the counter card
+        # separates `roster_known` to avoid. Saying so is the answer.
+        return Card(
+            title="I haven't read your Pals",
+            lines=["I can't tell you which mounts you're missing without looking at "
+                   f"your save. I know of **{result.total_available}** rideable Pals in "
+                   "total.",
+                   "", "_Point me at a save directory and ask again._"],
+            colour=TIER_DECLINE)
+
+    if not result.matches:
+        # Nothing matched every filter. Say which combination came up empty rather than
+        # a bare "no results", because dropping one of two filters is usually the fix and
+        # the player cannot guess which one was the problem.
+        return Card(title=f"No {title.lower()}",
+                    lines=["Nothing in my data matches all of that.",
+                           _filters_line(result)],
+                    colour=TIER_DECLINE)
+
+    lines = []
+    if result.level is not None and not result.level_exact:
+        # Leading, not a footnote. The player asked for 60 and is being shown 57.
+        lines.append(f"_Nothing spawns at exactly level {result.level} - "
+                     f"these are the closest._")
+
+    for i, m in enumerate(result.matches, 1):
+        bits = [f"**{i}. {m.pal}**", _elements(m.elements)]
+        if m.work_level is not None:
+            # The job that was asked about, and only that one. A Pal's best job is a
+            # different fact and printing it here answers a question nobody asked.
+            bits.append(f"{result.work_label or result.work} {m.work_level}")
+        if m.mount is not None:
+            bits.append(_speed_label(m, result))
+            if m.mount.unlock_level is not None:
+                bits.append(f"saddle at lvl {m.mount.unlock_level}")
+            else:
+                # Never blank. A mount with no known unlock is a different state from one
+                # you can build now, and the list is sorted by speed so it can sit at the
+                # top of a card the player is about to act on.
+                bits.append("_unlock unknown_")
+        else:
+            bits.append(m.band_label())
+        lines.append(SEP.join(bits))
+
+    if result.without_a_band:
+        # Not "no match" - not considered. A tower boss has no wild level, so a level
+        # filter cannot rule it in or out, and silently dropping it would let the card
+        # imply a completeness it does not have.
+        lines += ["", f"_{result.without_a_band} more match but have no wild spawn, "
+                      f"so I can't check their level._"]
+
+    if result.unlock_unknown:
+        # Not "too high a level" - unknown. Two saddles have no technology row at all, so
+        # nothing in the game files says how you get them, and a level filter cannot rule
+        # them in or out.
+        lines += ["", f"_{result.unlock_unknown} more can be ridden but no technology "
+                      f"unlocks their saddle, so I can't tell what level you need._"]
+
+    shown = len(result.matches)
+    footer = f"{shown} of {result.total_available} shown"
+    if result.mounts_only:
+        footer += f"{SEP}{_medium_note(result)}"
+    elif result.work:
+        # The number is the game's own suitability column, not a rating this project
+        # invented - and not a claim about the Pal being good, which nothing here
+        # measures.
+        footer += f"{SEP}{result.work_label or result.work} level is the game's own"
+    elif result.level is None:
+        footer += f"{SEP}sorted by highest level, which is not a ranking"
+    return Card(title=title, lines=lines, footer=footer, colour=TIER_FACT)
+
+
+def _speed_label(m, result: AttributeResult) -> str:
+    """A mount's speed, always saying which medium it is in.
+
+    The medium is never dropped, even when it was asked for. With no medium named the
+    card ranks by whichever of a Pal's two speeds is higher, so Faleris Aqua leads on
+    2520 - a *swim* speed - and printing the bare number would read as how fast it runs.
+    """
+    if m.speed is None:
+        return "no speed data"
+    where = "in water" if m.speed_medium == "water" else "on land"
+    return f"{m.speed} {where}"
+
+
+def _medium_note(result: AttributeResult) -> str:
+    """Say what "land" covers, because it covers more than the word does.
+
+    **Flying and ground mounts are one category, and that is the game's doing.** The pak
+    has no flight flag - seven signals were measured and falsified - but more decisively
+    it has no flight *speed*: a flyer's ridden speed is `RideSprintSpeed`, the same
+    column a ground mount uses. So separating them would not produce two rankings, it
+    would produce the same ranking twice with an invented label on each. The card says
+    flyers are in the list rather than letting "land" quietly exclude them.
+    """
+    if result.medium == "water":
+        return "swim speed"
+    covers = "flying and ground mounts share one speed in the game files"
+    if result.medium == "land":
+        return covers
+    return f"fastest of land and water{SEP}{covers}"
+
+
+def _filters_line(result: AttributeResult) -> str:
+    """What was actually asked for, so an empty card is diagnosable."""
+    bits = []
+    if result.element:
+        bits.append(f"element **{_element(result.element)}**")
+    if result.work:
+        bits.append(f"job **{result.work_label or result.work}**")
+    if result.level is not None:
+        bits.append(f"level **{result.level}**")
+    return "_Looked for: " + ", ".join(bits) + "._" if bits else ""
+
+
+def counter_card(result: "CounterResult") -> Card:
+    """The plan for fighting one boss. **The project's first Tier 2 card.**
+
+    Amber, not green, and the colour is the honest part: every other card in this file
+    reports facts extracted from the game, while this one reports a *computation over*
+    them. [ADR-0010](../Docs/adr/0010-three-tier-answer-model.md) separates the two, and
+    a player who cannot tell which they are looking at will trust both equally.
+
+    Two things are said out loud rather than assumed away:
+
+    * **The boss's name is inferred.** No table names a `GYM_`/`RAID_`/`BOSS_` row - it
+      comes from stripping the prefix and joining to the base tribe. Where that happened
+      the footer says so, because the alternative is a card asserting a name the game
+      never states.
+    * **Owning nothing effective is an answer.** It names the element that would work,
+      which costs nothing to compute and is the difference between "no" and "not yet".
+    * **A tower is named the way the player names it.** Asked about Victor, the card
+      titles itself "Victor & Shadowbeak" - which is the game's own name for the fight,
+      not a rendering this file invented - and says "Victor's tower", so the reader can
+      tell it apart from the field alpha of the same species. See `_leader_note` for why
+      that pairing is NOT footnoted as derived.
+    """
+    name = result.boss_name or result.boss_id
+    # The player asked about a human; answering about a Pal alone would read as a
+    # non-sequitur even though it is the same fight.
+    title_name = f"{result.leader} & {name}" if result.leader else name
+    kind = {"tower": "tower boss", "raid": "raid boss", "alpha": "field alpha"}.get(
+        result.kind, result.kind)
+    if result.leader:
+        # "Victor's tower" rather than "tower boss": there are nine towers and the
+        # generic label cannot tell the player which one this is.
+        kind = f"{result.leader}'s tower"
+
+    head = f"**{name}** is {_elements(result.boss_elements)}"
+    if result.level is not None:
+        head += f", level {result.level}"
+    lines = [f"{head} ({kind})."]
+
+    if not result.roster_known:
+        # NOT the same card as "you own nothing that works", and the difference is the
+        # whole point. Reading the roster costs a full Level.sav parse, so it is often
+        # absent - and asserting a fact about a set nobody looked at is precisely the
+        # confidently-wrong answer this project refuses. The typing half is still a fact
+        # about the boss and is worth saying on its own.
+        lines.append("")
+        lines.append(f"**{_elements(result.counter_elements)}** is what beats it.")
+        return Card(title=f"How to fight {title_name}", lines=lines, colour=TIER_ADVICE,
+                    footer="I haven't read your Pals, so this isn't filtered to what "
+                           "you own" + _leader_note(result))
+
+    if not result.candidates:
+        # Not a decline: the question was understood and answered, and the answer is
+        # that the roster is missing something. Saying which something is the point.
+        lines.append("")
+        lines.append(f"**Nothing you own is strong against it.** "
+                     f"{_elements(result.counter_elements)} is what beats it - "
+                     f"catching one is the shortest route.")
+        return Card(title=f"How to fight {title_name}", lines=lines, colour=TIER_ADVICE,
+                    footer=f"checked {result.owned_considered} of your Pals"
+                           + _leader_note(result))
+
+    lines.append("")
+    for m in result.candidates:
+        bits = [f"**{m.name or m.character_id}**", _elements(m.elements),
+                f"deals {m.offense:g}x"]
+        # Only worth a word when it is not 1x. "takes 1x" on every line is noise that
+        # makes the lines that matter harder to see.
+        if m.defense != 1.0:
+            bits.append("takes " + ("half" if m.defense < 1 else "double"))
+        lines.append(SEP.join(bits))
+
+    footer = (f"{len(result.candidates)} shown"
+              f"{SEP}checked {result.owned_considered} of your Pals")
+    # Typing is the ONLY thing scored, so candidates routinely tie exactly - against a
+    # single-element boss every counter is 2x/0.5x and the order is then alphabetical.
+    # Presenting that as a ranking would be the card asserting something the data does
+    # not say. Levels and stats would break the tie; calibrating that is a roadmap item
+    # and has not happened.
+    if len({(m.offense, m.defense) for m in result.candidates}) == 1 \
+            and len(result.candidates) > 1:
+        footer += f"{SEP}equally matched on type - order is arbitrary"
+    if result.name_derived:
+        footer += f"{SEP}name inferred from the character id"
+    footer += _leader_note(result)
+    return Card(title=f"How to fight {title_name}", lines=lines, colour=TIER_ADVICE,
+                footer=footer)
+
+
+def _leader_note(result: "CounterResult") -> str:
+    """Caveat the human-to-Pal pairing only where it has a single source.
+
+    **This footnote used to fire on every leader and it was wrong to.** The pairing is
+    not inferred: `pal_names_flat.json` states it in one string - `PAL_NAME_SnowBoss` is
+    "Victor & Shadowbeak" - and `DT_UniqueNPCText` reaches the same answer independently,
+    with the build failing if they disagree. Caveating a double-sourced fact on every
+    card would spend the reader's attention on the wrong thing and make the caveat mean
+    nothing when it matters.
+
+    The one derived step that remains - reaching `GYM_BlackGriffon` from the name
+    "Shadowbeak" - is the prefix inference the `name_derived` footnote already names.
+    """
+    if not result.leader or result.leader_corroborated:
+        return ""
+    return (f"{SEP}the {result.leader}/{result.boss_name or result.boss_id} pairing has "
+            f"only one source in the game files")
