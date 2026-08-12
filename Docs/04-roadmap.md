@@ -2424,6 +2424,20 @@ build" suggests, and the sheet has been corrected to say so.
 someone, and this one is on a **playthrough**, not a person. Delegating it does not shrink
 it; it only changes whose save has to be far enough along.
 
+**CORRECTED 2026-08-12 by the Phase 4 tech ingest, and the correction is large.** The
+paragraphs above assume this playthrough has not reached breeding. Checked against the
+save rather than recalled, it has: the Breeding Farm's four stated requirements — level
+19, `ForestBoss` defeated, no prerequisite, 2 ancient points — are **all satisfied**, and
+the Egg Incubator is already unlocked. See [§Phase 3B: the breeding gate is not where this
+file said it was](#phase-3b-the-breeding-gate-is-not-where-this-file-said-it-was) under
+Phase 4 for the table and the two caveats.
+
+So the block is not a dependency outside the repo at all. It is two clicks in the
+technology menu plus the cake production the sheet needs — real in-game work, on this
+save, by this player. *The lesson is the one this repo keeps relearning about itself: a
+recorded blocker is a reading, and readings go stale. Nobody re-checked this one for a
+day because the escape-hatch failure made it feel settled.*
+
 **Q3 breeding (Tier 1)** — unchanged in content, all of it pending the gate:
 - Breeding ingest per the Phase 0.4 outcome — **done**, conditional on the gate confirming it
 - `BreedingModel` behind the protocol; `breeding_path` BFS from owned Pals
@@ -2450,27 +2464,231 @@ phase containing it reported as blocked.
 
 ## Phase 4 — Advisory and knowledge: Q6 + Q4 + Q7 (target: 3 weeks)
 
-**Q6 progression (Tier 2)**
+**Built end to end 2026-08-12 and entirely unplayed.** All three classes land, three
+datasets are new, and the exit criteria below are met by construction rather than by
+observation — the same state Q5 was in after Phase 3, and the same warning applies.
+
+**Q6 progression (Tier 2)** — **built.**
 - Tech tree ingest; validate the prerequisite graph
 - `suggest_next_unlock` — deterministic candidate set, advisory ranking against a goal
 - Degrade cleanly if A6 failed (ask rather than read)
 
-**Q4 base siting (Tier 2)**
-- Curate ~20 sites with rationale and attribution
+**Q4 base siting (Tier 2)** — **built, and not as specified.** See below.
+- ~~Curate ~20 sites with rationale and attribution~~
 - Retrieve deterministically; synthesize the *explanation* only
 
-**Q7 general knowledge (Tier 3)**
-- Corpus ingest: chunk, entity-tag, embed
-- Hybrid retrieval (similarity + entity boost)
-- Grounded synthesis with mandatory citation
-- **Threshold calibration** — the point where "not in my sources" fires. Too low invents;
-  too high declines answerable questions. Calibrate against a 50-question eval set split
-  between in-corpus and out-of-corpus questions.
-- Router fallback: unmatched Palworld questions route here instead of declining. This is
-  the change that makes the system a chatbot.
+**Q7 general knowledge (Tier 3)** — **built without embeddings and without synthesis.**
+- Corpus ingest: chunk, entity-tag, ~~embed~~
+- Hybrid retrieval (~~similarity~~ lexical + entity boost)
+- ~~Grounded synthesis~~ **verbatim quotation** with mandatory citation
+- **Threshold calibration** — done at n=33 rather than the 50 asked for, and the result
+  is a ceiling rather than a threshold. See below.
+- ~~Router fallback: unmatched Palworld questions route here instead of declining~~ —
+  **not built.** `general_knowledge` is a class the router may *choose*, not a catch-all
+  the declines fall into. The system is not a chatbot and this phase did not make it one.
 
-**Exit:** every Tier 3 card carries a source; out-of-corpus questions decline rather than
-improvise; no Tier 2 card contains a candidate absent from its computed set.
+**Exit:** every Tier 3 card carries a source ✅; out-of-corpus questions decline rather
+than improvise ✅ (11/11 at the shipping floor); no Tier 2 card contains a candidate
+absent from its computed set ✅ by construction — `progression.validate` is the guard,
+built before any model pass exactly as this phase required.
+
+### What the data said, and what it changed
+
+**The tech tree is not a tree.** 17 of 588 rows carry a prerequisite at all, all 17 are
+links in six straight chains, every target exists and nothing cycles. So "validate the
+prerequisite graph" passes, and passes because there is almost nothing to validate. **The
+real gate is `LevelCap`**, which every row carries and which spans 1–80, so progression in
+this game is a level curve with a points budget. `Tier` is 0 on all 588 rows and is not
+published — a column that never varies is not a category. Q6 was reshaped around that
+before it was written.
+
+**Two currencies, and they do not mix.** 51 rows are `IsBossTechnology` and spend the
+save's `bossTechnologyPoint`; the other 537 spend `TechnologyPoint`. A card that summed
+them would tell a player they can afford something they cannot, so the currency travels
+with every cost.
+
+**Player level is still unreadable, and the unlocked set implies a floor.** A technology
+cannot be researched below its `LevelCap`, so holding one at 57 means the player is at
+least 57. That is a derived claim and is labelled as one on the card, and it is safe in
+exactly one direction: it can hide something available and can never offer something that
+is not. A stated level in the utterance overrides it — a reading beats an inference.
+
+**A `LevelCap` needed no new amendment.** STATUS's 2026-08-11 decision that "level" means
+the Pal's, *except where the game itself states a player gate*, already covers this: the
+mount work bought the exception and Q6 spends it.
+
+**26 technology names shipped as raw markup in the first build.** The name table stores
+pointers — `<mapObjectName id=|BreedFarm|/>` — and some rows spell the tag
+`mapObjectname`. A case-sensitive pattern read those as plain text, so the Large
+Incubator's name was the literal tag. Well-formed, entirely wrong, and found only because
+a card was read rather than a count checked. Third casing trap in this project after
+`Boss_Anubis` and `SkillUnlock_Thunderdog_Ice`: **the pak's casing is not to be trusted on
+any join, including a join to a tag name.**
+
+### Phase 3B: the breeding gate is not where this file said it was
+
+**Checked against the reference save on 2026-08-12, through the Q6 machinery rather than
+by recollection, and the block is not what STATUS and this document describe.**
+
+`BreedFarm` — the Breeding Farm — states four requirements and the save satisfies all
+four:
+
+| stated requirement | value | the save |
+|---|---|---|
+| `LevelCap` | 19 | player level floor is **57** |
+| `RequireDefeatTowerBoss` | `ForestBoss` | `BOSS_BATTLE_NAME_ForestBoss` = **true** |
+| `RequireTechnology` | none | — |
+| `Cost` | 2 ancient points | **40** available |
+
+`Special_HatchingPalEgg` (the Egg Incubator) is **already unlocked**. So breeding is not
+blocked on a playthrough that has not reached it: it is two clicks in the technology menu
+and 2 of 40 ancient technology points.
+
+**What that does and does not change.** It reframes the block from "waiting on someone
+else's save" — the escape hatch that was tried and failed on 2026-08-11 — to work inside
+this playthrough. It does **not** make the ADR-0008 sheet runnable today: hatching an egg
+also needs a Cake, which needs a Ranch, a Mill, wheat, eggs, milk and honey. That is real
+in-game work and it is not a dependency on another person.
+
+Two caveats stated rather than glossed: the four requirements above are what the *table*
+states, and the in-game menu may enforce something the table does not carry (a quest gate,
+for instance, of the kind `RequireResearchId` hints exists elsewhere); and the
+`EPalBossType::ForestBoss` → `BOSS_BATTLE_NAME_ForestBoss` join is an **inference on a key
+name**, strong at 5 of 5 flags matching a valid enum value and stated nowhere. Both are
+declared in `tech.json`'s `tower_join_note`.
+
+### Q4 was built differently from the design, deliberately
+
+The design was twenty hand-curated sites carrying a `flatness_score` "hand-curated, 0–1",
+prose rationale and a source attribution. **None of that was built, and the reason is that
+each third of it conflicts with something this project has already decided.**
+
+- The prose and the attribution are community-sourced content. ADR-0014's amendment
+  confines that to the ranch dataset alone, which STATUS already lists as the project's
+  weakest provenance and an open backlog item. Twenty more hand-written rationales would
+  make the exception the pattern.
+- A hand-scored flatness is an **uncalibrated judgement**, and this project already has
+  one it has not paid off (`min_player_level` / `danger`, uncalibrated since Phase 1).
+- Nobody involved can curate twenty verified Palworld base sites, so in practice they
+  would have been *invented* — the one failure mode this project refuses.
+
+**What was built instead is the half the game states.** `BP_PalGameSetting` carries
+`BaseCampAreaRange: 3500` world units — 7.63 map units through the same fitted transform
+every coordinate here uses — so "where should I put a base for ore and coal" is set
+membership over coordinates the node dataset already publishes and the 2026-08-11 marker
+walk already validated. Multi-resource coverage is the new capability: no other tool here
+can express "one circle reaching two things".
+
+Corroborated rather than trusted: applied to the reference save's three real base camps at
+(229, −487), (73, −399) and (285, 625), the radius contains 3, 2 and 1 node clusters —
+small handfuls, which is what a base looks like. Corroboration, not proof; nobody has
+measured the circle in game, and that is a play-session item.
+
+**What it gives up, and the card says so on every one of them:** nothing found in the pak
+says whether ground is flat, underwater, or inside a no-build zone. A site is *where the
+resources are*, never "you can build here". Left unsaid, that would be this project's
+signature failure in a new place — an in-bounds, correctly transformed, entirely wrong
+coordinate.
+
+### Q7's licensing risk was not mitigated; it was absent
+
+**A7 was the last open assumption, narrowed by ADR-0014 to exactly one thing: the Q7 prose
+corpus, listed there as "licensed community prose" — the only dataset still expected to
+come from outside the pak. It does not have to.**
+
+Palworld ships 45 developer-written help entries explaining its own mechanics (Pal
+Breeding Farm, Elements, Sanity, Item Rot, Pal Rank & Essence Condensers, Predator Pals),
+310 Paldeck descriptions, 64 journal notes and several hundred item, structure and
+technology descriptions. Extracted and cleaned, that is **3,103 chunks and 394k
+characters** — squarely inside the "a few thousand chunks, exact search, no index
+structure" the data model sized for. Nothing in it comes from a community source, so A7's
+remaining risk does not need managing.
+
+**What that costs, stated rather than glossed:** the game explains its mechanics and says
+nothing about playing well. This corpus answers *"how does the breeding farm work"* and
+cannot answer *"what is the best base layout"*, and the second is a real question. That is
+a genuine narrowing against the Q7 described above, and the honest trade for a corpus with
+no licence question and a citation on every line.
+
+Two exclusions worth recording. **NPC dialogue is left out** — 832 entries, 179k
+characters — because it is in-character speech and a retrieval index cannot tell an
+opinion from a mechanic; a card citing a merchant's banter as how the game works is a
+confidently wrong answer wearing a source attribution. Tutorial prompts are left out as
+control bindings.
+
+### The Q7 threshold is a ceiling, not a floor
+
+Calibrated at n=33 (`tools/eval/score_corpus.py`) rather than the 50 asked for, and
+written by the person who built the class — so it measures the corpus and the plumbing
+more than the retrieval.
+
+| floor | answered right | declined right | WRONG | missed |
+|---|---|---|---|---|
+| 0.30 | 18 | 8 | 7 | 0 |
+| 0.50 | 18 | 10 | 2 | 3 |
+| 0.62 | 17 | 11 | 1 | 4 |
+| **0.80** | **17** | **11** | **0** | **5** |
+
+0.80 costs nothing against 0.62 and removes the last wrong answer, which was *"do my pals
+get tired"* quoting a Castaway's Journal entry instead of the Sanity help page. Chosen by
+the rule every threshold here is chosen by: where wrong answers start, not where coverage
+stops improving.
+
+**The informative column is `missed`, and it is the measured case for embeddings.** All
+five are in-corpus questions asked in the player's words rather than the game's — the game
+has a *Death* entry and the player says "die", a *Pal Rank & Essence Condensers* entry and
+the player says "raise". They score 0.34–0.70, **inside the band the out-of-corpus
+questions occupy**, so no threshold separates a paraphrased question from an unanswerable
+one on lexical matching. That is not a floor to tune, it is a ceiling on the method, and
+it is the number an embedding index has to beat.
+
+**Two bugs found while calibrating, and they were the same bug twice.** The score summed
+IDF with a title multiplier and divided by the query total, so one matched title word
+could exceed 1.0 — which put a Castaway's Journal entry at **1.00** for *"how do I make a
+sandwich"*, a question with no answer in 3,103 chunks. Bounding the score fixed that and
+revealed the second: query words absent from the corpus were being *filtered out* before
+scoring, so the same question became the single word "make" and any chunk containing it
+covered 100% of it. A term in no chunk is the strongest evidence there is that a question
+is out of corpus, and it now weighs against the match instead of vanishing from it.
+
+### What was measured about the routing
+
+Every new branch was swept over the 271 A5 transcripts against the same configuration with
+it switched off, which is the check `score_fast_path.py` alone cannot make — it builds its
+own router.
+
+| branch | claimed | stolen from another class |
+|---|---|---|
+| Q6 progression | 3 | **0** |
+| Q4 base siting | 0 | **0** |
+| Q7 corpus lookup | 1 | **0** |
+
+`score_fast_path.py` is unchanged across the whole phase — 14/18 Q1, 43/49 Q2, zero wrong
+— and `score_branches.py` is unchanged at 16/16 written.
+
+**The Q6 sweep changed the branch before it shipped.** With the topic cue alone it claimed
+five, and two of the five were *"can you explain technology points?"* and *"what changes
+with technology points?"* — requests for an explanation, answered with a shopping list. A
+recommendation frame is now required alongside the topic, which is the "a question opener
+is not an intent" lesson read the other way: the opener has to name what is *wanted*.
+
+And then the two branches composed: *"can you explain technology points"* is the single
+utterance the Q7 sweep claims, and it comes back with the game's own Ancient Technology
+help page.
+
+### One thing that was built in Phase 3, tested, and never connected
+
+**`owned_species` was absent from the bot's `PlayerState` until this phase.** So every
+counter card in the 2026-08-11 play session said *"I haven't read your Pals"* while
+`saves.owned_species` sat working and unreferenced — including the cards the player was
+pressing feedback buttons on. Same shape as the counter fast path being dark for a day:
+measured in isolation, never wired.
+
+The roster is now polled on the save watcher's own slow cadence (five minutes; it is a
+multi-megabyte parse against the player save's few kilobytes), it appears on
+`/palintel status` as its own line, and the reference save reads **194 owned characters**.
+That line exists because the failure was invisible from the channel: a card saying it had
+not looked reads as a deliberate caveat rather than as a read that never happened.
 
 ---
 

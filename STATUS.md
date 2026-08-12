@@ -4,9 +4,9 @@
 any line.** This file is the two-minute orientation; the roadmap is the record of how each
 number was arrived at.
 
-*Last updated 2026-08-11. **`main` is current** — everything described below is promoted,
-via PR #3 on 2026-08-11. `git log origin/main..HEAD` was 0 commits at the time of writing,
-which is the check worth re-running rather than trusting this line.*
+*Last updated 2026-08-12. **Phase 4 landed today and none of it has been played.**
+`main` was current as of PR #3 on 2026-08-11; this session's work is not promoted, so
+`git log origin/main..HEAD` is the check worth running rather than trusting this line.*
 
 ---
 
@@ -19,11 +19,11 @@ which is the check worth re-running rather than trusting this line.*
 | 2 — Q2 Pal spawns + memory | **Closed 2026-08-10** |
 | Card artwork + drops | **Shipped.** [ADR-0017](Docs/adr/0017-card-artwork-from-game-assets.md) Accepted |
 | 3 — Q5 counters | **Built end to end 2026-08-11, unplayed.** Data, candidate set, Tier 2 guard, card, fast path and model path all land; nothing has answered a counter question in real play. Was "Q3 + Q5"; **split 2026-08-11** |
-| **3B — Q3 breeding** | **Unscheduled, blocked outside the repo.** Not numbered `4` or `6` on purpose: it runs the week the gate opens, which may be before, during or after Phase 4. Blocked on hatching eggs, not on code — see below |
+| **3B — Q3 breeding** | **Unscheduled, and the block moved back inside the repo's reach 2026-08-12.** The save says the Breeding Farm is unlockable **right now** — level 19 met, ForestBoss beaten, 2 of 40 ancient points — and the Egg Incubator is already unlocked. Not a dependency on another player's playthrough; two clicks plus cake production. See below |
 | Pal search by attribute | **Shipped, unplayed.** The first new query class since the roadmap. Work-suitability ingest, three-axis filter, card, fast path and model path |
 | Mount search | **Shipped and PLAYED 2026-08-11.** Landed 19:13, exercised four minutes later — *"which dragons can I ride at level 60"*, *"which swimming mounts are available"*, *"the fastest ground mount at level 60"*, three of the four on the fast path. **Speed ordering confirmed correct by the player.** The unowned set-difference is still unexercised |
 | Tower leaders | **Shipped, unplayed.** *"How do I beat Victor"* resolves to the tower, not the field alpha |
-| 4 — Q6 tech + Q4 base siting + Q7 corpus | **Not started, and now the next phase in sequence** — Q3 leaving Phase 3 is what makes that true. Nothing blocks it: Q6 was recorded fully unblocked in Phase 0 (A6 confirmed, the save exposes `UnlockedRecipeTechnologyNames`), Q4 is curation, and A7 confined the licence risk to the Q7 prose corpus |
+| 4 — Q6 tech + Q4 base siting + Q7 corpus | **Built end to end 2026-08-12, entirely unplayed.** All three classes, three new datasets, 540 tests green, every branch swept for theft. Q4 was built **differently from the design** and Q7 without embeddings or synthesis — both deliberate, both recorded in the roadmap. Exit criteria met by construction, not by observation |
 
 ## What answers a question today
 
@@ -37,6 +37,9 @@ which is the check worth re-running rather than trusting this line.*
 | Pal search by attribute | *"I need a mining pal"*, *"an electric pal at level 60"* | **Tier 1.** Element × job × wild level, all optional. The only class that takes a description instead of a name |
 | Pal info | *"tell me about Shroomer"*, *"what level is Penking"*, *"can I ride Azurobe"* | **Tier 1.** A summary gathered from the datasets already loaded, pointing at the cards that answer each part properly. The rideable line is unconditional, including when the answer is no — silence must not carry it |
 | Mount search | *"the fastest mount I can get at level 60"*, *"which mounts don't I have"* | **Tier 1.** Land (= flying **and** ground) or water or either, gated on the **player's** level via the saddle tech. Declines honestly when the roster is unread |
+| What to research | *"what should I research next"*, *"what can I unlock at level 30"*, *"what should I spend my ancient points on"* | **Tier 2 — amber.** Set arithmetic over the save's unlocked technologies. Two point pools, never summed. Player level is **inferred as a floor** from what you already have, and the card says so |
+| Base siting | *"where should I put a base for ore and coal"* | **Tier 2 — amber.** What falls inside a base's own 7.63-map-unit reach. The only class that answers about several resources at once. Says on every card that it **cannot tell you if the ground is buildable** |
+| How a mechanic works | *"how does sanity work"*, *"what is item rot"*, *"explain technology points"* | **Tier 3 — blue.** The game's own help text, **quoted verbatim** with a citation. No model in the path. Declines rather than improvising, and does so often |
 
 Voice in via the local microphone, text in via the channel, cards out to Discord.
 One consolidated `answer_query` tool routes all of them.
@@ -114,6 +117,37 @@ prompts — swallowing *"what's the nearest memorist"*, four breeding questions 
 *"what's strong against Lyleen"*. **A question opener is not an intent.** Reverted to
 phrases that name what is being asked for.
 
+### Phase 4, measured 2026-08-12 — all of it deterministic, none of it played
+
+| | |
+|---|---|
+| Fast-path theft, all three new branches | **0** stolen over the 271 A5 transcripts, swept against the same config with each branch off |
+| `score_fast_path.py` across the phase | unchanged — 14/18 Q1, 43/49 Q2, zero wrong |
+| Tier 3 retrieval, n=33 | 17 right, 11/11 out-of-corpus declined, **0 wrong**, 5 missed |
+| Save join | 117 of 118 unlocked technologies join the table; the one that does not is `PalBox`, which is granted rather than researched |
+| Corpus | 3,103 chunks, 394k characters, **entirely from the game's own text** |
+
+**Three things the measurements changed before anything shipped:**
+
+- **The tech tree is not a tree.** 17 of 588 rows have a prerequisite; the gate is
+  `LevelCap`. Q6 was reshaped around a level curve with a points budget rather than a
+  dependency graph.
+- **The Q6 cue claimed two explanatory questions** — *"can you explain technology
+  points?"* — and answered a request for an explanation with a shopping list. It now needs
+  a recommendation frame as well as the topic. That utterance is the single thing the Q7
+  branch claims, and it now comes back with the game's own help page.
+- **The Tier 3 scorer read an unanswerable question as fully answered, twice.** *"How do I
+  make a sandwich"* scored **1.00** against a Castaway's Journal entry, first because the
+  score was unbounded and then, after that was fixed, because unknown query words were
+  being filtered out of the denominator. Both are the same bug: a partial match reading as
+  a total one.
+
+**And the honest limit of the Tier 3 class:** its five misses are in-corpus questions in
+the player's words rather than the game's ("die" against a *Death* entry), and they score
+inside the band the unanswerable questions occupy. **No threshold separates them.** That is
+a ceiling on lexical retrieval, not a floor to tune, and it is the number embeddings would
+have to beat.
+
 ### Not measured — and cannot be, without you
 
 | Gap | Why it is stuck |
@@ -121,7 +155,9 @@ phrases that name what is being asked for.
 | ~~`art_post` p95~~ | **Measured**: 531ms p50, 1,157ms p95 over 70 attachments. Edit-in delivery holds. |
 | ~~**Do markers land on the actual rock?**~~ | **Closed 2026-08-11.** Ore, stone, wood, paldium walked against the regenerated table — nearest *and* further markers on each card, inside and outside the base — plus quartz at (-53,-960) and (-52,12), ~551 and ~573 units out on different bearings. Near-field and far-field, five resources, separate clusters. |
 | **Does `item_source` work?** | All 240 eval recordings predate the class. Ten queries were *asked* on 2026-08-11 and all routed to the model as designed — but **only Chillet's card was read back**, so routing is confirmed and correctness is not. |
-| **Does the breeding rank model hold?** | The ADR-0008 gate, and the whole of Phase 3B behind it. **Nothing is left to build**: `build_breeding.py` ingests the ranks, [`Docs/breeding-verification.md`](Docs/breeding-verification.md) is generated, `score_breeding.py` waits to consume it. It needs **eggs hatched in game**. Two preconditions: breeding unlocked in the playthrough, and the install still on Steam buildid **`24467282`** with auto-updates off — ranks are rebalanced between patches, so a tester on another build is measuring a different game. **The delegation route was tried and failed 2026-08-11**: a second player was lined up and did not have breeding unlocked either. Note ADR-0008 requires **100% agreement** outside the exception table and refuses partial agreement as a tunable, so one refuted Block 1 row is a decision (the `TableBasedBreedingModel` fallback), not a data point. |
+| **Does the breeding rank model hold?** | The ADR-0008 gate, and the whole of Phase 3B behind it. **Nothing is left to build**: `build_breeding.py` ingests the ranks, [`Docs/breeding-verification.md`](Docs/breeding-verification.md) is generated, `score_breeding.py` waits to consume it. It needs **eggs hatched in game**, on Steam buildid **`24467282`** with auto-updates off. **The "breeding isn't unlocked" precondition was checked against the save on 2026-08-12 and is wrong** — the Breeding Farm's four stated requirements are all satisfied (level 19 ≤ your floor of 57, ForestBoss beaten, no prerequisite, 2 of your 40 ancient points) and the Egg Incubator is already unlocked. So this is **not** blocked on another player's playthrough, as the failed 2026-08-11 delegation suggested; it is two clicks in the technology menu, then cake production (Ranch + Mill + wheat, eggs, milk, honey) to hatch anything. Note ADR-0008 requires **100% agreement** outside the exception table and refuses partial agreement as a tunable, so one refuted Block 1 row is a decision (the `TableBasedBreedingModel` fallback), not a data point. |
+| ~~**Is the owned-Pal roster reaching the cards?**~~ | **No, and it never had. Fixed 2026-08-12.** `owned_species` was built and tested in Phase 3 and never passed into the bot's `PlayerState`, so every counter card in the 2026-08-11 session said *"I haven't read your Pals"* — including the ones the player pressed feedback buttons on. Now polled on the watcher's own five-minute cadence and shown on `/palintel status`; the reference save reads **194 owned characters**. **Every Q5 reading from that session was taken with the roster filter off.** |
+| **Is a Q4 base site somewhere you can actually build?** | Unmeasurable from the game files, so it is a play-session item by construction. The radius is read (`BaseCampAreaRange`, 3500 world units) and corroborated against your three real base camps, which contain 3, 2 and 1 clusters at that radius — plausible, not proven. Nothing in the pak says whether ground is flat, underwater or inside a no-build zone, and the card says so every time. **Walk to one of the suggested coordinates and see.** |
 | ~~The Phase 1 latency criterion~~ | **Measured 2026-08-10 and FAILED**: voice p95 4.2s / 2.5s, text 2.0s / 1.5s. Not a tuning problem — p95 sits in the model population whenever a shipped class has no fast path. See the roadmap. |
 
 The first four are in [`Docs/play-session-protocol.md`](Docs/play-session-protocol.md);
@@ -144,6 +180,17 @@ markers on each card were walked too, outside the base, with deposits standing t
 - `min_player_level` / `danger` shipped **uncalibrated** — the rule asks for ~20 nodes of
   known difficulty read in-game and has had none.
 - Tree-region coordinates go through a transform fitted only on MainMap landmarks.
+- **The Q7 relevance floor is a starting point, not a measurement.** 0.80, chosen at n=33
+  on questions written by the person who built the class, against the 50-question in/out
+  split the roadmap asks for. It is precision-safe on that set (zero wrong) and its recall
+  is the thing real play will contradict.
+- **The tower-defeat join is an inference on a key name.** The pak gates a technology on
+  `EPalBossType::ForestBoss` and the save records `BOSS_BATTLE_NAME_ForestBoss`; nothing
+  states they are the same thing. Five of five flags in the save match a valid enum value,
+  which is evidence, not proof. Declared in `tech.json`'s `tower_join_note`.
+- **The base radius is read but the circle has never been measured in game.** 3500 world
+  units through the fitted transform is 7.63 map units, corroborated only by the cluster
+  counts inside your existing bases.
 - **Work-suitability levels are unverified against the UI.** `WorkSuitability_*` runs
   1–8 with one Pal at the top of each job. Lamball's 1/1/1 matches the game exactly, so
   the scale is probably the displayed one — but nobody has opened the Paldeck and counted
@@ -154,6 +201,30 @@ markers on each card were walked too, outside the base, with deposits standing t
 ---
 
 ## Next
+
+**0. Play Phase 4, with capture on. Nothing in it has answered a real question.** Three
+classes, three datasets, every exit criterion met by construction. The first session paid
+for itself in an hour and reversed two written decisions; this is a larger surface than
+that one was. Ask specifically:
+
+- **Q6.** *"What should I research next"*, *"what can I unlock at level 30"*, *"what
+  should I spend my ancient points on"*, *"what should I research for my base"*. Watch for
+  the **level floor**: the card says "assuming you're at least level 57". If you are
+  higher, it is hiding things you can already research, and how much that matters is a
+  question only you can answer.
+- **Q4.** *"Where should I put a base for ore and coal"* — and then **walk to the
+  coordinate**. Buildability is the one thing this class cannot check and the one thing
+  that decides whether it is any use.
+- **Q7.** *"How does sanity work"*, *"what is item rot"*, *"explain pal effigies"*. The
+  interesting result is not the hits, it is **what it declines** — every decline in your
+  own phrasing is evidence about whether lexical retrieval is enough or embeddings are
+  needed.
+- **Q5, for the first time with a roster.** Every counter card you saw on 2026-08-11 was
+  unfiltered, because `owned_species` never reached the pipeline. Ask the same counter
+  questions again and see whether the shortlist is now Pals you actually own.
+- **One in-game glance:** unlock the Breeding Farm. It costs 2 of your 40 ancient
+  technology points and every other requirement is already met. That opens the ADR-0008
+  gate, which is the largest single gap in this project.
 
 1. ~~Play session~~ — **the parts that needed playing are done.** The 2026-08-10 session
    graded latency (87 answered, 30 of each kind) and measured `art_post`; the 2026-08-11
@@ -224,6 +295,10 @@ markers on each card were walked too, outside the base, with deposits standing t
 
 | | |
 |---|---|
+| **Q7: embeddings, or leave it lexical?** | The lexical baseline answers questions asked in the game's own words and cannot answer paraphrases — measured, and the two bands overlap so no threshold separates them. Embeddings would fix that and cost a new local dependency (sentence-transformers, ~2GB, but the GPU is already there for STT) or a network call per query, which ADR-0003 argues against. **Play first**: the misses in your phrasing are the evidence, and the baseline exists so the comparison is a measurement rather than an assumption. |
+| **Q7: should a decline fall through to the corpus?** | Not built, deliberately. `general_knowledge` is a class the router may *choose*, not a catch-all. The roadmap calls the fallback "the change that makes the system a chatbot", and it is the largest change to this project's risk posture available — worth your explicit yes rather than my inference. |
+| **Q7: synthesis, or keep quoting?** | Today a Tier 3 card quotes the game verbatim, so no model touches the text and ADR-0011's drift failure cannot occur. Synthesis earns its place only when an answer needs two chunks combined; nothing has shown that yet. |
+| **Q4: is the computed version enough?** | The roadmap's Q4 was twenty curated sites with prose rationale; what shipped is "what falls inside a base's radius", because the curated version needed invented flatness scores and community prose. If you want the curated half, it needs a source you trust and a way to verify it. |
 | **Coal coverage** | 552 → 308 clusters. Cave coal is most of Palworld's coal and can no longer be asked for. Accept, or promote the dungeon feature? |
 | `maps` and `icons` | One flag pair, two features with very different risk. Separable. |
 | Card density | Resource cards gained "Also drops from", Pal cards gained "Ranch:". Editorial. |
@@ -556,6 +631,21 @@ Kept because each is a class of error worth recognising again, not a list of sca
 The pattern in all four: the data was *well-formed and wrong*, and the guard that would
 have caught it was either absent or logging at `debug`.
 
+Two more from 2026-08-12, both caught by reading output rather than by a passing test:
+
+- **26 technology names were published as raw markup.** The name table stores pointers —
+  `<mapObjectName id=|BreedFarm|/>` — and some rows spell the tag `mapObjectname`. A
+  case-sensitive pattern read those as plain text and shipped the tag as the name. Third
+  casing trap in this project after `Boss_Anubis` and `SkillUnlock_Thunderdog_Ice`, and
+  the first on a tag rather than an id: **the pak's casing is not to be trusted on any
+  join at all.**
+- **The Tier 3 scorer gave an unanswerable question 1.00, twice, for two different
+  reasons.** *"How do I make a sandwich"* matched a Castaway's Journal entry perfectly —
+  first because the score was unbounded and one title word could exceed 1.0, then, after
+  that was fixed, because query words the corpus has never seen were being dropped from
+  the denominator, leaving "make" as the entire question. Both are one bug in two costumes:
+  **a partial match presented as a total one.**
+
 Two more, from 2026-08-11, that are a different class — nothing was wrong, something was
 simply **not connected**, and everything downstream reported success:
 
@@ -574,3 +664,8 @@ simply **not connected**, and everything downstream reported success:
   lexicon build. Searching all 81 tables for `BOSSNAME_DEMO_*_LEADER` found nothing new,
   because the second source does not use that word — **"I searched for it" is only as
   strong as the term searched for.**
+- **The owned-Pal roster never reached a card.** Found 2026-08-12. `saves.owned_species`
+  was built in Phase 3, unit tested, and never passed into the bot's `PlayerState`, so
+  every counter answer in the 2026-08-11 session was unfiltered while the card politely
+  explained that it had not looked. The same shape as the fast path above, and worse in
+  one way: the caveat it printed was *true*, so nothing about the output looked wrong.
