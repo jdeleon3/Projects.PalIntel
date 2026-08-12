@@ -68,6 +68,12 @@ SEED_ALIASES: dict[str, list[str]] = {
     "Knocklem": ["knock limit"],
     "Lamball": ["lamb ball", "lambhall", "lam ball", "landball"],
     "Leezpunk": ["leithbunk"],
+    # A failure RUN from the 2026-08-11 play session, and the first aliases in this file
+    # harvested from unscripted speech rather than from prompts read off a list. Three
+    # attempts at one name in ninety seconds - "Lani", "Lening", "Leneen" - two declined
+    # and the third answered with the wrong class. Swept against 281 transcripts (271
+    # eval + the 41 from that session): worst unrelated match 0.714, under both floors.
+    "Lyleen": ["lani", "lening", "leneen"],
     "Lifmunk": ["life monk", "lif munk", "liftmunk", "lifmonk", "live monk"],
     "Mozzarina": ["moserina", "maserina"],
     "Mycora": ["micora"],
@@ -81,6 +87,8 @@ SEED_ALIASES: dict[str, list[str]] = {
     "Pierdon": ["pyridon", "pyrdun"],
     "Prunelia": ["pirelia"],
     "Sibelyx": ["silbix"],
+    # "Celine" from play, "celery" from the eval set - the same name failing two ways.
+    "Selyne": ["celine", "celery"],
     "Silvance": ["sylvans", "silvents"],
     "Solmora": ["syllamora"],
     "Surfent": ["surfin'"],

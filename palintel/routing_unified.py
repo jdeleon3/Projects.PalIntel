@@ -59,7 +59,9 @@ CLASS_HELP: dict[str, str] = {
     "item_source": "which Pals drop a named item (Flame Organ, Leather, Bone)",
     "breeding_combo": "which parent Pals breed to produce a target Pal",
     "breeding_pair": "what two named Pals produce when bred together",
-    "pal_info": "a Pal's element, stats or work suitability",
+    "pal_info": "a summary of ONE named Pal - \"tell me about X\", \"who is X\", "
+                "\"what level is X\". Prefer a narrower class when the question names "
+                "one: where it is, what it drops, how to fight it",
     "compare_pals": "which of two named Pals is better at something",
     "boss_counter": "which Pal to use against a boss or tower",
     "pal_search": "which Pals match a DESCRIPTION rather than a name - an element, a "
@@ -71,7 +73,7 @@ CLASS_HELP: dict[str, str] = {
 # offering a class the caller cannot dispatch - which is the mistake this function's
 # docstring warns about. `pal_search` joins the same way and on the same day.
 PRODUCTION_CLASSES = ("resource_location", "pal_location", "pal_drops",
-                      "item_source", "boss_counter", "pal_search")
+                      "item_source", "boss_counter", "pal_search", "pal_info")
 
 # The pak's element enum. Nine values, so the cost of carrying it is nothing beside the
 # 313-name Pal enum this module exists to stop duplicating. Written out rather than read

@@ -127,10 +127,34 @@ def test_the_games_own_name_for_the_fight_resolves_too():
     assert plan.leader == "Victor"
 
 
-def test_the_pal_name_still_resolves_to_the_alpha():
-    """The other half of the same distinction: asking about Shadowbeak by name is a
-    question about the creature in the world, and that answer must not move."""
-    plan = counters.plan("Shadowbeak", None)
+@pytest.mark.parametrize("pal", ["Shadowbeak", "Orserk", "Grizzbolt", "Lyleen",
+                                 "Faleris", "Selyne", "Bastigor", "Shaolong"])
+def test_a_tower_pals_name_resolves_to_the_tower(pal):
+    """**Reversed by play on 2026-08-11, and this test used to assert the opposite.**
+
+    It read: "asking about Shadowbeak by name is a question about the creature in the
+    world, and that answer must not move." The session moved it. *"How do I beat
+    Orserk"* and *"how do I beat Grisbolt"* both came back about the field alpha and the
+    player pressed **wrong Pal** on both.
+
+    Two facts settle it. **Seven of these nine alphas are placed nowhere in the
+    overworld**, so the reading the name index chose was a fight that does not exist. And
+    a `GYM_` row and its `BOSS_` row share a tribe and therefore an element, so the
+    ADVICE is identical either way - only the label changes, from "field alpha" to
+    "Zoe's tower". Preferring the tower costs nothing and matches what a player naming a
+    tower species means.
+    """
+    plan = counters.plan(pal, None)
+    assert plan.kind == "tower"
+    assert plan.boss_id.startswith("GYM_")
+    assert plan.leader is not None
+
+
+@pytest.mark.parametrize("pal", ["Anubis", "Chillet", "Mammorest"])
+def test_an_ordinary_pals_name_still_resolves_to_its_alpha(pal):
+    """The tie-break is narrow. A Pal with no tower is unaffected, and the overwhelming
+    majority of `plan_counters` targets are exactly that."""
+    plan = counters.plan(pal, None)
     assert plan.kind == "alpha"
     assert plan.leader is None
 

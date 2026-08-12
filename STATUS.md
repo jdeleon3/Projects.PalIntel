@@ -33,6 +33,7 @@ mapping and attribute search are on `design-and-phase0` and not yet promoted.*
 | Item source | *"who drops Flame Organ"* | 151 items, enum-only (not in the lexicon) |
 | Boss counters | *"how do I beat Anubis"*, *"how do I beat Victor"* | **Tier 2 — computed advice, amber card.** Filtered to Pals you own when the roster has been read; says so plainly when it has not. A tower leader resolves to the **tower**, not the field alpha of the same species |
 | Pal search by attribute | *"I need a mining pal"*, *"an electric pal at level 60"* | **Tier 1.** Element × job × wild level, all optional. The only class that takes a description instead of a name |
+| Pal info | *"tell me about Shroomer"*, *"what level is Penking"* | **Tier 1.** A summary gathered from the datasets already loaded, pointing at the cards that answer each part properly |
 | Mount search | *"the fastest mount I can get at level 60"*, *"which mounts don't I have"* | **Tier 1.** Land (= flying **and** ground) or water or either, gated on the **player's** level via the saddle tech. Declines honestly when the roster is unread |
 
 Voice in via the local microphone, text in via the channel, cards out to Discord.
@@ -55,6 +56,50 @@ at all.
 | Cost | $0.0036/request — 75% thinking tokens, 12% schema |
 | Map render | 7.8 ms p50, 25.5 ms p95, ~65 KB, entirely off the graded path |
 | Icon coverage | 285 of 286 Paldeck entries |
+
+### The first play session with capture on — 2026-08-11
+
+**41 utterances, 42 clips, 9 human labels.** The first organic, human-corrected data this
+project has had, and it earned its keep immediately: it reversed two written decisions,
+found a class the product was missing, and caught a failure mode nobody had named.
+
+| | |
+|---|---|
+| Captured | 41 utterances / 3.7 MB, every one joined to its card by message id |
+| Human labels | 9 — 6 `misheard`, 2 `wrong_entity`, 1 `wrong_class` |
+| Fast path, before → after | **15/41 → 27/41** on replay |
+| Voice p95 | 6.5s against a 2.5s budget ❌, with route p50 **2.83s** — 71% of the total |
+
+What it changed, all of it now regression-tested in `tests/test_session_findings.py`:
+
+- **A tower species answered about the field alpha.** Both `wrong_entity` labels. Seven
+  of the nine tower alphas are placed **nowhere in the overworld**, so the reading was a
+  fight that cannot be had. A `GYM_` row and its `BOSS_` row share a tribe and therefore
+  an element, so the advice was identical either way — only the label was wrong. Now
+  prefers the tower. *This reversed a test that asserted the opposite.*
+- **`pal_info` did not exist, and was the most-asked shape** — 9 of 41. Seven were
+  answered by the **wrong class**: a location card for *"tell me about Shroomer"*, a Tier
+  2 counter plan for *"who is Victor"*. A wrong-class answer is worse than a decline
+  because it looks like an answer. Built, from data already loaded.
+- **Whisper invented speech.** A clip transcribed as *"Thank you for watching! Please
+  like, subscribe, comment and"* — counted as heard, spent 1.8s and a model call, and was
+  **captured as a labelled clip**, polluting the corpus capture exists to build. A third
+  kind of nothing, distinct from an empty transcript and from a truncated one, and the
+  only one that looks like a real query all the way down.
+- **A textbook failure run**, exactly as the capture design predicted: *"Lani"* →
+  *"Lening"* → *"Leneen"* in ninety seconds, two declines and a wrong class. Yielded the
+  first aliases in this project harvested from unscripted speech rather than read prompts.
+- **Cue gaps play found and no amount of desk work would have**: *"which pal's can
+  ranch"* (the job trailing the subject, and only the `-ing` form in the vocabulary),
+  *"what's Victor's weakness"* (possessive), *"how do I beat Axel & Orserk"* (the game's
+  own name for the fight, not in the counterable set).
+
+**And one thing the session made me get wrong before the scorers caught it.** The first
+`pal_info` cue set treated *"what's X"* as an info opener. It took Q2 from 43 to 42 with
+a wrong card, claims outside the scored classes from 12 to 28, and broke three counter
+prompts — swallowing *"what's the nearest memorist"*, four breeding questions and
+*"what's strong against Lyleen"*. **A question opener is not an intent.** Reverted to
+phrases that name what is being asked for.
 
 ### Not measured — and cannot be, without you
 
@@ -104,7 +149,17 @@ markers on each card were walked too, outside the base, with deposits standing t
    dataset, owned roster, candidate set, Tier 2 guard, counter card, fast path with
    chained dispatch, and the model path. Q3 is blocked on the ADR-0008 gate, which needs
    breeding unlocked in game.
-4. **Play, with capture on. This is now the only thing standing between three built
+4. ~~Play with capture on~~ — **done 2026-08-11, see the session block above.** The
+   counter classes, the nine leaders and attribute search were all exercised; mounts and
+   `pal_info` were built after it and are unplayed. **A second session is now the highest
+   -value thing available**, because the first one paid for itself in one hour and the
+   fixes it produced are themselves unplayed. Ask especially: `pal_info` phrasings,
+   mounts, and whether the tower/alpha preference reads right when you genuinely mean a
+   field alpha.
+
+   The original framing, still true of what has not been played:
+
+   **Play, with capture on. This is now the only thing standing between three built
    classes and any evidence they work.** `[capture] enabled` and `feedback` are **true in
    `config.local.toml` as of 2026-08-11** and the write path was smoke-tested end to end
    (clip, log line, message-id join, feedback fold), so the session needs nothing set up —

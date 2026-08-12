@@ -125,6 +125,49 @@ def detect(utterance: str, wake_word: str = WAKE_WORD,
     return Activation(True, utterance[idx:].lstrip(" ,.:;-").strip(), consumed, score)
 
 
+# Whisper's boilerplate. On silence or non-speech noise the model does not return an
+# empty string - it returns text it was trained on, and for a model trained on subtitle
+# corpora that means YouTube outros and caption credits.
+#
+# Observed in the 2026-08-11 session: a clip transcribed as *"Thank you for watching!
+# Please like, subscribe, comment and"*, which was counted as HEARD, spent 1.8s and a
+# model call to decline, and - worse - was captured as a labelled gameplay clip. It
+# pollutes the very corpus capture exists to build.
+#
+# Matched as whole phrases rather than by keyword, because "thanks" and "subscribe" are
+# things a player might genuinely say. Anchored loosely because the hallucination is
+# often truncated mid-sentence by endpointing, as this one was.
+_HALLUCINATED = re.compile(
+    r"thank(?:s| you)(?: (?:all|so much|you))? for watching"
+    r"|please (?:like|subscribe)"
+    r"|like,? (?:and )?subscribe"
+    r"|don'?t forget to subscribe"
+    r"|subtitles? by|caption(?:s|ing) by|transcri(?:bed|ption) by"
+    r"|\bamara\.org\b"
+    r"|thanks for watching",
+    re.I)
+
+
+def hallucinated(text: str) -> bool:
+    """True when a transcript is Whisper's silence boilerplate rather than speech.
+
+    **A third kind of nothing**, and it has to be separated from the other two. An empty
+    transcript means the detector fired on noise; a `bare` activation means the player
+    spoke and endpointing cut the question off. This one means the player said nothing
+    and the model invented fluent, confident text about it - which is the only one of the
+    three that looks like a real query all the way down the pipeline.
+
+    Checked on the WHOLE transcript, before the wake word is stripped, because the
+    hallucination usually replaces the utterance entirely rather than trailing it.
+
+    Deliberately a small closed list. The general problem - detecting that a transcript
+    is not grounded in the audio - is open-ended, and a loose rule here would discard
+    real questions, which is the failure this project weighs heaviest. These phrases
+    cost nothing to give up: nobody asks PalIntel to like and subscribe.
+    """
+    return bool(_HALLUCINATED.search(text))
+
+
 def bare(activation: Activation) -> bool:
     """The wake word fired and nothing survived behind it.
 

@@ -242,6 +242,66 @@ def find_item_source(kb: KnowledgeBase, item: str) -> ItemSourceResult:
     )
 
 
+# ------------------------------------------------------------------ pal info
+
+
+@dataclass(frozen=True)
+class PalInfoResult:
+    """Everything already known about one Pal, gathered rather than computed.
+
+    **The class the 2026-08-11 session asked for most and the product did not have.**
+    Nine of forty-one utterances were *"tell me about X"*, *"who is X"*, *"what level is
+    X"* - and the damage was not that they declined. Seven of them were **answered by the
+    wrong class**: a location card for "tell me about Shroomer", a Tier 2 counter plan for
+    "who is Victor". A wrong-class answer is worse than a decline, because it looks like
+    an answer.
+
+    Nothing here is new data. Every field is already loaded for some other card, which is
+    why this is Tier 1 and why it costs nothing to be complete.
+    """
+    pal: str
+    known: bool
+    elements: tuple[str, ...]
+    bands: tuple[tuple[int, int], ...]
+    level_kind: str | None
+    in_overworld: bool
+    # Job -> level, already trimmed to what a card can show, highest first.
+    work: list[tuple[str, int]]
+    mount: Mount | None
+    ranch: Ranch | None
+    ranch_source: str
+    drops: int                  # how many distinct items, for a "and it drops N things"
+    spawn_areas: int
+
+
+def get_pal_info(kb: KnowledgeBase, pal: str, work_limit: int = 3) -> PalInfoResult:
+    """A summary of one Pal, from the datasets already in memory.
+
+    `known=False` only when the name is in the lexicon and in none of the datasets, which
+    is a real state - the Terraria collab Pals and a few quest actors have a name and
+    nothing else - and it is different from the Pal not existing.
+    """
+    attrs = kb.attributes.get(pal)
+    areas = [a for a in kb.spawns if a.pal == pal]
+    drops = kb.pal_drops.get(pal, [])
+    work = sorted(((j, v) for j, v in (attrs.work if attrs else {}).items() if v),
+                  key=lambda kv: (-kv[1], kv[0]))[:work_limit]
+    return PalInfoResult(
+        pal=pal,
+        known=attrs is not None or bool(areas) or bool(drops),
+        elements=attrs.elements if attrs else (),
+        bands=attrs.bands if attrs else (),
+        level_kind=attrs.level_kind if attrs else None,
+        in_overworld=pal not in kb.pals_without_areas,
+        work=work,
+        mount=kb.mounts.get(pal),
+        ranch=kb.ranch.get(pal),
+        ranch_source=kb.ranch_source,
+        drops=len(drops),
+        spawn_areas=len(areas),
+    )
+
+
 # ------------------------------------------------------- search by attribute
 #
 # **The first class that describes an entity instead of naming one.** Every other tool

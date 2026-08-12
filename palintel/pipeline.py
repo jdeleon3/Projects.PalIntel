@@ -128,7 +128,12 @@ def _counterable(version: str) -> set[str]:
         log.info("no bosses.json - the counter fast path stays off")
         return set()
     bosses = json.loads(path.read_text(encoding="utf-8"))
-    return {b["name"].lower() for b in bosses["entries"] if b.get("name")}
+    names = {b["name"].lower() for b in bosses["entries"] if b.get("name")}
+    # And the game's own name for each tower fight - "Axel & Orserk". It is a PAL_NAME_
+    # row, so the lexicon ranks it as a Pal and the fast path checks it against this set;
+    # without it the most explicit way there is to name a tower paid a model round trip,
+    # which is what it did in play on 2026-08-11.
+    return names | {l["display"].lower() for l in bosses.get("leaders", [])}
 
 
 def build_router(kb: KnowledgeBase, prefer: str = "auto",
@@ -435,6 +440,29 @@ class Pipeline:
             self._remember(who, call, {"item": item}, f"{result.total} sources",
                            enabled=remember)
             return Outcome([cards.item_source_card(result)], call, candidates)
+
+        if call.name == "get_pal_info":
+            pal = call.args.get("pal")
+            if not pal:
+                log.warning("router called %s with no pal: %s", call.name, call.args)
+                return self._decline(Decline(reason="no Pal identified"), candidates)
+
+            def render_info(name: str) -> Card:
+                result = execution.get_pal_info(self.kb, name)
+                log.info("get_pal_info(%s) -> known=%s, %d work, %d drops",
+                         name, result.known, len(result.work), result.drops)
+                card = cards.pal_info_card(result, self.kb.job_label)
+                if self.artwork is not None and self.artwork.icons:
+                    # The icon only. This card describes a creature, not a place.
+                    card.thumbnail = self.artwork.assets.icon(name)
+                return card
+
+            self._remember(who, call, {"pal": pal}, "info", enabled=remember)
+            # A Paldeck slot with a variant has two answers here for the same reason it
+            # does on a spawn card: Menasting and Menasting Terra have different elements
+            # and different work levels, so one card would be wrong half the time.
+            return Outcome(self._cards_for(self.kb.lexicon.family(pal), render_info),
+                           call, candidates)
 
         if call.name == "find_pals_by_attribute":
             args = {k: v for k, v in call.args.items()

@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .execution import (AttributeResult, DropsResult, ItemSourceResult,
-                        ResourceResult, SpawnResult)
+                        PalInfoResult, ResourceResult, SpawnResult)
 from .tools import Decline
 
 # Tier colours, so a reader can tell fact from recommendation from reference at a glance
@@ -618,6 +618,80 @@ def _element(name: str) -> str:
 
 def _elements(names) -> str:
     return "/".join(_element(n) for n in names)
+
+
+def pal_info_card(result: PalInfoResult, job_label=lambda j: j) -> Card:
+    """What we know about one Pal, on one card. **Tier 1 — gathered, not computed.**
+
+    Deliberately a summary and deliberately not exhaustive: it exists because "tell me
+    about X" was the most-asked shape in the first play session and every one of them got
+    a card built for a different question. Each line here points at a card that answers
+    that part properly, so this is an index rather than a replacement.
+
+    It says what it does NOT have, too. A Pal with no wild spawn, no ranch output and no
+    drops is a real answer - the Terraria collab Pals are exactly that - and a card that
+    just omitted the missing lines would read as though nobody had looked.
+    """
+    if not result.known:
+        return Card(title=f"I don't have anything on {result.pal}",
+                    lines=[f"**{result.pal}** is a name I know, and it isn't in any of "
+                           f"my datasets - no spawns, no drops, no stats."],
+                    colour=TIER_DECLINE)
+
+    lines = []
+    head = f"**{result.pal}**"
+    if result.elements:
+        head += f" is {_elements(result.elements)}"
+    if result.bands:
+        # The bands the location card would print, in the same words, so two cards about
+        # one Pal cannot appear to disagree about its level.
+        span = ", ".join(f"{lo}-{hi}" if lo != hi else str(lo)
+                         for lo, hi in result.bands[:3])
+        kind = "" if result.level_kind == "normal" else f" ({result.level_kind})"
+        head += f", found at level {span}{kind}"
+    lines.append(head + ".")
+
+    if not result.in_overworld:
+        # Same sentence the spawn card leads with, for the same reason: "keep looking" is
+        # wrong advice for a tower boss.
+        lines.append("_No wild spawn - it comes from a tower, a raid, a dungeon or "
+                     "breeding._")
+
+    if result.work:
+        lines.append("")
+        lines.append("Works: " + SEP.join(f"**{job_label(j)}** {v}"
+                                          for j, v in result.work))
+
+    if result.mount is not None:
+        at = (f", saddle at lvl {result.mount.unlock_level}"
+              if result.mount.unlock_level is not None else "")
+        lines.append(f"Rideable{at}.")
+
+    lines += _ranch_summary(result)
+
+    if result.drops:
+        lines.append(f"Drops **{result.drops}** different item"
+                     f"{'s' if result.drops != 1 else ''}.")
+
+    # Point at the cards that answer each part properly. This card is an index.
+    lines += ["", f"_Ask \"where can I find {result.pal}\" or \"what does "
+                  f"{result.pal} drop\" for the detail._"]
+    return Card(title=result.pal, lines=lines, colour=TIER_FACT)
+
+
+def _ranch_summary(result: PalInfoResult) -> list[str]:
+    """The ranch line, carrying the same `(unofficial)` marker the spawn card uses.
+
+    Not a shortcut: those facts are community-sourced where everything else on this card
+    is extracted (ADR-0014's amendment), and the marker is the whole point of the line
+    rather than a hedge on it.
+    """
+    if result.ranch is None:
+        return []
+    shown = result.ranch.drops[:MAX_RANCH_ITEMS]
+    rest = len(result.ranch.drops) - len(shown)
+    items = ", ".join(f"**{d.label()}**" for d in shown)
+    return [f"Ranch: {items}{f' _+{rest} more_' if rest > 0 else ''} _(unofficial)_"]
 
 
 # How many matches to list. Five fits the glance a card gets mid-play, and the filters

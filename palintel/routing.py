@@ -267,6 +267,11 @@ _DROP_CUES = re.compile(r"\b(drop|drops|dropped|yield|yields|get from|give|gives
 _COUNTER_CUES = re.compile(
     r"\b(?:counter|beat|defeat|kill|fight)(?:s|es|ing|en)?\b"
     r"|\bweak(?:ness)? (?:to|against)\b"
+    # "What's VICTOR'S weakness" - the possessive puts the named entity in target
+    # position just as firmly as "beat X" does, which is the rule this set is built on.
+    # Asked in play on 2026-08-11 and paid a model round trip for it. Bare "weakness" is
+    # still out: "what's my weakness" names nothing to fight.
+    r"|\b[\w]+'s\s+weak(?:ness)?\b"
     r"|\btakes? on\b", re.I)
 
 # --------------------------------------------------------------- attribute search
@@ -306,7 +311,9 @@ _WORK_WORDS = {
     "kindling": "EmitFlame",
     "cooling": "Cool",
     "medicine": "ProductMedicine",
-    "ranching": "MonsterFarm", "farming": "MonsterFarm",
+    # "ranch" as a bare verb came from play: *"which pal's can ranch?"* deferred to the
+    # model on 2026-08-11 because only the -ing form was here.
+    "ranching": "MonsterFarm", "farming": "MonsterFarm", "ranch": "MonsterFarm",
 }
 
 _ELEMENT_ALT = "|".join(sorted(_ELEMENT_WORDS, key=len, reverse=True))
@@ -323,7 +330,10 @@ _ELEMENT_CUE = re.compile(
 # on its own reaches neither.
 _WORK_CUE = re.compile(
     rf"\b({_WORK_ALT})\s+pals?\b"
-    rf"|\b(?:at|for)\s+({_WORK_ALT})\b", re.I)
+    rf"|\b(?:at|for)\s+({_WORK_ALT})\b"
+    # "which pals CAN ranch" - the job trails the subject instead of qualifying it.
+    # Straight from play; the two patterns above both wanted it in front.
+    rf"|\bpals?\b[^.?]{{0,20}}?\bcan\s+({_WORK_ALT})\b", re.I)
 # Two ways to say "generating electricity", which no single word covers.
 _POWER_CUE = re.compile(
     r"\b(?:generat\w*\s+(?:electricity|power)|power\s+generation"
@@ -366,6 +376,33 @@ _UNOWNED_CUE = re.compile(
     r"(?:have|got|own|owned|caught|catch|get)\b"
     r"|\bmissing\b"
     r"|\byet\s+to\s+(?:catch|get|own)\b", re.I)
+
+# "Tell me about X". **The most-asked shape in the first play session** - nine of
+# forty-one utterances - and the product had no class for it, so seven were answered by
+# the wrong one: a location card for "tell me about Shroomer", a Tier 2 counter plan for
+# "who is Victor".
+#
+# Disjoint from every other cue family here on purpose. It must sit BEHIND counters and
+# drops in `route`, because "what's Victor's weakness" and "what do I get from X" are
+# more specific readings of the same polite openers, and this branch would otherwise
+# claim them and answer a narrower question with a summary.
+# **"What's X" is NOT on this list, and the first version of it was.** Measured
+# immediately: a generic `what(?:'s| is)` opener took Q2 from 43 to 42 with one wrong
+# card, took claims outside the scored classes from 12 to 28, and broke three counter
+# prompts the branch batch had been passing. It swallowed *"what's the nearest memorist"*
+# (a location question), four *"what's the breeding combo for X"*, *"what's a good
+# partner skill for X"*, and - worst - *"what's strong against Lyleen"*, which
+# `_COUNTER_CUES` deliberately leaves to the model because the named entity may be the
+# attacker rather than the target.
+#
+# The lesson is the one the cue sets keep teaching: a question OPENER is not an intent.
+# Every phrase below names what is being asked for, not merely that something is.
+_INFO_CUES = re.compile(
+    r"\btell me about\b|\bwhat can you tell me\b"
+    r"|\bwho(?:'s| is)\b"
+    r"|\binfo (?:on|about)\b|\bdescribe\b"
+    r"|\bwhat level is\b|\bhow good is\b",
+    re.I)
 
 _LOCATION_CUES = re.compile(rf"\b({_CUE_SETS[DEFAULT_CUES]})\b", re.I)
 _LEVEL = re.compile(r"\b(?:level|lvl)\s*(\d{1,2})\b", re.I)
@@ -502,7 +539,7 @@ class StubRouter:
                  pal_spawns: bool = True, pal_floor: float = PAL_CONFIDENT,
                  pal_drops: bool = True, counters: bool = False,
                  counterable: set[str] | None = None,
-                 attributes: bool = True):
+                 attributes: bool = True, info: bool = True):
         """`resource_floor` is how well a resource must match to be answered on.
 
         Separate from the Pal guard, which stays at MIN_CONFIDENT, because one constant
@@ -564,6 +601,10 @@ class StubRouter:
         # tuned: the branch abstains whenever anything in the utterance resolves to a
         # named entity, so it cannot claim a query another class could answer.
         self._attributes = attributes
+        # "Tell me about X". On by default for the same reason attribute search is: it
+        # needs no dataset handed in, and its guard is the ordinary confident-Pal-plus-cue
+        # gate the drop branch already uses.
+        self._info = info
         # Width, floor and registered classes are all in the name so they reach
         # `/palintel status` and every routing log line. A fast path that quietly widened,
         # or a backstop quietly answering on weaker matches, would be indistinguishable
@@ -571,7 +612,8 @@ class StubRouter:
         self.name = (f"stub:{cues}"
                      + (f"@{resource_floor:g}" if resource_floor != MIN_CONFIDENT else "")
                      + (f"+pals@{pal_floor:g}" if pal_spawns else "")
-                     + ("+attrs" if attributes else ""))
+                     + ("+attrs" if attributes else "")
+                     + ("+info" if info else ""))
 
     def _subject(self, candidates: list[Candidate]) -> tuple[str, str, str] | None:
         """(tool, slot, canonical) for the subject this utterance names, if any.
@@ -671,6 +713,29 @@ class StubRouter:
         return ToolCall(name="find_pal_drops", args={"pal": top.canonical},
                         rationale=f"drop cue + pal candidate {top}")
 
+    def _info_call(self, utterance: str, candidates: list) -> "ToolCall | None":
+        """`get_pal_info` when the utterance asks what a named Pal *is*.
+
+        Gated exactly like the drop branch - a confident Pal plus a cue - because the
+        fast path preempts the model and anything it claims wrongly is a wrong card the
+        model never got to prevent.
+
+        **Pal kind only.** A tower leader tops the candidate list at 1.00 on "who is
+        Victor", and there is no info card for a human: what the datasets hold is the
+        Pal she fights with, and answering a question about a person with a Pal's stat
+        line is the wrong-class failure this branch exists to remove, not repeat it.
+        Those defer to the model.
+        """
+        if not (self._info and candidates):
+            return None
+        top = candidates[0]
+        if top.kind != "pal" or top.score < self._pal_floor:
+            return None
+        if not _INFO_CUES.search(utterance):
+            return None
+        return ToolCall(name="get_pal_info", args={"pal": top.canonical},
+                        rationale=f"info cue + pal candidate {top}")
+
     def _attribute_call(self, utterance: str,
                         candidates: list[Candidate]) -> "ToolCall | None":
         """`find_pals_by_attribute` when the utterance describes a Pal instead of naming one.
@@ -707,7 +772,7 @@ class StubRouter:
         if (m := _ELEMENT_CUE.search(body)):
             element = _ELEMENT_WORDS[(m.group(1) or m.group(2)).lower()]
         if (m := _WORK_CUE.search(body)):
-            work = _WORK_WORDS[(m.group(1) or m.group(2)).lower()]
+            work = _WORK_WORDS[next(g for g in m.groups() if g).lower()]
         elif _POWER_CUE.search(body):
             work = "GenerateElectricity"
         elif _OIL_CUE.search(body):
@@ -843,6 +908,14 @@ class StubRouter:
         # no entity to answer about and decline. It goes last among the three because its
         # guard is the strictest - it requires every other branch to have found nothing
         # nameable - so nothing it claims was ever available to them.
+        # Behind counters and drops, ahead of the location gate. "What's Victor's
+        # weakness" and "what do I get from X" are more specific readings of the same
+        # polite openers, and this branch must not claim them; "tell me about Shroomer"
+        # carries no location cue, so the gate below would decline it.
+        info = self._info_call(utterance, candidates)
+        if info is not None:
+            return info
+
         attribute = self._attribute_call(utterance, candidates)
         if attribute is not None:
             return attribute

@@ -81,6 +81,18 @@ def effectiveness(attacker: tuple[str, ...], defender: tuple[str, ...],
     return NEUTRAL
 
 
+def _name_priority(boss: dict) -> tuple:
+    """Sort key deciding which row owns a display name when several share one.
+
+    A tier-1 `GYM_` tower wins, then anything else, and within a group the character id
+    keeps the order stable so two runs agree. `_2` is the same fight made harder and
+    `_BossRush` is another mode, so neither should claim the plain name.
+    """
+    tower = (boss["kind"] == "tower" and boss.get("tier") == 1 and not boss.get("mode")
+             and boss["character_id"].upper().startswith("GYM_"))
+    return (0 if tower else 1, boss["character_id"])
+
+
 @lru_cache(maxsize=4)
 def load(version: str = "1.0.2") -> tuple[dict, dict, dict]:
     """(matrix, typing by lower-cased id, bosses by lower-cased id)."""
@@ -100,7 +112,21 @@ def load(version: str = "1.0.2") -> tuple[dict, dict, dict]:
     # name can repeat across tiers of the same fight.
     by_boss: dict[str, dict] = {}
     by_cid = {b["character_id"]: b for b in bosses["entries"]}
-    for b in bosses["entries"]:
+    # Display names, TOWER FIRST. Measured in play on 2026-08-11: "how do I beat Orserk"
+    # and "how do I beat Grisbolt" both came back about the field alpha and the player
+    # pressed "wrong Pal" on both.
+    #
+    # The entries are sorted by (kind, character_id) and `alpha` sorts before `tower`, so
+    # a plain setdefault handed every tower Pal's name to its BOSS_ row. **Seven of the
+    # nine of those alphas are placed nowhere in the overworld** - Orserk, Faleris,
+    # Selyne, Bastigor, Shaolong, Shadowbeak and Astralym have zero alpha areas - so the
+    # reading it chose was a fight the player cannot have.
+    #
+    # The tie-break is free rather than a judgement call: a GYM_ row and its BOSS_ row
+    # come from the same tribe and therefore carry the same element, so the ADVICE is
+    # identical either way. Only the label changes, from "field alpha" to "Zoe's tower",
+    # and the second is what someone naming a tower species means.
+    for b in sorted(bosses["entries"], key=_name_priority):
         if b.get("name"):
             by_boss.setdefault(b["name"].lower(), b)
     for b in bosses["entries"]:
