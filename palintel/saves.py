@@ -84,6 +84,18 @@ class Transform:
 TOWER_FLAG_PREFIX = "BOSS_BATTLE_NAME_"
 
 
+def _ago(seconds: float) -> str:
+    """A save age a human can read at a glance. `activity.ago` is the same idea for
+    events, but this module is imported by the config path and must not pull that in."""
+    if seconds < 90:
+        return f"{int(seconds)}s"
+    if seconds < 5400:
+        return f"{int(seconds / 60)}m"
+    if seconds < 172800:
+        return f"{seconds / 3600:.1f}h"
+    return f"{int(seconds / 86400)}d"
+
+
 @dataclass(frozen=True)
 class PlayerSnapshot:
     uid: str
@@ -91,7 +103,22 @@ class PlayerSnapshot:
     world: tuple[float, float, float]
     technologies: frozenset[str]
     transform_id: str
+    # When THIS PROCESS read the file. Says nothing about how old the data is - a save
+    # written a fortnight ago and read a second ago has `read_at` of one second, which is
+    # the reassuring-and-wrong number `describe()` used to print.
     read_at: float
+    # When the GAME wrote the file, from its mtime. The clock that actually matters, and
+    # the one nothing consulted until 2026-08-13: without it a coordinate card built from
+    # a stale position is byte-for-byte identical to one built from a live one.
+    #
+    # Survives a network share and a cloud sync, both of which preserve mtime - so this
+    # remains the host's real write time even when the save is reached over SMB or synced
+    # in from another machine, which is what makes the gate work off-machine too.
+    #
+    # Defaulted to 0.0 rather than required so a caller constructing a snapshot by hand
+    # (the tests do) is not forced to invent one; `age()` reports None for it rather than
+    # claiming the save was written in 1970.
+    written_at: float = 0.0
     # The two technology-point pools, which are separate currencies and must never be
     # added: `points` buys ordinary technologies and `ancient_points` buys the 51 the
     # table marks `IsBossTechnology`. Both are plain IntProperties in the player save, so
@@ -103,6 +130,18 @@ class PlayerSnapshot:
     # inference on a key name** - see tech.json's tower_join_note - and it is made here
     # rather than at the point of use so there is one place to correct it.
     towers_defeated: frozenset[str] = frozenset()
+
+    def age(self, now: float | None = None) -> float | None:
+        """Seconds since the game wrote this save, or None when that is unknown.
+
+        None rather than a large number, so callers must decide what to do about not
+        knowing instead of a missing mtime silently reading as "very old" (which would
+        turn every hand-built snapshot in the tests into a stale one) or as zero (which
+        would be the confident lie this field exists to prevent).
+        """
+        if not self.written_at:
+            return None
+        return (time.time() if now is None else now) - self.written_at
 
 
 def decompress(raw: bytes) -> bytes:
@@ -157,6 +196,13 @@ def read_player(path: Path, transform: Transform | None = None) -> PlayerSnapsho
     from palworld_save_tools.gvas import GvasFile
 
     transform = transform or Transform.load()
+    # Stat BEFORE the read, so a save rewritten while we were parsing reports the older
+    # time and reads as staler than it is. The gate is a safety bound, and it should err
+    # toward declining rather than toward vouching for a position it cannot vouch for.
+    try:
+        written_at = path.stat().st_mtime
+    except OSError:
+        written_at = 0.0
     gvas = GvasFile.read(decompress(path.read_bytes()))
     try:
         sd = gvas.properties["SaveData"]["value"]
@@ -188,6 +234,7 @@ def read_player(path: Path, transform: Transform | None = None) -> PlayerSnapsho
         technologies=frozenset(tech.get("values", ())),
         transform_id=transform.transform_id,
         read_at=time.time(),
+        written_at=written_at,
         points=points,
         ancient_points=ancient,
         towers_defeated=towers,
@@ -401,12 +448,39 @@ class SaveWatcher:
     # rate at which the parse would cost anything.
     ROSTER_INTERVAL = 300.0
 
+    # How old the save may be before its POSITION stops being offered - 15 minutes.
+    #
+    # **This is a bound, not a calibration, and it is deliberately generous.** Nobody has
+    # recorded Palworld's autosave cadence during play; the backup directories on this
+    # machine hold snapshots ten minutes and an hour apart, which brackets it and does not
+    # pin it. So the number is chosen to be comfortably longer than any plausible autosave
+    # interval - the failure it must not cause is refusing "nearest" to a player who is
+    # sitting right there between saves - while still being far shorter than the case it
+    # exists for: the bot running with the game closed, or a save reached over a share or
+    # a cloud sync that has silently stopped updating.
+    #
+    # A real measurement replaces this: one session's worth of mtimes settles it, and the
+    # gate should be tightened to something like three autosave intervals once there is a
+    # number to multiply.
+    #
+    # **Position only.** The roster, the technology set and the base camps are all
+    # slow-moving - you catch a Pal every few minutes at best, research less often than
+    # that, and move a base almost never - so a save that is an hour old still carries a
+    # roster worth filtering a counter card by. Gating them on this bound would throw away
+    # good answers to prevent an error they cannot make. Position is the one field where
+    # being minutes out of date changes the answer, and the one that sends someone
+    # somewhere.
+    MAX_POSITION_AGE = 900.0
+
     def __init__(self, save_dir: Path, interval: float = 20.0,
-                 roster_interval: float | None = None):
+                 roster_interval: float | None = None,
+                 max_position_age: float | None = None):
         self.save_dir = Path(save_dir)
         self.interval = interval
         self.roster_interval = (self.ROSTER_INTERVAL if roster_interval is None
                                 else roster_interval)
+        self.max_position_age = (self.MAX_POSITION_AGE if max_position_age is None
+                                 else max_position_age)
         self.snapshot: PlayerSnapshot | None = None
         self.error: str | None = None
         # None means NOT READ, all the way to the card. See PlayerState.owned_species.
@@ -495,7 +569,38 @@ class SaveWatcher:
         return True
 
     def player_coords(self) -> tuple[float, float] | None:
-        return self.snapshot.map_coords if self.snapshot else None
+        """Where the player was at the last autosave, or None if that is too old to say.
+
+        **The gate that was missing until 2026-08-13.** Nothing checked the save's age, so
+        with the game closed the bot answered "where's the nearest coal" against whatever
+        position the file last held - a week ago, a month ago - and `describe()` reported
+        "read 3s ago", which is the wrong clock and reads as reassurance.
+
+        A coordinate card built from a stale position is byte-for-byte identical to one
+        built from a live position. There is no tell. And this is the class that sends the
+        player somewhere: the 2026-08-12 session produced a card that got them killed by
+        naming a real place, so "confidently wrong about where you are" is not a
+        hypothetical failure mode here.
+
+        None is the honest answer and every card already handles it - `find_resource_nodes`
+        ranks by cluster size instead of distance, the spawn card drops its `Nearest:` row,
+        and "rate this spot" declines and asks for a coordinate. The honest path existed
+        the whole time; nothing was wired to it.
+        """
+        if self.snapshot is None:
+            return None
+        age = self.snapshot.age()
+        if age is not None and age > self.max_position_age:
+            # Logged rather than silent: "nearest stopped working" needs to be answerable
+            # without a debugger, and the answer here is usually "the game is not running".
+            log.info("save is %.0fs old (> %.0fs): not offering a position",
+                     age, self.max_position_age)
+            return None
+        return self.snapshot.map_coords
+
+    def position_age(self) -> float | None:
+        """Seconds since the game wrote the position, or None if unknown or unread."""
+        return self.snapshot.age() if self.snapshot else None
 
     def player_tech(self):
         """The Q6 half of the save state, or an empty reading when nothing was read.
@@ -529,9 +634,25 @@ class SaveWatcher:
         return out
 
     def describe(self) -> str:
-        """One line for `/palintel status`."""
+        """One line for `/palintel status`.
+
+        **Reports how old the SAVE is, not how recently we read it.** The old line said
+        "read 3s ago" about a file the game wrote a fortnight earlier, which is true,
+        useless, and actively reassuring in the one situation where the status card is
+        being consulted because something looks wrong.
+        """
         if self.snapshot is None:
             return f"unavailable - {self.error}" if self.error else "not read yet"
         x, y = self.snapshot.map_coords
-        age = time.time() - self.snapshot.read_at
-        return f"player at ({x:.0f}, {y:.0f}), read {int(age)}s ago"
+        age = self.snapshot.age()
+        if age is None:
+            # No mtime. Fall back to the read clock and say which one it is, rather than
+            # printing a number whose meaning the reader has to guess.
+            return (f"player at ({x:.0f}, {y:.0f}), "
+                    f"read {int(time.time() - self.snapshot.read_at)}s ago "
+                    f"(save age unknown)")
+        line = f"player at ({x:.0f}, {y:.0f}), saved {_ago(age)} ago"
+        if age > self.max_position_age:
+            # The position is not being used, so the status card must not imply it is.
+            line += " - **too old to use, ranking by cluster size**"
+        return line

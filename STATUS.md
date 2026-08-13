@@ -394,6 +394,119 @@ Turn **off** Discord's Noise Suppression, Echo Cancellation and Automatic Gain C
 anything sounds wrong — Krisp is aggressive and the DAVE work found it suppressing pure
 tones outright.
 
+**0c-2. No save-age check existed anywhere — found AND FIXED 2026-08-13.**
+`PlayerSnapshot.read_at` is
+when *this process* read the file; `_mtime` is captured in `poll()` only to detect change and
+is never stored or tested for age. So with the game closed the bot answers *"where's the
+nearest coal"* against whatever position the save last held — and `/palintel status` reports
+*"read 3s ago"*, which is reassuring and **about the wrong clock**. A coordinate card built
+from a week-old position is byte-for-byte identical to one built from a live one, in the one
+class that sends the player somewhere, and this project has already shipped a card that got
+the player killed by naming a real place. `st_mtime` is preserved across SMB and cloud sync
+alike, so the true age is available and simply never read.
+
+**Fixed.** `PlayerSnapshot.written_at` comes from the file's mtime (stat'd *before* the read,
+so a save rewritten mid-parse reads as staler rather than fresher); `player_coords()` returns
+`None` past `MAX_POSITION_AGE`; `describe()` reports the save clock and says outright when the
+position is not being used. Verified end to end against both real worlds on this disk — the
+solo save (15.9h old) and the co-op save (33 days) are both refused, and both return
+coordinates under a raised bound, which is what proves the gate refused rather than the read
+failing. `age()` returns **None** for an unknown mtime rather than a large number, so a failed
+`stat` does not silently read as "ancient". Nothing bypasses it: `cli.py` uses the same
+accessor, and no other module touches `snapshot.map_coords`.
+
+**Position only, deliberately.** The roster, technologies and base camps are slow-moving — you
+catch a Pal every few minutes at best and move a base almost never — so gating them would throw
+away good answers to prevent an error they cannot make. It is also what keeps a shared or
+synced save worth reading at all (see the multi-user doc §4.1.3).
+
+**`MAX_POSITION_AGE = 900s` is a bound, not a calibration**, and the one number here still
+wanting evidence. Nobody has recorded Palworld's autosave cadence; the backup directories on
+this disk are 10 minutes and an hour apart, which brackets it without pinning it. So it is set
+comfortably longer than any plausible interval — the failure it must not cause is refusing
+"nearest" to a player sitting still between saves. **One session's mtimes settles it**, and it
+should tighten to ~3 autosave intervals once there is a number to multiply.
+
+**0c. A concurrency defect the multi-user discovery found — FIXED 2026-08-13.**
+`last_usage` was instance state on a shared router, read off `pipe.router` *after*
+`run_in_executor` returned. The default executor has several workers, so two overlapping
+queries interleaved and one was charged the other's usage — or `None`, which logs a **model
+answer as a $0 fast-path answer**. This was the 2026-08-12 ledger bug returning by a
+different mechanism: same two figures wrong, same direction that drains a prepaid balance
+early, same wrong `path` label in the capture log. Reachable whenever text and voice
+overlapped; routine the moment a second person can ask.
+
+**Fixed by removing the shared slot rather than by guarding it.** A property fixed the 2026-
+08-12 version because that staleness was between *calls*; this one is between *threads* and
+no property can. Usage now travels on the returned `ToolCall`/`Decline`, and `Outcome.usage`
+is stamped from the router's own return value in `handle` — not from `outcome.call`, because
+`_dispatch` builds a fresh `Decline` when a model names a tool and omits a required argument,
+which would have dropped the charge for exactly the queries the router found hardest.
+`last_usage` survives for `score_router.py` and `router_variance.py`, documented as
+single-threaded-only. **The regression test asserts the OLD read is wrong under the same
+interleaving**, so it bites rather than agreeing with the new code.
+
+Still open in the same family: **`Memory._by_user` has no lock**, unlike `ActivityLog`, and
+`recent()` mutates the deque it iterates. A narrow race today, routine under multi-user.
+
+**0d. Multi-user is designed, not built** — [`Docs/multi-user-design.md`](Docs/multi-user-design.md),
+2026-08-13, from probes against the live save. The headline is that `Pipeline.handle`
+already takes `(utterance, state, who)` and the single-user assumption is eight lines in
+`bot._answer`, and that **position, technologies and both point pools are already one file
+per player** in `Players/*.sav` — `newest_player_save()` is the only reason they are not.
+The finding that changes the design: the save does state Pal ownership (`OwnerPlayerUId`,
+516 of 559 entries, joining exactly to the player save's `PlayerUId` once UE Guid byte
+order is handled) — **but filtering on it drops the roster from 195 species to 184 on a
+save with exactly one player in it.** The 43 entries with no owner all carry `SlotIndex`:
+they are base-camp and Palbox Pals, which belong to the *guild*, and six of the eleven lost
+species are ordinary Pals `counters.py` would shortlist. A perfect, well-formed, silent 5.6%
+loss — the failure mode this project keeps meeting.
+
+**And unlike the ADR-0008 gate, this one did not need a session — the two-player world was
+already on disk.** `44403D77…`, players `Rui` and `OutofLuck`, guild `Foobar`. It settled
+three of the four claims the design listed as uncheckable and **refuted one**:
+
+- **Cross-attribution is live, and Q6 is the sharpest case.** The two players have **35 vs
+  61** technologies and **83/7 vs 59/8** points. `newest_player_save()` returns whichever
+  file the game wrote last, so *"what should I research next"* is already answered against
+  the wrong player's tree, on a card that is entirely well-formed.
+- **The roster over-count is 66%.** Union 53; `Rui` owns 32, `OutofLuck` 39, 19 shared. A
+  counter card tells `Rui` it "checked 53 of your Pals" and will shortlist Pals the other
+  player owns.
+- **Refuted: the obvious field is the wrong field.** `CharacterSaveParameterMap`'s *map key*
+  also carries a `PlayerUId`, and it splits **239/1** — it is not ownership. Reading it
+  gives a clean, total, error-free misattribution. Only the blob's `OwnerPlayerUId` is the
+  owner. Same for the guild's handle list, which is keyed the same way, so the guild-container
+  join has to run through `CharacterContainerSaveData` instead.
+- **Still untested:** the two players were standing 2 map units apart at the last save, so
+  *position* divergence — the class where a wrong answer sends someone somewhere — is not
+  evidenced. And the trap's size tracks base infrastructure (11 species lost on the
+  3-camp single-player world, 1 on the 1-camp co-op world), so **neither save is evidence
+  about a mature co-op world**.
+
+**And then the framing itself turned out to be wrong, which is the finding that matters
+most.** The design asked "one world or separate worlds"; the real question is **whether the
+save is on the machine running the bot**, and head count has nothing to do with it. The
+group's *most recent* multiplayer world (`8C0191…`, 2026-08-02) is **one world, two people,
+and completely unreachable** — a friend hosts it and this machine holds a single
+`LocalData.sav`. A byte scan of its 5.2 MB finds **none** of `LastTransform`,
+`UnlockedRecipeTechnologyNames`, `TechnologyPoint`, `bossTechnologyPoint`,
+`TowerBossDefeatFlag`, `CharacterID`, `OwnerPlayerUId` or `NickName`; it is a static id
+catalog, near-identical across all three worlds on disk. So **M1–M3 would have shipped and
+done nothing for the way this group actually plays**, which the original framing would not
+have caught until after the work. On that world 6 of 13 classes are unaffected, 5 degrade to
+declines they already implement, and Q6 stops working (honestly — `unlocked=None` reaches
+`progression_card` and declines, rather than falling through to a level floor of zero and
+recommending tier-1 tech to a level-57 player).
+
+The requirement is **not** "the bot runs on the host's PC" but "the bot's process can open
+the save directory", and that admits a cheap first try: **the host shares the save folder
+read-only and `save_dir` points at a UNC path.** `Config.save_dir` is already a `Path`,
+nothing resolves it, and the watcher only globs, stats and reads — so this should need no
+code change at all. Untested against a real share. Fall back to running the bot on the host;
+accept the degradation if neither is convenient; **do not build a save-shipping agent** until
+a session has shown the degradation is not enough.
+
 **1. Then the three found-and-not-fixed items**, in the roadmap and repeated under the
 session block above: the Q6 narrowing that defers, the `item_source` card title, and Q7
 retrieval diversity. Each is small; each wants its own sweep rather than a ride-along.
