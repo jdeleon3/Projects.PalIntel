@@ -199,10 +199,39 @@ class DiscordListener:
                     "discord voice: %.2fx realtime (%.0fs audio) | %s",
                     rate, delivered, s.summary())
 
+    def _resolve(self, speaker):
+        """Turn whatever py-cord handed us into something that knows its own name.
+
+        **py-cord 2.8 passes a `Member`, a `User`, or a bare `Object`**, and an `Object`
+        is a snowflake with no name at all. Four of the 2026-08-13 voice sessions
+        attributed 20 queries to the literal string `<Object id=366300806208552972>` - a
+        Python repr - which then keyed conversation memory, the spend ledger and (once M4
+        landed) the capture corpus. Found by putting the spend split on a screen and
+        looking at it.
+
+        Resolved against the guild's member cache, which is where the name actually is.
+        An id that will not resolve is handed back unchanged and named honestly upstream;
+        inventing a name for it would attribute speech to somebody.
+        """
+        if getattr(speaker, "display_name", None) is not None:
+            return speaker
+        uid = getattr(speaker, "id", None)
+        guild = getattr(getattr(self._vc, "channel", None), "guild", None)
+        if uid is None or guild is None:
+            return speaker
+        found = guild.get_member(uid)
+        if found is None:
+            # Worth a line: a persistent miss here means the members intent or the cache
+            # is the problem, and the symptom is otherwise just an ugly name in a ledger.
+            log.info("discord voice: no cached member for %s - attribution stays by id",
+                     uid)
+            return speaker
+        return found
+
     def _deliver(self, speaker, utt: Utterance) -> None:
         """One closed utterance, on py-cord's decoder thread."""
         try:
-            self._on_utterance(speaker, utt)
+            self._on_utterance(self._resolve(speaker), utt)
         except Exception:
             # Same reasoning as the sink's own guard: a raise on this thread takes
             # reception down for every speaker, and it presents as the bot going deaf.

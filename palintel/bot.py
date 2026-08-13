@@ -84,6 +84,20 @@ def art_files(cards_: list[Card]) -> list["discord.File"]:
 _IAM = re.compile(r"^/?palintel\s+i\s*am\s+(.+)$", re.I)
 
 
+def _speaker_name(speaker) -> str:
+    """A name for whoever spoke, and never a Python repr.
+
+    `who` is not a log line - it keys conversation memory, the spend ledger and the
+    capture corpus, all of which are read back later by a human or by the alias harvester.
+    A `<Object id=...>` in any of them is noise that outlives the session that made it.
+    """
+    name = getattr(speaker, "display_name", None) or getattr(speaker, "name", None)
+    if name:
+        return str(name)
+    uid = getattr(speaker, "id", None)
+    return f"speaker {uid}" if uid is not None else "voice"
+
+
 def _world_id(watcher) -> str:
     """Which world bindings are scoped to. Empty when no save is being read.
 
@@ -855,8 +869,16 @@ def run() -> None:
             # A Discord packet carries its member, so on that source the guess disappears
             # and the promise holds for everyone in the channel rather than for one person
             # by declaration. `display_name` because that is the key the text path uses.
-            who = (getattr(speaker, "display_name", None) or str(speaker)
-                   if speaker is not None else cfg.voice.speaker or "voice")
+            #
+            # **`str(speaker)` is never the answer.** py-cord hands a bare `Object` when
+            # the member is not cached, and its repr is `<Object id=366300806208552972>` -
+            # which is what 20 queries across four sessions on 2026-08-13 were attributed
+            # to, in the memory keys, the spend ledger and the capture corpus.
+            # `DiscordListener._resolve` now looks the member up first; this is the
+            # fallback for when it genuinely cannot, and it says "speaker <id>" rather
+            # than leaking a Python repr into data meant to be read later.
+            who = _speaker_name(speaker) if speaker is not None else (
+                cfg.voice.speaker or "voice")
             # Captured or not, the WAV is written either way - faster-whisper reads a
             # file, not a buffer. Capture only changes WHERE, and whether it survives.
             path = (str(capture.write_wav(uid, utt.pcm) or f"{tmp.name}/{uid}.wav")

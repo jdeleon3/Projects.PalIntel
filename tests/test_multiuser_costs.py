@@ -131,3 +131,43 @@ def test_the_microphone_leaves_who_empty_rather_than_guessing(tmp_path):
                          tool=None, entity=None, score=None, outcome="answered"))
     row = json.loads((cap.log_path).read_text(encoding="utf-8").strip())
     assert row["who"] == ""
+
+
+# --- speaker attribution ------------------------------------------------------
+#
+# Found by putting the per-user spend split on a screen: four voice sessions on
+# 2026-08-13 attributed 20 queries to the literal string `<Object id=366300806208552972>`.
+# py-cord 2.8 hands the sink a Member, a User, or a bare Object, and an Object has no
+# name - so `str(speaker)` produced a Python repr, which then keyed conversation memory,
+# the spend ledger and the capture corpus.
+
+class _Object:
+    """py-cord's bare snowflake wrapper: an id and nothing else."""
+    def __init__(self, id): self.id = id
+    def __str__(self): return f"<Object id={self.id}>"
+
+
+class _Member:
+    def __init__(self, name, id=1): self.display_name, self.id = name, id
+
+
+def test_a_named_speaker_is_used_as_is():
+    from palintel.bot import _speaker_name
+    assert _speaker_name(_Member("Ruichan")) == "Ruichan"
+
+
+def test_an_unresolved_speaker_never_becomes_a_python_repr():
+    """The bug itself. `<Object id=...>` is not a name and outlives the session that
+    made it - it ends up in the alias harvester's input."""
+    got = __import__("palintel.bot", fromlist=["_speaker_name"])._speaker_name(
+        _Object(366300806208552972))
+    assert got == "speaker 366300806208552972"
+    assert "Object" not in got and "<" not in got
+
+
+def test_a_user_without_a_display_name_falls_back_to_its_name():
+    from palintel.bot import _speaker_name
+
+    class _User:
+        id, name = 7, "someone"
+    assert _speaker_name(_User()) == "someone"
