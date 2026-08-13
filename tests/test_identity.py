@@ -21,6 +21,7 @@ from palintel.saves import PlayerSnapshot, Rosters, SaveWatcher, _le_guid, _slot
 
 RUI = "00000000-0000-0000-0000-000000000001"
 LUCK = "48f23c66-0000-0000-0000-000000000000"
+WORLD = "44403D774601FB7B22EA0C83E1A16FE5"
 
 
 def _snap(uid, coords, techs, points, ancient):
@@ -50,8 +51,8 @@ def coop(tmp_path):
 def test_a_binding_survives_a_restart(tmp_path):
     """Rebinding four people after every restart is how a feature stops being used."""
     path = tmp_path / "players.json"
-    Bindings(path).bind("111", RUI, display_name="Ruichan", nickname="Rui")
-    assert Bindings(path).uid_for("111") == RUI
+    Bindings(path).bind("111", RUI, WORLD, display_name="Ruichan", nickname="Rui")
+    assert Bindings(path).uid_for("111", WORLD) == RUI
 
 
 def test_a_corrupt_store_is_not_fatal(tmp_path):
@@ -65,9 +66,9 @@ def test_a_corrupt_store_is_not_fatal(tmp_path):
 
 def test_rebinding_replaces_rather_than_accumulates(tmp_path):
     b = Bindings(tmp_path / "players.json")
-    b.bind("111", RUI, nickname="Rui")
-    b.bind("111", LUCK, nickname="OutofLuck")
-    assert b.uid_for("111") == LUCK
+    b.bind("111", RUI, WORLD, nickname="Rui")
+    b.bind("111", LUCK, WORLD, nickname="OutofLuck")
+    assert b.uid_for("111", WORLD) == LUCK
     assert len(b) == 1
 
 
@@ -75,8 +76,8 @@ def test_rebinding_replaces_rather_than_accumulates(tmp_path):
 
 def test_a_bound_speaker_resolves_to_their_own_player(tmp_path):
     b = Bindings(tmp_path / "players.json")
-    b.bind("111", LUCK, nickname="OutofLuck")
-    uid, why = resolve(b, "111", {RUI: "Rui", LUCK: "OutofLuck"})
+    b.bind("111", LUCK, WORLD, nickname="OutofLuck")
+    uid, why = resolve(b, "111", {RUI: "Rui", LUCK: "OutofLuck"}, WORLD)
     assert uid == LUCK and why == "bound"
 
 
@@ -84,7 +85,7 @@ def test_an_unbound_speaker_in_a_coop_world_resolves_to_nobody(tmp_path):
     """**The whole point.** Not "fall back to the host" - that is the cross-attribution
     this prevents. None means answer about the world and say so."""
     b = Bindings(tmp_path / "players.json")
-    uid, why = resolve(b, "999", {RUI: "Rui", LUCK: "OutofLuck"})
+    uid, why = resolve(b, "999", {RUI: "Rui", LUCK: "OutofLuck"}, WORLD)
     assert uid is None and why == "unbound"
 
 
@@ -92,15 +93,15 @@ def test_a_single_player_world_needs_no_binding(tmp_path):
     """Attribute when unambiguous. One player means one possible answer for everybody, so
     single-player behaviour is untouched and nobody has to bind to keep it."""
     b = Bindings(tmp_path / "players.json")
-    uid, why = resolve(b, "999", {RUI: "Rui"})
+    uid, why = resolve(b, "999", {RUI: "Rui"}, WORLD)
     assert uid == RUI and "only player" in why
 
 
 def test_a_binding_to_a_player_who_left_resolves_to_nobody(tmp_path):
     """A player who is gone is not the same as a player we can guess at."""
     b = Bindings(tmp_path / "players.json")
-    b.bind("111", LUCK, nickname="OutofLuck")
-    uid, why = resolve(b, "111", {RUI: "Rui"})
+    b.bind("111", LUCK, WORLD, nickname="OutofLuck")
+    uid, why = resolve(b, "111", {RUI: "Rui"}, WORLD)
     assert uid is None and "doesn't have" in why
 
 
@@ -311,6 +312,124 @@ def test_status_stays_quiet_when_the_check_passes(coop):
     assert "base camps" not in coop.describe_roster()
     coop.camp_check = CampCheck(frozenset(), frozenset({"a"}))
     assert "base camps" in coop.describe_roster()
+
+
+# --- following the active world -----------------------------------------------
+#
+# The save root is derivable and every world names itself in LevelMeta.sav, so the bot can
+# pick the world being played instead of being told. That is a heuristic, and it is only
+# acceptable because the pick is SHOWN - a silent wrong pick would answer confidently
+# about a different playthrough.
+
+def _world(tmp_path, name, ident, mtime, players=1):
+    from palintel.saves import World
+    d = tmp_path / ident
+    (d / "Players").mkdir(parents=True)
+    (d / "Level.sav").write_bytes(b"x")
+    for i in range(players):
+        (d / "Players" / f"{i:032x}.sav").write_bytes(b"x")
+    import os
+    os.utime(d / "Level.sav", (mtime, mtime))
+    return World(path=d, world_id=ident, name=name, host="Rui", host_level=61,
+                 in_game_day=130, written_at=mtime)
+
+
+def test_a_world_says_which_one_it_is():
+    """The property that makes auto-detection safe rather than reckless."""
+    from palintel.saves import World
+    w = World(path=None, world_id="DD98A01E4049", name="Explorers Refuge",
+              host="Rui", in_game_day=130)
+    assert "Explorers Refuge" in w.describe()
+    assert "Rui" in w.describe() and "130" in w.describe()
+
+
+def test_an_unnamed_world_falls_back_to_its_id_rather_than_reading_blank():
+    from palintel.saves import World
+    assert World(path=None, world_id="8C0191774C5A").describe() == "8C019177"
+
+
+def test_the_newest_world_is_the_active_one(tmp_path):
+    """Ordered by when the GAME last wrote, not by name or directory order.
+
+    Asserted on ids rather than names: these fixtures have no LevelMeta.sav, so the name
+    is legitimately empty. The naming is covered by the `describe` tests above, and the
+    two real worlds are checked end to end in the verification script.
+    """
+    from palintel.saves import find_worlds
+    _world(tmp_path, "Old", "aaa", 1000.0)
+    _world(tmp_path, "New", "bbb", 9000.0)
+    assert [w.world_id for w in find_worlds([tmp_path])] == ["bbb", "aaa"]
+
+
+def test_a_directory_with_no_level_save_is_not_a_world(tmp_path):
+    """The 2026-08-02 world on this machine is a joined session - the host holds
+    everything and the local copy has only LocalData.sav."""
+    from palintel.saves import find_worlds
+    _world(tmp_path, "Real", "aaa", 1000.0)
+    joined = tmp_path / "bbb"
+    joined.mkdir()
+    (joined / "LocalData.sav").write_bytes(b"x")
+    assert [w.world_id for w in find_worlds([tmp_path])] == ["aaa"]
+
+
+def test_a_world_with_no_meta_is_still_usable(tmp_path):
+    """An unnamed world is worse to look at and no less correct. Refusing to read one
+    because its 2 KB metadata file is missing would trade a real capability for a label."""
+    from palintel.saves import find_worlds
+    _world(tmp_path, "", "aaa", 1000.0)
+    (world,) = find_worlds([tmp_path])
+    assert world.name == "" and world.describe() == "aaa"
+
+
+def test_switching_worlds_discards_everything_from_the_old_one(tmp_path, monkeypatch):
+    """**Not merged.** Positions, rosters, names and camps all describe the world we
+    left - and the PlayerUIds collide, since 0001 is the host in every world, so keeping
+    anything would silently re-attribute it."""
+    from palintel import saves
+    a = _world(tmp_path, "A", "aaa", 1000.0)
+    b = _world(tmp_path, "B", "bbb", 9000.0)
+
+    monkeypatch.setattr(saves, "active_world", lambda *_a, **_k: a)
+    w = saves.SaveWatcher(None)
+    assert w.world.world_id == "aaa"
+    w.snapshots = {RUI: _snap(RUI, (1.0, 2.0), 5, 1, 1)}
+    w.players = {RUI: "Rui"}
+    w.roster = frozenset({"lamball"})
+    w.base_camps = [(1.0, 2.0)]
+
+    monkeypatch.setattr(saves, "active_world", lambda *_a, **_k: b)
+    assert w._follow_active_world() is True
+    assert w.world.world_id == "bbb"
+    assert w.snapshots == {} and w.players == {}
+    assert w.roster is None and w.base_camps is None
+
+
+def test_a_configured_path_is_never_second_guessed(tmp_path):
+    """Someone who names a directory means that directory."""
+    from palintel.saves import SaveWatcher
+    (tmp_path / "Players").mkdir()
+    w = SaveWatcher(tmp_path)
+    assert w.auto is False and w.world is None
+
+
+def test_bindings_are_scoped_per_world(tmp_path):
+    """`00000000-…-0001` is the host in EVERY world, so an unscoped binding matches a
+    different human the moment the bot follows a different save."""
+    b = Bindings(tmp_path / "players.json")
+    b.bind("111", RUI, "world-a", nickname="Rui")
+    assert b.uid_for("111", "world-a") == RUI
+    assert b.uid_for("111", "world-b") is None
+    uid, why = resolve(b, "111", {RUI: "Rui", LUCK: "L"}, "world-b")
+    assert uid is None and why == "unbound"
+
+
+def test_a_binding_with_no_world_is_dropped_rather_than_migrated(tmp_path):
+    """Guessing a world for a legacy row recreates the exact collision scoping prevents."""
+    import json
+    path = tmp_path / "players.json"
+    path.write_text(json.dumps({"bindings": [
+        {"user_id": "111", "uid": RUI, "nickname": "Rui"}]}), encoding="utf-8")
+    assert len(Bindings(path)) == 0
 
 
 def test_status_reports_each_player_rather_than_one_total(coop):

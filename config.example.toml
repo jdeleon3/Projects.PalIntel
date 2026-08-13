@@ -127,8 +127,17 @@ icons = true
 version = "1.0.2"
 
 [game]
-# Palworld save directory, used later by the save watcher to resolve "nearest" and
-# level gating. Leave empty to run without player state.
+# Palworld save directory - where "nearest", your roster and your technology tree come
+# from.
+#
+# LEAVE IT EMPTY. The save root is derivable on Windows
+# (%LOCALAPPDATA%\Pal\Saved\SaveGames\<steamid>\) and every world names itself in
+# LevelMeta.sav, so the bot picks whichever world was written most recently and SAYS
+# which one on /palintel status - "Explorers Refuge, host Rui, day 130". It follows you
+# if you quit to menu and load a different world.
+#
+# Set it only to PIN one world - a stated path is never second-guessed. Useful if you
+# keep two saves going and want answers about the one you are not currently in.
 #
 # NOTE THE SINGLE QUOTES. In TOML, single quotes make a *literal* string, so Windows
 # backslashes work as-is. With double quotes, "C:\Users\..." fails to parse because
