@@ -28,6 +28,19 @@ py-cord[voice]>=2.8
 # Voice encryption. Not used by text intake, but py-cord warns loudly without it.
 PyNaCl>=1.5
 
+# Voice RECEIVE, and only needed when voice.source = "discord". NOT pinned here as an
+# ordinary dependency because it is an editable install of a sibling repository:
+#
+#   .venv\Scripts\python -m pip install -e C:/Projects/PyDiscordDave
+#
+# py-cord 2.8 shipped a new voice/receive/ package against the old sinks/core.py, so
+# start_recording() raises before a packet is read - for every sink, including py-cord's
+# own. That, and not Discord's DAVE encryption, is what kept voice receive dark here for
+# months: DAVE decrypts 99.8% of packets. The patch feature-probes and becomes a no-op
+# when pycord#3159 lands, at which point the exit is `pip uninstall pydiscorddave`.
+#
+# Absent, the bot still runs - `voice.source = "mic"` is the default and does not use it.
+
 # --- wake word (Phase 1 voice) ---
 # Pretrained models do not include "hey pal" and none of them fire on it -
 # measured at 0/60 against real recordings. tools/wakeword/ trains one.

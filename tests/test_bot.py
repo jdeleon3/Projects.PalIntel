@@ -164,3 +164,84 @@ def test_blank_speaker_is_treated_as_unset(tmp_path):
     p = _write(tmp_path,
                '[discord]\ntoken = "abc"\nchannel_id = 1\n[voice]\nspeaker = ""\n')
     assert Config.load(p).voice.speaker is None
+
+
+# ------------------------------------------------------- the two audio sources
+
+def test_the_microphone_is_still_the_default(tmp_path):
+    """Discord receive depends on a patch against py-cord internals, and the way it fails
+    is by going quietly deaf - which ADR-0004 names as the worst kind, because it is
+    indistinguishable from nobody speaking. A regression there should cost party voice,
+    not all voice input, so flipping the source is opt-in."""
+    p = _write(tmp_path, '[discord]\ntoken = "abc"\nchannel_id = 1\n[voice]\n')
+    assert Config.load(p).voice.source == "mic"
+
+
+def test_a_discord_source_needs_a_voice_channel(tmp_path):
+    """Connecting to nothing presents as a wake word that never fires, which is the
+    failure the old `voice.channel_id is no longer used` error was written against."""
+    p = _write(tmp_path,
+               '[discord]\ntoken = "abc"\nchannel_id = 1\n'
+               '[voice]\nsource = "discord"\n')
+    with pytest.raises(ConfigError, match="channel_id"):
+        Config.load(p)
+
+
+def test_a_voice_channel_id_is_accepted_again(tmp_path):
+    """It was rejected outright for months on the reasoning that Discord receive was
+    blocked upstream by DAVE. It was not - DAVE decrypts 99.8% of packets and py-cord's
+    receive package was unfinished - so the key is live and the rejection is gone."""
+    p = _write(tmp_path,
+               '[discord]\ntoken = "abc"\nchannel_id = 1\n'
+               '[voice]\nsource = "discord"\nchannel_id = 999\n')
+    cfg = Config.load(p)
+    assert cfg.voice.source == "discord" and cfg.voice.channel_id == 999
+
+
+def test_an_unknown_source_fails_at_load(tmp_path):
+    """A typo would otherwise silently select the mic and look like Discord receive
+    being broken again."""
+    p = _write(tmp_path,
+               '[discord]\ntoken = "abc"\nchannel_id = 1\n[voice]\nsource = "dscord"\n')
+    with pytest.raises(ConfigError, match="voice.source"):
+        Config.load(p)
+
+
+def test_a_channel_id_set_while_on_mic_is_not_an_error(tmp_path):
+    """The whole point of the flag is that switching back is one word. Rejecting a
+    pre-set channel id would make the round trip a two-line edit under a failure."""
+    p = _write(tmp_path,
+               '[discord]\ntoken = "abc"\nchannel_id = 1\n'
+               '[voice]\nsource = "mic"\nchannel_id = 999\n')
+    assert Config.load(p).voice.source == "mic"
+
+
+def test_the_sink_reads_pycord_28_shapes():
+    """`write` took (bytes, int) until 2026-08-13, which is py-cord 2.7's signature. 2.8
+    calls `sink.write(data, data.source)` where `data` is a VoiceData carrying `.pcm` and
+    `source` is a Member. The old signature is called normally and then feeds a VoiceData
+    to np.frombuffer, so the sink accumulates nothing and the bot is silently deaf."""
+    from types import SimpleNamespace
+
+    import numpy as np
+
+    from palintel.voice import make_sink
+
+    seen = []
+    sink = make_sink(lambda speaker, utt: seen.append(speaker), threshold=0.99)
+    member = SimpleNamespace(id=42, display_name="Ruichan")
+    pcm = np.zeros(960 * 2, dtype=np.int16).tobytes()      # one 20ms 48k stereo packet
+    sink.write(SimpleNamespace(pcm=pcm, source=member), member)
+    assert 42 in sink._streams, "the packet must reach a per-speaker stream"
+
+
+def test_the_sink_still_reads_the_old_shapes():
+    """Keyed by `getattr` rather than by a version check, so the sink works against both
+    while py-cord is in flux - and so this file's own older tests stay meaningful."""
+    import numpy as np
+
+    from palintel.voice import make_sink
+
+    sink = make_sink(lambda speaker, utt: None, threshold=0.99)
+    sink.write(np.zeros(960 * 2, dtype=np.int16).tobytes(), 7)
+    assert 7 in sink._streams

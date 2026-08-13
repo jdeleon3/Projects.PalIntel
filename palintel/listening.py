@@ -82,6 +82,7 @@ class UtteranceBuffer:
     _pre: collections.deque = field(init=False, repr=False)
     _buf: list[bytes] = field(default_factory=list, init=False, repr=False)
     _quiet: int = field(default=0, init=False, repr=False)
+    _last_frame_at: float = field(default=0.0, init=False, repr=False)
 
     def __post_init__(self) -> None:
         self._pre = collections.deque(maxlen=_frames(self.pre_roll_ms))
@@ -101,9 +102,34 @@ class UtteranceBuffer:
         self._buf.extend(self._pre)
         self._quiet = 0
 
+    def tick(self, now: float | None = None) -> Utterance | None:
+        """Close on wall-clock silence when no frames are arriving at all.
+
+        `push` counts *quiet frames*, which assumes silence still produces frames. A
+        microphone always does. **Discord does not** - it stops transmitting the moment
+        a speaker stops talking, so `push` is never called, `_quiet` freezes wherever it
+        got to, and the utterance stays open until that speaker says something else.
+
+        Measured before this existed: two separate questions 30 s apart arrived as one
+        utterance, `'Hey pal, how do I beat Grisvold? Hey pal, how do I beat Anubis?'`,
+        because the gap between them was never observed. The delay was read as a
+        transport problem for most of a debugging session; the transport was fine and
+        the segmentation had no clock.
+
+        Callers on a frame-driven source need not call this - `push` closes first, and
+        the two paths agree on `silence_ms`.
+        """
+        if self.state is not State.CAPTURING or not self._last_frame_at:
+            return None
+        now = time.monotonic() if now is None else now
+        if (now - self._last_frame_at) * 1000 >= self.silence_ms:
+            return self._close("silence")
+        return None
+
     def push(self, frame: bytes, is_speech: bool) -> Utterance | None:
         """Feed one frame. Returns an Utterance when the buffer closes."""
         self._pre.append(frame)
+        self._last_frame_at = time.monotonic()
         if self.state is not State.CAPTURING:
             return None
 

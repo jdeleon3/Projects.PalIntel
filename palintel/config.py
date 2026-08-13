@@ -57,26 +57,46 @@ class DiscordConfig:
 class VoiceConfig:
     """Voice input. `enabled = false` runs the bot text-only.
 
-    Input is the local microphone. Discord voice receive is blocked upstream by
-    Discord's DAVE encryption (Pycord-Development/pycord#3139) - it connects, accepts a
-    sink, and delivers no audio. Output is a Discord channel either way; only the input
-    moved.
+    **`source` picks where the audio comes from, and it is a one-word switch on purpose.**
+
+    - `"mic"` - the local microphone. What the project ran on from Phase 0 to 2026-08-12.
+    - `"discord"` - receive from a Discord voice channel, so party members can ask by
+      voice. Needs `channel_id`, and needs `pydiscorddave` installed.
+
+    Discord receive was recorded as *upstream-blocked* on Discord's DAVE encryption
+    (pycord#3139) for months, and that was wrong: DAVE decryption succeeds on 99.8% of
+    packets. What was broken is py-cord 2.8's receive plumbing, which shipped a new
+    `voice/receive/` package against the old `sinks/core.py`. `pydiscorddave` patches
+    that; this project does not do the cryptography.
+
+    **`mic` stays the default**, and that is the point of the flag rather than an
+    oversight. Discord receive depends on a patch against py-cord internals, and the
+    failure mode it degrades to - connected, recording, silent - is the one ADR-0004 calls
+    the worst kind, because it is indistinguishable from nobody speaking. A regression
+    should cost the party-voice feature, not all voice input.
 
     `models` is a list because a pretrained model can run alongside a custom one during
     a transition - inference is CPU-bound at a realtime factor near 0.015, so the second
     model is close to free, and the highest score wins.
 
-    `speaker` is who the microphone belongs to, and it exists because the mic cannot say.
-    Conversation memory is per person (ADR-0013) and text keys on the Discord display
-    name, so without this the voice path keys on the literal "voice" and one person's own
-    spoken question cannot be followed up in text - which is exactly what ADR-0012
-    promises works. Set it to your Discord display name to join the two.
+    `speaker` is who the microphone belongs to, and it exists because **the mic cannot
+    say**. Conversation memory is per person (ADR-0013) and text keys on the Discord
+    display name, so without this the voice path keys on the literal "voice" and one
+    person's own spoken question cannot be followed up in text - which is exactly what
+    ADR-0012 promises works. Set it to your Discord display name to join the two.
 
     Left unset it stays "voice", because guessing which Discord user is sitting at the
     machine would be wrong in a shared channel, and silently attributing speech to the
     wrong person is worse than not joining the two at all.
+
+    **`speaker` is unused when `source = "discord"`**: every packet arrives tagged with
+    the member who sent it, so attribution is observed rather than configured. That is the
+    substantive gain over the mic and not a side effect - it is what makes ADR-0012's
+    promise hold for everyone in the channel instead of for one person by declaration.
     """
     enabled: bool = False
+    source: str = "mic"                  # mic | discord
+    channel_id: int = 0                  # the VOICE channel, when source = "discord"
     models: tuple[str, ...] = ("hey_pal",)
     threshold: float = 0.1
     device: int | str | None = None      # None = the system default input
@@ -198,12 +218,21 @@ class Config:
             raise ConfigError(f"listen_mode must be any|prefix|mention, got {mode!r}")
 
         v = raw.get("voice", {}) or {}
-        if "channel_id" in v:
+        # `voice.channel_id` was rejected outright from the day the mic replaced Discord
+        # receive, on the reasoning that reception was blocked upstream and a stale key
+        # would silently do nothing. It is live again as of 2026-08-13 - see VoiceConfig -
+        # and the rejection is replaced by the check that actually matters: a Discord
+        # source with no channel to listen in connects to nothing and presents as a wake
+        # word that never fires, which is the failure the old error was written against.
+        source = v.get("source", "mic")
+        if source not in ("mic", "discord"):
+            raise ConfigError(f"voice.source must be mic|discord, got {source!r}")
+        channel_id = int(v.get("channel_id") or 0)
+        if source == "discord" and not channel_id:
             raise ConfigError(
-                "voice.channel_id is no longer used. Voice input is the local "
-                "microphone: Discord voice receive is blocked by Discord's DAVE "
-                "encryption (pycord#3139) and delivers no audio. Use "
-                "voice.enabled = true, and voice.device to pick a specific mic.")
+                "voice.source = 'discord' needs voice.channel_id - the id of a VOICE "
+                "channel, not the text one. A text id here connects to nothing and the "
+                "bot simply never hears anything.")
         models = tuple(v.get("models") or ("hey_pal",))
         device = v.get("device")
 
@@ -223,7 +252,8 @@ class Config:
         return cls(
             discord=DiscordConfig(token=token, channel_id=channel,
                                   listen_mode=mode, prefix=d.get("prefix", "?")),
-            voice=VoiceConfig(enabled=bool(v.get("enabled", False)), models=models,
+            voice=VoiceConfig(enabled=bool(v.get("enabled", False)), source=source,
+                              channel_id=channel_id, models=models,
                               threshold=float(v.get("threshold", 0.1)),
                               device=device,
                               speaker=(v.get("speaker") or None)),
@@ -248,7 +278,7 @@ class Config:
             "token": f"{t[:6]}...{t[-4:]} ({len(t)} chars)" if t else "(unset)",
             "channel_id": self.discord.channel_id,
             "listen_mode": self.discord.listen_mode,
-            "voice": (f"mic, {', '.join(self.voice.models)}"
+            "voice": (f"{self.voice.source}, {', '.join(self.voice.models)}"
                       if self.voice.enabled else "(text only)"),
             "router": ((f"fast path on, cues={self.router.cues}"
                         if self.router.fast_path else "model only")

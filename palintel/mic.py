@@ -1,11 +1,17 @@
-"""Local microphone capture — the voice input path.
+"""Local microphone capture — one of the two voice input paths, and the default.
 
-Replaces Discord voice receive, which is blocked upstream: Discord's DAVE end-to-end
-encryption broke reception in py-cord, and `start_recording` now emits an unconditional
-"currently broken" warning (Pycord-Development/pycord#3139). Attaching a sink there
-succeeds and then delivers no audio, which is worse than failing.
+**No longer the only one.** This replaced Discord voice receive when reception was
+believed to be blocked upstream by Discord's DAVE encryption (pycord#3139). That reading
+was wrong: DAVE decrypts 99.8% of packets, and what was broken is py-cord 2.8's receive
+plumbing. `discord_voice.py` is the other source, live since 2026-08-13 behind
+`voice.source`.
 
-A local mic turns out to suit this better than the shared channel ADR-0004 assumed:
+This one stays the default. It depends on nothing but a sound card, where the Discord path
+depends on a patch against py-cord internals - and the way that path fails is by going
+quietly deaf, which ADR-0004 names as the worst kind because it is indistinguishable from
+nobody speaking.
+
+A local mic suits the single-player case better than the shared channel ADR-0004 assumed:
 
   * The capture format is close to what the detector wants - mono int16 in fixed blocks -
     so there is no packet-boundary remainder to carry, as the Discord path had. Rate is
@@ -14,9 +20,12 @@ A local mic turns out to suit this better than the shared channel ADR-0004 assum
   * The player asking is the player at the second screen, which is the whole premise.
 
 What it gives up is party members asking by voice; they keep the text path. That is a
-real reduction against [ADR-0012](../Docs/adr/0012-dual-input-channels.md) and is
-recorded as such rather than quietly dropped. `SpeakerStream` still keys by speaker, so
-multi-speaker returns as configuration if py-cord's reception is ever fixed.
+real reduction against [ADR-0012](../Docs/adr/0012-dual-input-channels.md) and was
+recorded as such rather than quietly dropped. It said `SpeakerStream` still keys by
+speaker, so multi-speaker "returns as configuration if py-cord's reception is ever fixed".
+
+**That is exactly what happened, and the assumption held**: `discord_voice.py` needed no
+change to `SpeakerStream` at all, and the switch is one word in `config.local.toml`.
 
 Discord remains the *output* surface throughout - cards in a channel on a second screen.
 Only the input moved.
@@ -169,6 +178,13 @@ class MicListener:
         log.info("mic: listening on %r at %dHz%s for %s", self.device_name, self.rate,
                  f" (resampled to {SAMPLE_RATE})" if self._resampler else "",
                  "+".join(self.wake.names))
+
+    @property
+    def wake_names(self) -> list[str]:
+        """The models actually loaded. Shared with `DiscordListener` so the status line
+        does not have to know which source is running - the Discord path has one detector
+        per speaker and therefore no single `wake` to reach into."""
+        return list(self.wake.names)
 
     def stop(self) -> None:
         if self._stream is not None:

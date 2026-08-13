@@ -33,7 +33,8 @@ from tempfile import TemporaryDirectory
 
 from . import activation
 from .activity import ActivityLog
-from .capture import FEEDBACK_KINDS, SessionCapture, Utterance
+from .capture import (FEEDBACK_KINDS, NOTE_LIMIT, UNEXPECTED, SessionCapture,
+                      Utterance)
 from .artwork import Artwork
 from .cards import TIER_DECLINE, Card, recent_card, status_card
 from . import spend as spend_mod
@@ -109,12 +110,24 @@ def _voice_status(cfg: Config, mic) -> str:
         return "off (voice.enabled = false)"
     if mic is None:
         return "**enabled but not running** - check the startup log"
-    # Who the mic is attributed to belongs here rather than nowhere: it decides whose
+    # Who the audio is attributed to belongs here rather than nowhere: it decides whose
     # conversation memory a spoken query joins, and unattributed voice silently not
     # sharing a thread with the same person's typed follow-ups is invisible otherwise.
-    heard_as = cfg.voice.speaker or "voice (unattributed - set voice.speaker)"
-    return (f"{mic.device_name} - {'+'.join(mic.wake.names)} "
+    #
+    # On the Discord source it is not a setting at all - every packet names its member -
+    # so the line says that rather than reporting a `voice.speaker` the source ignores.
+    heard_as = ("each speaker, from the channel" if cfg.voice.source == "discord"
+                else cfg.voice.speaker or "voice (unattributed - set voice.speaker)")
+    line = (f"{mic.device_name} - {'+'.join(mic.wake_names)} "
             f"@ {cfg.voice.threshold:g}, heard as {heard_as}")
+    # Receive counters, Discord only. After the patch a corrupt frame no longer raises, so
+    # a counter is the only remaining evidence of partial corruption - the failure mode
+    # that sounds fine. Absent until the first packet, which is itself worth seeing.
+    stats = getattr(mic, "stats", None)
+    if callable(stats) and (s := stats()):
+        line += (f" | rx ok {s['ok']}, failed {s['failed']}, "
+                 f"opus err {s['opus_errors']}")
+    return line
 
 
 def _artwork_status(cfg: Config, pipe: Pipeline) -> str:
@@ -147,14 +160,17 @@ class FeedbackView(discord.ui.View):
     extra API cost, where six reactions are six REST calls that would have to be deferred
     behind the answer like `art_post` is. The card is posted once, with its controls.
 
-    Three buttons, and no more, because each distinction routes to a different fix: a
-    mis-heard name is a lexicon problem, a wrong class is a routing problem, and a wrong
-    entity on a clean transcript is neither. A fourth nobody presses is clutter on every
-    card, and card density is already an open decision in STATUS.
+    Four buttons. Three are diagnoses that each route to a different fix - a mis-heard
+    name is a lexicon problem, a wrong class is a routing problem, and a wrong entity on
+    a clean transcript is neither. The fourth asks for a sentence instead of a diagnosis,
+    and leads the row; see `capture.UNEXPECTED` for why it earned the slot.
 
     `timeout=None` keeps them live for the session. They do NOT survive a bot restart -
     persistent views need registering at startup, and this is a testbed control rather
-    than a promise to the player.
+    than a promise to the player. **That expiry is why `/palintel wrong` exists**: the
+    two defects this session found were both "I acted on the card and the world
+    disagreed", knowable only after travelling, by which time the buttons are long out of
+    view. The message-id join was always retroactive; only the buttons were not.
     """
 
     def __init__(self, capture: SessionCapture):
@@ -163,14 +179,60 @@ class FeedbackView(discord.ui.View):
             self.add_item(_FeedbackButton(capture, kind, emoji, label))
 
 
+class _NoteModal(discord.ui.Modal):
+    """One optional field, asking what was expected instead.
+
+    A modal rather than a follow-up message because it costs nothing until it is opened:
+    the button rides in the card's own `send()` payload, and this is created only on a
+    click. Nothing is required, so a mis-click is one Escape away and never a half-written
+    row in the log.
+
+    **py-cord, not discord.py**, and the two differ here in ways that fail at click time
+    rather than at import: the submit hook is `callback`, not `on_submit`; the field is
+    `InputText`; and the style enum is `InputTextStyle`, since `discord.TextStyle` does
+    not exist in this library at all. Written with py-cord's own names so the mismatch is
+    visible in the source rather than discovered by a player pressing a button.
+    """
+
+    def __init__(self, capture: SessionCapture, message_id: int):
+        super().__init__(title="What did you expect?")
+        self._capture, self._message_id = capture, message_id
+        self._note = discord.ui.InputText(
+            label="What went wrong?",
+            placeholder="e.g. sent me to a level 70 area I can't survive",
+            style=discord.InputTextStyle.paragraph,
+            max_length=NOTE_LIMIT,
+            required=False)
+        self.add_item(self._note)
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        note = self._note.value or ""
+        self._capture.record_feedback(
+            self._message_id, UNEXPECTED,
+            who=getattr(interaction.user, "display_name", None),
+            note=note)
+        log.info("feedback %s on message %s: %r", UNEXPECTED, self._message_id, note[:80])
+        await interaction.response.send_message("Noted - thanks.", ephemeral=True)
+
+
 class _FeedbackButton(discord.ui.Button):
     def __init__(self, capture: SessionCapture, kind: str, emoji: str, label: str):
-        super().__init__(style=discord.ButtonStyle.secondary, emoji=emoji, label=label)
+        super().__init__(
+            # The free-text one is the primary action and looks like it.
+            style=(discord.ButtonStyle.primary if kind == UNEXPECTED
+                   else discord.ButtonStyle.secondary),
+            emoji=emoji, label=label)
         self._capture, self._kind = capture, kind
 
     async def callback(self, interaction: discord.Interaction) -> None:
         # Keyed by the MESSAGE, not by "the last utterance" - which breaks the moment two
         # more questions follow, and this is meant to be usable minutes later.
+        if self._kind == UNEXPECTED:
+            # A modal IS the response to the interaction, so nothing is written until the
+            # player submits - and `send_message` must not be called before it.
+            await interaction.response.send_modal(
+                _NoteModal(self._capture, interaction.message.id))
+            return
         self._capture.record_feedback(
             interaction.message.id, self._kind,
             who=getattr(interaction.user, "display_name", None))
@@ -241,6 +303,15 @@ async def _answer(channel, pipe: Pipeline, text: str, who: str,
     if activity is not None:
         activity.timed("route", route_ms, text[:60])
     kind = "decline" if declined else outcome.call.name
+    # **Which path answered, from whether a model call happened - not from the rationale
+    # text.** The old test was `"cue" in outcome.call.rationale`, which is a string sniff
+    # over prose no branch is obliged to write: `_tech_named_call` says "named technology
+    # 'Breed Farm' at 0.98", so all five technology lookups in the 2026-08-12 session were
+    # answered by the stub and logged as model calls - in both the capture log and the
+    # spend ledger. `last_usage` is now None exactly when nothing was called, which is the
+    # fact both of them wanted in the first place.
+    usage = getattr(pipe.router, "last_usage", None)
+    answered_by = "model" if usage is not None else "fast"
     if capture is not None and uid:
         # What the SYSTEM decided, written as label "auto". Never as truth: labels taken
         # from the router's own behaviour are self-confirming, so a consistent bug would
@@ -250,8 +321,7 @@ async def _answer(channel, pipe: Pipeline, text: str, who: str,
         args = {} if declined else outcome.call.args
         capture.record(Utterance(
             uid=uid, wav=f"{uid}.wav", seconds=0.0, heard=text,
-            path=("decline" if declined
-                  else ("fast" if "cue" in (outcome.call.rationale or "") else "model")),
+            path="decline" if declined else answered_by,
             tool=None if declined else outcome.call.name,
             entity=(args.get("pal") or args.get("boss") or args.get("resource")
                     or args.get("item")),
@@ -264,11 +334,11 @@ async def _answer(channel, pipe: Pipeline, text: str, who: str,
         # `last_usage` is None on the fast path, and that logs a $0 row rather than
         # nothing: what fraction of play reaches the model at all is the same question as
         # what it costs, and answering both from one file is why every query is recorded.
+        # A stub decline is a fast-path event too, and used to be logged as a model call:
+        # `needs_restatement` never reaches the model by design, so charging it one is the
+        # same error as charging a fast-path answer.
         spend.record(spend_mod.charge_from(
-            getattr(pipe.router, "last_usage", None), tool=kind,
-            path=("fast" if not declined
-                  and "cue" in (outcome.call.rationale or "") else "model"),
-            who=who))
+            usage, tool=kind, path=answered_by, who=who))
 
     log.info("%s -> %s in %.0fms (%d card%s)", who, kind, route_ms, len(outcome.cards),
              "" if len(outcome.cards) == 1 else "s")
@@ -446,6 +516,41 @@ def run() -> None:
             log.info("memory reset for %s", who)
             return
 
+        # **The retroactive half of the feedback buttons, and the more important half.**
+        # Both defects the 2026-08-12 session found were "I acted on the card and the
+        # world disagreed" - a spawn card that sent the player to a level 68-72 area they
+        # could not survive, and a rating card about somewhere they had not named. Neither
+        # is knowable until you travel, by which point the buttons are out of view and
+        # `FeedbackView` has no timeout but plenty of scrollback above it.
+        #
+        # **Reply to the card**, rather than pasting a link: a Discord reply already
+        # carries the message id, which is the join key `record_feedback` wants, and it
+        # works on a phone in the middle of a fight. Checked before the listen-mode gate
+        # for the same reason status is - the thing being reported may BE the gate.
+        low = text.lower()
+        if low.startswith(("/palintel wrong", "palintel wrong")):
+            # Cut on the lower-cased copy so "/PalIntel Wrong ..." keeps its note, and
+            # slice the ORIGINAL so the note keeps its capitals.
+            note = text[low.index("wrong") + len("wrong"):].strip()
+            ref = getattr(message.reference, "message_id", None)
+            if capture is None or ref is None:
+                await message.channel.send(embed=to_embed(Card(
+                    title="Reply to the card",
+                    lines=["Reply to the answer that was wrong and say `/palintel wrong "
+                           "<what happened>` - the reply is how I know which card you "
+                           "mean."] + ([] if capture is not None else
+                                       ["_Capture is off, so nothing would be recorded._"]),
+                    colour=TIER_DECLINE)))
+                return
+            capture.record_feedback(ref, UNEXPECTED,
+                                    who=message.author.display_name, note=note)
+            log.info("feedback %s on message %s (reply): %r", UNEXPECTED, ref, note[:80])
+            await message.channel.send(embed=to_embed(Card(
+                title="Noted",
+                lines=["Logged against that card - thanks."],
+                colour=TIER_DECLINE)))
+            return
+
         mode = cfg.discord.listen_mode
         if mode == "prefix":
             if not text.startswith(cfg.discord.prefix):
@@ -501,14 +606,27 @@ def run() -> None:
         log.info("spend: %s", spend_mod.describe(
             spend, cfg.cost.balance_usd, cfg.cost.warn_below_usd))
 
-    async def start_voice() -> None:
-        """Listen on the local microphone and answer into the text channel.
+    # At bot scope for the same reason `spend` is, and it took the same mistake to learn:
+    # clip capture is voice-only, but FEEDBACK is not. `/palintel wrong` arrives as a
+    # reply on the text channel whichever way the question was asked, so a capture object
+    # reachable only from inside `start_voice` would leave the retroactive channel dead in
+    # exactly the case it exists for - a card that only turns out to be wrong later.
+    capture = (SessionCapture(session=session_id) if cfg.capture.enabled else None)
+    if capture is not None:
+        log.info("capture: session %s -> %s", capture.session, capture.dir)
 
-        Input is the mic, not Discord voice: Discord's DAVE encryption broke reception
-        in py-cord (pycord#3139), where `start_recording` accepts a sink and then
-        delivers no audio - a failure that looks exactly like a wake word never firing.
+    async def start_voice() -> None:
+        """Listen for speech and answer into the text channel.
+
+        Two sources, chosen by `voice.source`, and everything after the wake word is
+        identical: the local microphone, or a Discord voice channel via `pydiscorddave`.
+
+        Discord receive was recorded as blocked on DAVE for months and was not - DAVE
+        decrypts fine, py-cord 2.8's receive package was unfinished. **The mic stays the
+        default anyway**, because the way Discord receive fails is by going quietly deaf,
+        which ADR-0004 names as the worst kind, and a regression there should cost party
+        voice rather than all voice.
         """
-        from .mic import MicListener
         from .stt import Transcriber
 
         text_channel = client.get_channel(cfg.discord.channel_id)
@@ -522,19 +640,17 @@ def run() -> None:
         transcriber = Transcriber(pipe.kb.lexicon)
         log.info("voice: STT on %s", transcriber.device)
 
-        # Capture is voice-only: it keeps the WAV the audio path already wrote, and
-        # the text path has no audio to keep. Spend is NOT - a typed query pays the
-        # same model round trip - so the spend log lives at bot scope beside the
-        # listener, and only the session id is shared.
-        capture = (SessionCapture(session=session_id) if cfg.capture.enabled
-                   else None)
-        if capture is not None:
-            log.info("capture: session %s -> %s", capture.session, capture.dir)
+        # `capture` is created at bot scope - see there. Clip capture is still voice-only,
+        # because the text path has no audio to keep; it is the feedback log that both
+        # channels share.
 
         loop = asyncio.get_running_loop()
         tmp = TemporaryDirectory(prefix="palintel-voice-")
 
-        async def on_speech(utt) -> None:
+        async def on_speech(utt, speaker=None) -> None:
+            # `speaker` is None from the microphone, which cannot say who spoke, and a
+            # Discord Member from the channel, which can. Everything else is shared.
+            #
             # faster-whisper reads a file; the buffer is raw PCM. A scratch WAV is
             # cheaper and far less fragile than teaching the transcriber to take bytes,
             # and these are one-to-three second clips.
@@ -596,12 +712,19 @@ def run() -> None:
                     await text_channel.send("I caught my name but not the question.")
                 return
 
-            # The mic cannot say who spoke, so attribution is configuration: naming the
-            # person at the machine is what lets a spoken question be followed up in
-            # text, which is what ADR-0012 promises. Unset, it stays "voice" - guessing
-            # which Discord user is sitting there would attribute speech to the wrong
-            # person in a shared channel, and that is worse than not joining the two.
-            await _answer(text_channel, pipe, text, cfg.voice.speaker or "voice",
+            # **Observed when Discord can tell us, configured when only the mic can.**
+            # The mic cannot say who spoke, so attribution is `voice.speaker` - naming the
+            # person at the machine is what lets a spoken question be followed up in text,
+            # which is what ADR-0012 promises. Unset, it stays "voice": guessing which
+            # Discord user is sitting there would attribute speech to the wrong person in
+            # a shared channel, and that is worse than not joining the two.
+            #
+            # A Discord packet carries its member, so on that source the guess disappears
+            # and the promise holds for everyone in the channel rather than for one person
+            # by declaration. `display_name` because that is the key the text path uses.
+            who = (getattr(speaker, "display_name", None) or str(speaker)
+                   if speaker is not None else cfg.voice.speaker or "voice")
+            await _answer(text_channel, pipe, text, who,
                           activity, watcher, spend=spend,
                           started=utt.ended_at, channel_kind="voice",
                           capture=capture, uid=uid,
@@ -622,18 +745,41 @@ def run() -> None:
                 log.exception("voice: answering failed after the wake word fired")
                 activity.record("failed", "answer raised after transcription")
 
-        def dispatch(utt) -> None:
-            # Called on sounddevice's audio thread. Nothing here may block or touch the
-            # loop directly, so the whole answer is handed over - but not forgotten; a
-            # stall here drops audio rather than merely delaying it.
-            asyncio.run_coroutine_threadsafe(on_speech(utt), loop).add_done_callback(
-                _report)
+        def dispatch(utt, speaker=None) -> None:
+            # Called on sounddevice's audio thread, or py-cord's decoder thread. Nothing
+            # here may block or touch the loop directly, so the whole answer is handed
+            # over - but not forgotten; a stall here drops audio rather than merely
+            # delaying it.
+            asyncio.run_coroutine_threadsafe(
+                on_speech(utt, speaker), loop).add_done_callback(_report)
 
-        mic = MicListener(dispatch, models=list(cfg.voice.models),
-                          threshold=cfg.voice.threshold, device=cfg.voice.device,
-                          log=activity)
-        mic.start()
-        listener["mic"] = mic
+        if cfg.voice.source == "discord":
+            from .discord_voice import DiscordListener, patch_available
+
+            if not patch_available():
+                # Refuse rather than connect. A `VoiceClient` on unpatched py-cord 2.8
+                # raises inside `start_recording`, and what the player sees either way is
+                # a channel the bot has joined and does not respond in. Saying so at
+                # startup is the difference between a five-minute fix and an evening.
+                raise RuntimeError(
+                    "voice.source = 'discord' needs the receive patch:\n"
+                    "  .venv\\Scripts\\python -m pip install -e C:/Projects/PyDiscordDave\n"
+                    "Or set voice.source = 'mic' in config.local.toml to use the "
+                    "microphone.")
+            # The sink hands (speaker, utterance); the mic hands (utterance).
+            listener_ = DiscordListener(
+                lambda speaker, utt: dispatch(utt, speaker),
+                channel_id=cfg.voice.channel_id, models=list(cfg.voice.models),
+                threshold=cfg.voice.threshold, log_=activity)
+            await listener_.start(client)
+        else:
+            from .mic import MicListener
+
+            listener_ = MicListener(dispatch, models=list(cfg.voice.models),
+                                    threshold=cfg.voice.threshold,
+                                    device=cfg.voice.device, log=activity)
+            listener_.start()
+        listener["mic"] = listener_
 
     if cfg.voice.enabled:
         _orig_ready = on_ready
