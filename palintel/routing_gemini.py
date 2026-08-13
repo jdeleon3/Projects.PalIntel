@@ -302,6 +302,11 @@ class GeminiRouter:
 
     def route(self, utterance: str, candidates: list[Candidate],
               context: list | None = None) -> ToolCall | Decline:
+        # Cleared here so `last_usage` means "the call THIS route made" rather than "the
+        # last call that happened to succeed". A request that raises must not leave the
+        # previous request's cost sitting there to be billed a second time - which is the
+        # same staleness `FastPathRouter.last_usage` exists to stop one level up.
+        self.last_usage = None
         if self._use_cache and self._cache is None:
             self._cache = self._create_cache()
             self._use_cache = self._cache is not None

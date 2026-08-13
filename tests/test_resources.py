@@ -37,12 +37,18 @@ def test_the_lexicon_and_the_nodes_agree_on_what_a_resource_is(kb: KnowledgeBase
 
     A resource the lexicon knows but the dataset lacks is a query that resolves to an
     entity with no data. One the dataset has but the lexicon lacks is a node nobody can
-    name. Only `crude_oil` is deliberately in the first group.
+    name.
+
+    **The two sets are now equal.** `crude_oil` was the sole deliberate exception, on the
+    belief that nothing places it; 185 `BP_LevelObject_OilField_C` actors do, and the
+    extraction that "found no spawner class" was reading `BP_PalMapObjectSpawner*` only.
+    `UNPLACED_RESOURCES` is kept and empty - the mechanism is right and some future
+    material will be craft-only - but nothing is in it, and that is the stronger assertion.
     """
     named = set(kb.lexicon.resources())
     placed = {n.resource for n in kb.nodes}
     assert placed <= named, f"nodes for unnameable resources: {sorted(placed - named)}"
-    assert named - placed == {"crude_oil"}, sorted(named - placed)
+    assert named == placed, sorted(named ^ placed)
 
 
 def test_the_phase_1_resources_survived_the_widening(kb: KnowledgeBase):

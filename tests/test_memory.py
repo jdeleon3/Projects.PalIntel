@@ -181,7 +181,11 @@ def test_expired_context_asks_for_restatement_rather_than_guessing(kb: Knowledge
     p.handle("where can I find Chillet")
     out = p.handle("what about the alpha?")
     assert isinstance(out.call, Decline) and out.call.needs_restatement
-    assert "forgotten" in " ".join(out.card.lines).lower()
+    # ADR-0013 asks that the expired referent be NAMED. The card used to satisfy that with
+    # a hardcoded sentence; it now satisfies it by showing the decline's own reason, which
+    # is what lets the same card serve an unreadable coordinate without narrating a lost
+    # referent at it. Assert the requirement, not the wording that used to meet it.
+    assert "lost track" in " ".join(out.card.lines).lower()
 
 
 def test_a_follow_up_with_no_history_at_all_asks_too(pipe: Pipeline):
@@ -214,10 +218,18 @@ def test_reset_forgets(pipe: Pipeline):
 # --- presentation ---------------------------------------------------------------------
 
 def test_the_restatement_card_asks_for_something_achievable():
-    """Not "I didn't catch that" - we caught it perfectly and have nothing to refer to."""
-    card = decline_card(Decline(reason="lost track", needs_restatement=True))
-    assert "didn't catch" not in " ".join(card.lines).lower()
-    assert "say the name again" in " ".join(card.lines).lower()
+    """Not "I didn't catch that" - we caught it perfectly and something specific is missing.
+
+    The card says WHICH thing by showing the decline's reason and nothing else. It carried
+    a hardcoded "I've forgotten what we were talking about" until 2026-08-12, when this
+    decline gained a second cause - a coordinate that would not parse - and the boilerplate
+    started narrating the wrong one confidently.
+    """
+    for reason in ("I've lost track of what that refers to",
+                   "I heard a coordinate but couldn't read it"):
+        card = decline_card(Decline(reason=reason, needs_restatement=True))
+        assert "didn't catch" not in " ".join(card.lines).lower()
+        assert reason in " ".join(card.lines)
 
 
 def test_only_resolved_entities_are_stored(pipe: Pipeline):

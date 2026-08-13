@@ -633,6 +633,13 @@ class KnowledgeBase:
     # in the overworld" and "I have no data for that" stay different answers - only one
     # of them is true, and a player acts differently on each.
     pals_without_areas: frozenset[str] = frozenset()
+    # Resources whose "nodes" are places you BUILD on, not places you mine. An oil field
+    # yields nothing to a pickaxe; you install a Crude Oil Extractor on it. Both kinds are
+    # fixed positions yielding a material, so they share a dataset - and the difference
+    # still has to reach the card, or a coordinate reads as an instruction to go swing at
+    # something. Derived in `_resources.provided` from the absence of a master row rather
+    # than from a list of names.
+    provided_resources: frozenset[str] = frozenset()
     # resource -> the Pals that drop it, best rate first. A second way to get the thing,
     # which matters most exactly when the first one is out of reach: a player who cannot
     # survive a level-40 mining spot may still be able to farm a Pal for it. Empty when
@@ -787,6 +794,7 @@ class KnowledgeBase:
 
         return cls(game_version=raw["game_version"], lexicon=lexicon, nodes=nodes,
                    spawns=spawns,
+                   provided_resources=frozenset(raw.get("provided_resources", ())),
                    pals_without_areas=frozenset(spawn_raw["pals_without_areas"]),
                    droppers=droppers, pal_drops=pal_drops,
                    item_sources=item_sources, ranch=ranch,

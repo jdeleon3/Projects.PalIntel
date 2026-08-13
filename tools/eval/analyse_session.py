@@ -100,6 +100,10 @@ class Turn:
     entity: str | None
     outcome: str
     feedback: list[str] = field(default_factory=list)
+    # What the player typed into the `Not what I expected` modal, or replied with via
+    # `/palintel wrong`. Worth more per row than anything else in this file and the only
+    # thing here no amount of replay can reconstruct - see the note block in `main`.
+    notes: list[str] = field(default_factory=list)
 
     @property
     def answered(self) -> bool:
@@ -146,7 +150,24 @@ def load(session_dir: Path) -> list[Turn]:
         uid = by_message.get(r["message_id"])
         if uid in turns:
             turns[uid].feedback.append(r["feedback"])
+            if r.get("note"):
+                turns[uid].notes.append(r["note"])
     return sorted(turns.values(), key=lambda t: t.at)
+
+
+def orphan_notes(session_dir: Path) -> list[dict]:
+    """Notes on cards no captured utterance claims.
+
+    `/palintel wrong` is a reply to a card, and a card answered from the TEXT channel has
+    no clip and therefore no turn to fold onto. Reported separately rather than dropped:
+    the note is the most expensive row in the file to obtain.
+    """
+    rows = [json.loads(line) for line in
+            (session_dir / "log.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()]
+    known = {r["message_id"] for r in rows if set(r) == {"uid", "message_id"}}
+    return [r for r in rows
+            if r.get("note") and r.get("message_id") not in known]
 
 
 def similarity(a: Turn, b: Turn) -> float:
@@ -274,7 +295,25 @@ def main() -> None:
     print(f"  unanswered    {len(turns) - len(answered)}")
     print(f"  human labels  {len(flagged)}   "
           + ", ".join(f"{k}={sum(1 for t in flagged if k in t.feedback)}"
-                      for k in ("misheard", "wrong_entity", "wrong_class")))
+                      for k in ("unexpected", "misheard", "wrong_entity", "wrong_class")))
+
+    # **Printed first, above every inference in this file.** Everything below is a
+    # hypothesis this tool formed by looking at transcripts; these are sentences the
+    # player wrote. The 2026-08-12 session made the ordering obvious: replaying it against
+    # the save recovered three deterministic defects and could not have recovered "I
+    # walked to those coordinates and died", which was the most important thing in it.
+    noted = [t for t in turns if t.notes]
+    orphans = orphan_notes(chosen.parent)
+    if noted or orphans:
+        print(f"\nwhat the player said went wrong: {len(noted) + len(orphans)}")
+        for t in noted:
+            print(f"  {t.heard[:60]!r}  [{t.tool or 'declined'}]")
+            for n in t.notes:
+                print(f"       {n}")
+        for r in orphans:
+            # No clip, so no transcript to show - a card answered from the text channel.
+            print(f"  (text query, message {r['message_id']})")
+            print(f"       {r['note']}")
 
     runs = failure_runs(turns)
     multi = [r for r in runs if len(r) > 1]

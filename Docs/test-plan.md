@@ -271,7 +271,7 @@ observed.
 | G3 | where can I find adamantium | an unknown token | a decline naming what it *can* find |
 | G4 | is Prixter any good against the first tower | the named entity is the *attacker*, not the target | must **not** produce a plan for fighting Prixter |
 | G5 | where should I build my base | a placement verb naming no resource | not a base-site card — a base is built *for* something |
-| G6 | where should I build a base for crude oil | a resource with no placed nodes | must not answer about the rest of the sentence and drop crude oil |
+| G6 | where should I build a base for crude oil | ~~a resource with no placed nodes~~ — **crude oil has 185 oil fields as of 2026-08-12**; this row tested a defect, not a rule | a base-site card ranked on oil fields. The guard it was written for is now tested against a synthetic divergence in `test_base_routing.py`, since no resource in the lexicon is unplaced today |
 | G7 | what does Gidra and Dromatide drop | two Pals, one slot — **accepted behaviour**, re-confirming | a Gildra drop card. You decided this is fine; check that you still think so |
 
 ---

@@ -119,13 +119,35 @@ class FastPathRouter:
         self.fast = fast
         self.full = full
         self.name = f"{fast.name}->{full.name}"
+        # Assigned AFTER `full`, because `__getattr__` reaches for `self.full` and would
+        # recurse on a miss during construction.
+        self._went_to_model = False
 
     def __getattr__(self, item):
         # `last_usage` and friends belong to the model, which is where the cost is.
         return getattr(self.full, item)
 
+    @property
+    def last_usage(self):
+        """The usage of a call THIS route made, or None when the fast path answered.
+
+        A property rather than a forward, and it is the whole fix for a measurement that
+        was wrong for a day. `__getattr__` handed callers `self.full.last_usage`, which
+        the model backend sets on a call and never clears - so every fast-path answer
+        after the first model call read the PREVIOUS call's usage and was billed for it.
+        The 2026-08-12 session reported $0.3344 over 56 queries with "55/56 reached the
+        model"; it was $0.0880 and 16/56. Both numbers `spend.py` exists to produce, and
+        both wrong in the direction that empties a prepaid balance early.
+
+        None is a real and meaningful value here - `charge_from(None, ...)` logs a $0 row
+        with `billed=False`, which is how "what fraction of play reaches the model at all"
+        gets answered - so this cannot be left to a stale read.
+        """
+        return self.full.last_usage if self._went_to_model else None
+
     def route(self, utterance: str, candidates: list[Candidate],
               context: list | None = None) -> ToolCall | Decline:
+        self._went_to_model = False
         call = self.fast.route(utterance, candidates, context)
         if isinstance(call, ToolCall):
             log.info("fast path: %s(%s) - no model call", call.name, call.args)
@@ -136,6 +158,7 @@ class FastPathRouter:
         # reach the same conclusion, or worse, to invent a referent.
         if isinstance(call, Decline) and call.needs_restatement:
             return call
+        self._went_to_model = True
         return self.full.route(utterance, candidates, context)
 
 
@@ -544,6 +567,30 @@ _COORD_FORMS = (
 )
 
 
+# A minus sign nobody can pronounce. Whisper writes a spoken "-" as the WORD, always -
+# "rate the spot at 9999, negative 9999" is a verbatim transcript from play on
+# 2026-08-12, not a mishearing - so every form above was unreachable by voice, which is
+# the only channel most of them are used on.
+#
+# That mattered more than a missed parse: the failed parse fell through to the player's
+# own position and the card came back titled "Where you're standing" about somewhere else
+# entirely, and the off-map refusal built in `daf3770` could never fire, because it needs
+# a coordinate to refuse. Palworld's map is negative over most of the island - the comment
+# on `_COORD_FORMS` says so - so this was the common case, not an edge.
+#
+# Applied as a rewrite before matching rather than as a fourth form, so all three forms
+# gain it at once and none of them has to learn to spell a number two ways.
+_SPOKEN_MINUS = re.compile(r"\b(?:negative|minus)\s+(\d)", re.I)
+
+# An announcement followed by something shaped like a pair, used ONLY to tell "named a
+# place I could not read" apart from "named no place at all". The two need different
+# answers - a restatement and the player's own position - and before this they got the
+# same one. Requires both numbers, so "rate this base at level 60" (one number, and a
+# word between) and "at 20 stone" stay out of it.
+_COORD_ATTEMPT = re.compile(
+    r"\b(?:at|coords?|coordinates?|position)\b\s*:?\s*-?\d{1,5}\s*[-, ]\s*-?\d{1,5}", re.I)
+
+
 def coordinates(utterance: str) -> tuple[float, float] | None:
     """A map coordinate the player named, or None.
 
@@ -552,6 +599,7 @@ def coordinates(utterance: str) -> tuple[float, float] | None:
     card about somewhere nobody mentioned. So two adjacent numbers are not enough - the
     pair has to be bracketed, announced, or contain a negative.
     """
+    utterance = _SPOKEN_MINUS.sub(r"-\1", utterance)
     for form in _COORD_FORMS:
         m = form.search(utterance)
         if m:
@@ -1217,6 +1265,21 @@ class StubRouter:
         # ToolCall should say what it means rather than leave the reader of a log to
         # work out that one field silently overrides another.
         stated = coordinates(body)
+
+        # **Announced a place and it did not parse: ask, do not substitute.** Without this
+        # the query falls through to the player's own position and comes back titled
+        # "Where you're standing" about somewhere they did not name - which is what
+        # "rate the base location at 321-500" did in play on 2026-08-12, silently.
+        #
+        # Deferring rather than widening the parser is the deliberate half. Reading
+        # `321-500` as (321, -500) would also read "level 30-40" as (30, -40), in bounds
+        # and confidently wrong, which is the exact trade `_COORD_FORMS` is strict for.
+        # So a hyphenated pair stays unparseable and becomes a question instead of a card.
+        if stated is None and _COORD_ATTEMPT.search(body):
+            return Decline(
+                reason="I heard a coordinate but couldn't read it - say it as "
+                       "\"185, negative 475\"",
+                needs_restatement=True)
         args: dict[str, object] = {}
         if _OWN_BASE.search(body) and not stated:
             args["own_base"] = True

@@ -63,9 +63,12 @@ confidently incorrect, the worst failure mode available here.
 ```python
 class ResourceType(StrEnum):
     ORE = "ore"; COAL = "coal"; SULFUR = "sulfur"; QUARTZ = "quartz"
-    # CRUDE_OIL removed: extraction found no BP_PalMapObjectSpawner class for it in the
-    # overworld. Crude oil is not a placed node, so Q1 cannot answer "where is oil" the
-    # way it answers "where is coal". Revisit only if a placement source is found.
+    # CRUDE_OIL removed, then RESTORED 2026-08-12. The removal reasoned from "extraction
+    # found no BP_PalMapObjectSpawner class for it" to "crude oil is not a placed node",
+    # which is a claim about the world drawn from the shape of a filter. There are 185
+    # BP_LevelObject_OilField_C actors; the blueprint states ProvidableStaticItemId:
+    # CrudeOil; and the game's item text says "Obtained by installing a Crude Oil
+    # Extractor in an oil field." Q1 answers "where is oil" today - see the note below.
 
 class DangerRating(StrEnum):
     LOW = "low"; MODERATE = "moderate"; HIGH = "high"

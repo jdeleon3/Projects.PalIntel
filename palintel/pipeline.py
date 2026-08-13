@@ -6,6 +6,7 @@ wake-word detection and transcription already done (Docs/adr/0012-dual-input-cha
 from __future__ import annotations
 
 import logging
+import math
 import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable
@@ -644,10 +645,21 @@ class Pipeline:
                     return self._decline(
                         Decline(reason="your save doesn't have any base camps in it"),
                         candidates)
-                shown = state.base_camps[:MAX_CARDS]
-                spots = [(x, y, "Your base" if len(state.base_camps) == 1
-                          else f"Your base {i}")
-                         for i, (x, y) in enumerate(shown, 1)]
+                # **Nearest first when we know where they are.** `MAX_CARDS` is 2 and the
+                # order was the save's, so on 2026-08-12 a player standing 0.5 units
+                # inside base 3 was shown bases 1 and 2 - both over a thousand units away
+                # - and told "1 more base not shown". The card had the player's position
+                # and each base's position on it and used neither to choose.
+                #
+                # "Rate my base" said while inside one means THAT one. Numbering follows
+                # the same order so the label matches what is shown, rather than printing
+                # "Your base 3" first and reading as a skipped list.
+                camps = list(state.base_camps)
+                if state.player_coords is not None:
+                    px, py = state.player_coords
+                    camps.sort(key=lambda c: math.dist((px, py), c))
+                spots = [(x, y, "Your base" if len(camps) == 1 else f"Your base {i}")
+                         for i, (x, y) in enumerate(camps[:MAX_CARDS], 1)]
             elif state.player_coords is not None:
                 spots = [(*state.player_coords, "Where you're standing")]
             else:

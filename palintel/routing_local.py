@@ -173,6 +173,9 @@ class LocalRouter:
 
     def route(self, utterance: str, candidates: list[Candidate],
               context: list | None = None) -> ToolCall | Decline:
+        # See the same line in routing_gemini: `last_usage` means the call this route
+        # made, so a raising request cannot leave the previous one's cost to be re-billed.
+        self.last_usage = None
         try:
             data = self._post("/api/chat", {
                 "model": self._model,

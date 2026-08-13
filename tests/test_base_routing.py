@@ -89,12 +89,26 @@ def test_a_placement_question_naming_nothing_locatable_is_not_claimed(router):
     assert name(call(router, "where should I build my base")) != "suggest_base_sites"
 
 
-def test_naming_a_resource_with_no_nodes_defers_rather_than_dropping_it(router):
-    """Crude oil is in the lexicon and has no placed nodes. Answering about the rest of
-    the sentence would silently drop a filter the player stated - the failure the mount
-    work found in "which dragons can I ride at level 60"."""
-    assert name(call(router, "where should I build a base for crude oil")) \
+def test_naming_a_resource_with_no_nodes_defers_rather_than_dropping_it(kb):
+    """A resource the lexicon knows and the siting maths cannot place must defer.
+    Answering about the rest of the sentence would silently drop a filter the player
+    stated - the failure the mount work found in "which dragons can I ride at level 60".
+
+    **Built from a router that omits coal, rather than by naming crude oil.** Crude oil
+    was the live example until 2026-08-12, when it turned out to have 185 oil fields and
+    the premise evaporated; today no resource in the lexicon is unplaced. The guard is
+    still right - `_resources` and `_locatable` can diverge again, and some future
+    material will be craft-only - so it is tested on the divergence itself rather than on
+    whichever resource happened to be missing that week.
+    """
+    blind = StubRouter(kb.lexicon, sorted({n.resource for n in kb.nodes} - {"coal"}),
+                       cues="wide", base_sites=True)
+    assert name(call(blind, "where should I build a base for coal")) \
         != "suggest_base_sites"
+    # The same router still answers about something it CAN place, or the assertion above
+    # would pass for the wrong reason.
+    assert name(call(blind, "where should I build a base for quartz")) \
+        == "suggest_base_sites"
 
 
 def test_the_branch_is_off_when_it_was_not_switched_on(kb):
@@ -215,11 +229,13 @@ def test_a_resource_and_a_coordinate_together(router):
     assert name(c) == "rate_base_site" and c.args["resources"] == ["coal"]
 
 
-def test_a_resource_with_no_placed_nodes_defers(router):
-    """Crude oil is in the lexicon and has none. Answering about the rest of the sentence
-    would silently drop a filter the player stated."""
-    assert name(call(router, "is this a good spot for a crude oil base")) \
-        != "rate_base_site"
+def test_a_resource_with_no_placed_nodes_defers(kb):
+    """The rating branch's half of the guard above, built the same way and for the same
+    reason - see that test for why this no longer names crude oil."""
+    blind = StubRouter(kb.lexicon, sorted({n.resource for n in kb.nodes} - {"coal"}),
+                       cues="wide", base_sites=True)
+    assert name(call(blind, "is this a good spot for a coal base")) != "rate_base_site"
+    assert name(call(blind, "is this a good spot for a quartz base")) == "rate_base_site"
 
 
 def test_a_siting_question_naming_a_resource_is_still_siting(router):

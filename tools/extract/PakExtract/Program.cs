@@ -654,7 +654,65 @@ if (mode == "drops")
         catch (Exception e) { failed++; Console.WriteLine($"  FAILED {cls}: {e.Message}"); }
     }
 
-    Console.WriteLine($"\n  spawners resolved   : {out_.Count:N0}");
+    // A SECOND way the world hands the player a material, and this scan looked at one.
+    //
+    // `BP_LevelObject_OilField_C` is placed 185 times, its parent is
+    // `PalLevelObjectItemProvider`, and its CDO says `ProvidableStaticItemId: CrudeOil`
+    // outright. It is not a `BP_PalMapObjectSpawner`, so the filter above never saw it -
+    // and `_resources.py` concluded from that absence that crude oil "has no overworld
+    // spawner class", which a card then published as "there are no map locations to give
+    // you". The game's own item text says otherwise: "Obtained by installing a Crude Oil
+    // Extractor in an oil field."
+    //
+    // Found by a player who had stood on one. Fourth time in this project that a filter
+    // written for one purpose was read as a census of the world - see STATUS.
+    //
+    // Widened rather than special-cased: every `BP_LevelObject_*` is asked whether it
+    // provides an item, and the ones that say so are kept. Which classes that turns out
+    // to be is then a fact about the pak rather than a list somebody typed.
+    var providerPaths = provider.Files.Keys
+        .Where(p => p.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase)
+                    && Path.GetFileName(p).StartsWith("BP_LevelObject",
+                                                      StringComparison.Ordinal))
+        .OrderBy(p => p).ToList();
+    Console.WriteLine($"reading {providerPaths.Count:N0} level objects for item providers");
+
+    int providers = 0;
+    foreach (var p in providerPaths)
+    {
+        var cls = Path.GetFileNameWithoutExtension(p) + "_C";
+        try
+        {
+            var pkg = provider.LoadPackage(p[..p.LastIndexOf('.')]);
+            var cdo = pkg.GetExports().FirstOrDefault(
+                e => e.Name.StartsWith("Default__", StringComparison.Ordinal));
+            if (cdo is null) continue;
+            var json = Newtonsoft.Json.Linq.JObject.Parse(JsonConvert.SerializeObject(cdo));
+            var item = json["Properties"]?["ProvidableStaticItemId"]?["Key"]?.ToString();
+            if (string.IsNullOrEmpty(item) || item == "None") continue;
+
+            providers++;
+            Console.WriteLine($"  item provider: {cls} -> {item}");
+            // Shaped like a spawner row so `_resources.py` needs no second code path: the
+            // provided item is written into the same `drops` slot the mined ones use. It
+            // carries no master row, so `material_type` stays null - which is honest, and
+            // is also how a reader tells the two kinds apart.
+            out_.Add(new
+            {
+                cls,
+                map_object_id = (string?)null,
+                material_type = (string?)null,
+                material_sub_type = (string?)null,
+                hp = (int?)null,
+                drops = Newtonsoft.Json.Linq.JArray.Parse(
+                    $"[{{\"StaticItemId\":{{\"Key\":\"{item}\"}},\"Num\":1}}]"),
+            });
+        }
+        catch (Exception e) { failed++; Console.WriteLine($"  FAILED {cls}: {e.Message}"); }
+    }
+
+    Console.WriteLine($"\n  spawners resolved   : {out_.Count - providers:N0}");
+    Console.WriteLine($"  item providers      : {providers:N0}");
     Console.WriteLine($"  no MapObjectId      : {noId:N0}");
     Console.WriteLine($"  id not in master    : {noMaster:N0}");
     Console.WriteLine($"  resolved, no drops  : {noDrops:N0}");
@@ -853,7 +911,18 @@ foreach (var cell in cells)
         foreach (var exp in exports)
         {
             var cls = exp.Class?.Name.ToString() ?? exp.ExportType ?? "";
-            var isNode = cls.StartsWith("BP_PalMapObjectSpawner", StringComparison.Ordinal);
+            // Two ways the world hands over a material, and this scan knew one until
+            // 2026-08-12: a spawner you mine, and a `BP_LevelObject_*` you build on. The
+            // oil field is the only one of the latter that provides an item today (the
+            // `drops` mode checks all 30 and says so), but the filter is the FAMILY rather
+            // than that one class - a filter written around today's single member is how
+            // this scan came to be read as a census of the world in the first place.
+            //
+            // The extra ~800 rows are relics, notes and tower barriers, and they cost
+            // nothing downstream: `build_resource_nodes.py` selects by class membership in
+            // the derived resource map, so anything that provides no item is never matched.
+            var isNode = cls.StartsWith("BP_PalMapObjectSpawner", StringComparison.Ordinal)
+                      || cls.StartsWith("BP_LevelObject", StringComparison.Ordinal);
             var isSpawn = cls.StartsWith("BP_PalSpawner_Sheets", StringComparison.Ordinal);
             // Dungeon entrances. The portal marker's CDO carries SpawnAreaIds, and every
             // dungeon table - item lottery, enemy spawns, rewards - keys on that id, so
@@ -922,7 +991,21 @@ foreach (var cell in cells)
             var (mx, my) = ToMap(pos);
             (isFeature ? features : records).Add(new
             {
-                kind = isNode ? "node" : isSpawn ? "pal_spawn"
+                // `level_object` is its OWN kind, not `node`. A relic is not a deposit,
+                // and the distinction is load-bearing rather than cosmetic:
+                // `build_base_features.py` reads this file unfiltered and takes the height
+                // spread of every row as its ground-flatness proxy, so folding 941 relics,
+                // notes and tower barriers into `node` silently moved a CALIBRATED
+                // dataset - 84 cells changed and 88 appeared, from a resource fix that had
+                // nothing to do with terrain.
+                //
+                // Caught by diffing base_features.json before and after rather than by a
+                // test, which is the same way the fourth instance of this was caught. A
+                // shared file is not a licence for a consumer to inherit whatever happens
+                // to land in it.
+                kind = cls.StartsWith("BP_LevelObject", StringComparison.Ordinal)
+                         ? "level_object"
+                     : isNode ? "node" : isSpawn ? "pal_spawn"
                      : isDungeon ? "dungeon"
                      : cls.StartsWith("BP_BaseCampPopularArea", StringComparison.Ordinal) ? "base_area"
                      : cls.StartsWith("BP_SimpleWater", StringComparison.Ordinal) ? "water"

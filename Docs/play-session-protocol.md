@@ -174,7 +174,7 @@ shows `~0.1s fast`). The rest are resources that did not exist before Phase 2.
 | 8 | find me some hexolite quartz | **Hexolite Quartz**, not Quartz |
 | 9 | where's the nearest chromite | Chromite locations |
 | 10 | where can I find soralite | Soralite, tagged `sky island` |
-| 11 | where's the nearest crude oil | "isn't a mineable node — it comes from oil rigs" |
+| 11 | where's the nearest crude oil | **Oil field** locations, led by a line saying these are places to install an extractor, not deposits to mine. Until 2026-08-12 this row expected *"isn't a mineable node — it comes from oil rigs"*, which was false: there are 185 |
 | 12 | any sulfur worth mining nearby | Sulfur locations |
 | 13 | can I get coal at this level | Coal locations |
 | 14 | what's the best place to farm quartz | Quartz locations |
