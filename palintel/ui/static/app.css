@@ -597,3 +597,62 @@ input[readonly] { color: var(--muted); background: #0a0806; }
   .cfg-field { grid-template-columns: 1fr; }
   .cfg-help { grid-column: 1; }
 }
+
+/* --------------------------------------------------------------- bot controls */
+
+.transport-ctl {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 var(--pad);
+  border-right: 1px solid var(--line);
+}
+.ctl {
+  padding: 6px 13px;
+  background: none;
+  border: 1px solid var(--line-bright);
+  border-radius: 2px;
+  color: var(--ink-dim);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color .14s, border-color .14s, background .14s, opacity .14s;
+}
+.ctl:hover:not(:disabled) { color: var(--amber); border-color: var(--amber); background: var(--amber-soft); }
+.ctl.danger:hover:not(:disabled) { color: var(--red); border-color: var(--red); background: var(--red-soft); }
+.ctl:disabled { opacity: .25; cursor: default; }
+.ctl:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+.ctl.is-busy { color: var(--amber); border-color: var(--amber); animation: pulse 1s ease-in-out infinite; }
+
+/* The bot's own output, shown only when something went wrong — which is the case this
+   whole console-outlives-the-bot architecture exists for. */
+.tail {
+  margin-top: 12px;
+  padding: 12px 14px;
+  max-height: 260px;
+  overflow: auto;
+  background: #0b0906;
+  border: 1px solid var(--line-bright);
+  border-left: 3px solid var(--red);
+  border-radius: 2px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.65;
+  color: var(--ink-dim);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.tail-title {
+  margin: 14px 0 0;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+@media (max-width: 900px) {
+  .transport-ctl { order: 9; flex: 1 1 100%; border-right: 0; padding: 8px var(--pad); }
+}

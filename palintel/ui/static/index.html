@@ -31,7 +31,13 @@
 
   <div class="transport-slot" id="slot-bot">
     <span class="slot-label">bot</span>
-    <span class="slot-value" id="t-bot">not connected</span>
+    <span class="slot-value" id="t-bot">checking…</span>
+  </div>
+
+  <div class="transport-ctl">
+    <button class="ctl" id="bot-start" type="button">Start</button>
+    <button class="ctl" id="bot-restart" type="button">Restart</button>
+    <button class="ctl danger" id="bot-stop" type="button">Stop</button>
   </div>
 
   <button class="refresh" id="refresh" type="button" aria-label="Re-read the save">
@@ -88,6 +94,11 @@
         </article>
 
         <article class="panel span-12" style="--i:4">
+          <h2 class="panel-title">Bot process</h2>
+          <div id="p-bot" class="loading">checking…</div>
+        </article>
+
+        <article class="panel span-12" style="--i:5">
           <h2 class="panel-title">Save integrity</h2>
           <div id="p-integrity" class="loading">reading the save…</div>
         </article>
