@@ -45,20 +45,27 @@ DEFAULT_PATH = REPO / "data" / "players.json"
 
 @dataclass(frozen=True)
 class Binding:
-    """One Discord user, claimed to one in-game player.
+    """One Discord user, claimed to one in-game player, **in one world**.
 
     `nickname` is the game's own `NickName` at bind time, kept so `/palintel who` can show
     the pairing a human recognises. It is a label: the `uid` is the join, and a player
     renaming themselves in game must not silently unbind them.
+
+    **`world` is not optional and the reason is a collision.** `PlayerUId`
+    `00000000-…-0001` is the host in *every* world on this machine - it is the local
+    player's id, not a person's - so a binding made in one world matches a different human
+    in the next. That was harmless while the save directory was pinned in config and
+    became reachable the moment the bot started following whichever world is being played.
     """
     user_id: str
     uid: str
+    world: str
     display_name: str = ""
     nickname: str = ""
     at: float = 0.0
 
     def as_json(self) -> dict:
-        return {"user_id": self.user_id, "uid": self.uid,
+        return {"user_id": self.user_id, "uid": self.uid, "world": self.world,
                 "display_name": self.display_name, "nickname": self.nickname,
                 "at": self.at}
 
@@ -92,10 +99,18 @@ class Bindings:
             return
         for row in raw.get("bindings", []):
             try:
-                self._by_user[str(row["user_id"])] = Binding(
+                if not row.get("world"):
+                    # Written before bindings were world-scoped. Dropped rather than
+                    # migrated: there is no world to attribute it to, and guessing one
+                    # would recreate the exact collision the scoping exists to prevent.
+                    log.warning("dropping a binding with no world: %r", row)
+                    continue
+                b = Binding(
                     user_id=str(row["user_id"]), uid=str(row["uid"]),
+                    world=str(row["world"]),
                     display_name=row.get("display_name", ""),
                     nickname=row.get("nickname", ""), at=float(row.get("at", 0.0)))
+                self._by_user[(b.world, b.user_id)] = b
             except (KeyError, TypeError, ValueError):
                 log.warning("skipping a malformed binding row: %r", row)
         log.info("identity: %d binding(s) from %s", len(self._by_user), self.path)
@@ -105,42 +120,43 @@ class Bindings:
         payload = {"bindings": [b.as_json() for b in self._by_user.values()]}
         self.path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
-    def bind(self, user_id: str, uid: str, display_name: str = "",
+    def bind(self, user_id: str, uid: str, world: str, display_name: str = "",
              nickname: str = "") -> Binding:
-        """Claim an in-game player for a Discord user. Rebinding replaces."""
-        b = Binding(user_id=str(user_id), uid=uid, display_name=display_name,
-                    nickname=nickname, at=time.time())
-        self._by_user[str(user_id)] = b
+        """Claim an in-game player for a Discord user, in one world. Rebinding replaces."""
+        b = Binding(user_id=str(user_id), uid=uid, world=world,
+                    display_name=display_name, nickname=nickname, at=time.time())
+        self._by_user[(world, str(user_id))] = b
         self.save()
-        log.info("identity: %s (%s) -> %s (%s)", display_name or user_id, user_id,
-                 nickname or "?", uid)
+        log.info("identity: %s (%s) -> %s (%s) in %s", display_name or user_id, user_id,
+                 nickname or "?", uid, world[:8])
         return b
 
-    def unbind(self, user_id: str) -> bool:
-        if str(user_id) not in self._by_user:
+    def unbind(self, user_id: str, world: str) -> bool:
+        if (world, str(user_id)) not in self._by_user:
             return False
-        self._by_user.pop(str(user_id))
+        self._by_user.pop((world, str(user_id)))
         self.save()
         return True
 
-    def uid_for(self, user_id: str) -> str | None:
-        """The PlayerUId this Discord user claimed, or None if they never said."""
-        b = self._by_user.get(str(user_id))
+    def uid_for(self, user_id: str, world: str) -> str | None:
+        """The PlayerUId this Discord user claimed **in this world**, or None."""
+        b = self._by_user.get((world, str(user_id)))
         return b.uid if b else None
 
-    def binding_for(self, user_id: str) -> Binding | None:
-        return self._by_user.get(str(user_id))
+    def binding_for(self, user_id: str, world: str) -> Binding | None:
+        return self._by_user.get((world, str(user_id)))
 
-    def user_for(self, uid: str) -> Binding | None:
+    def user_for(self, uid: str, world: str) -> Binding | None:
         """Who claimed this in-game player, if anyone. For `/palintel who`."""
-        return next((b for b in self._by_user.values() if b.uid == uid), None)
+        return next((b for b in self._by_user.values()
+                     if b.uid == uid and b.world == world), None)
 
     def __len__(self) -> int:
         return len(self._by_user)
 
 
 def resolve(bindings: "Bindings | None", user_id: str | None,
-            known: dict[str, str]) -> tuple[str | None, str]:
+            known: dict[str, str], world: str = "") -> tuple[str | None, str]:
     """Which in-game player a speaker is, and why.
 
     Returns `(uid, reason)`. `uid` of None means **do not attribute any player state to
@@ -159,7 +175,7 @@ def resolve(bindings: "Bindings | None", user_id: str | None,
     something else: a player who left is not the same as a player we can guess at.
     """
     if user_id is not None and bindings is not None:
-        uid = bindings.uid_for(user_id)
+        uid = bindings.uid_for(user_id, world)
         if uid is not None:
             if uid in known or not known:
                 return uid, "bound"

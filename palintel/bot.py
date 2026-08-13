@@ -84,7 +84,23 @@ def art_files(cards_: list[Card]) -> list["discord.File"]:
 _IAM = re.compile(r"^/?palintel\s+i\s*am\s+(.+)$", re.I)
 
 
-def identity_card(players: dict[str, str], bindings, asker: str | None = None) -> Card:
+def _world_id(watcher) -> str:
+    """Which world bindings are scoped to. Empty when no save is being read.
+
+    A configured `save_dir` still gets an id - the directory name - so a bot pinned to one
+    world and a bot following the active one scope their bindings the same way. The
+    collision this prevents is real and not hypothetical: `PlayerUId`
+    `00000000-…-0001` is the host in *every* world on this machine.
+    """
+    if watcher is None:
+        return ""
+    if getattr(watcher, "world", None) is not None:
+        return watcher.world.world_id
+    return watcher.save_dir.name if watcher.save_dir else ""
+
+
+def identity_card(players: dict[str, str], bindings, asker: str | None = None,
+                  world: str = "") -> Card:
     """Who the save knows, and who has claimed whom. `/palintel who`.
 
     Exists because the alternative is asking people to type a Guid. The save names its
@@ -101,7 +117,7 @@ def identity_card(players: dict[str, str], bindings, asker: str | None = None) -
 
     lines = []
     for uid, name in sorted(players.items(), key=lambda kv: kv[1] or kv[0]):
-        bound = bindings.user_for(uid) if bindings else None
+        bound = bindings.user_for(uid, world) if bindings else None
         label = f"**{name or '(unnamed)'}**"
         if bound is None:
             lines.append(f"{label} — _nobody has claimed this player_")
@@ -121,7 +137,8 @@ def identity_card(players: dict[str, str], bindings, asker: str | None = None) -
     return Card(title="Players in this world", lines=lines, colour=TIER_DECLINE)
 
 
-def _bind(bindings, watcher, user_id: str, display_name: str, wanted: str) -> Card:
+def _bind(bindings, watcher, user_id: str, display_name: str, wanted: str,
+          world: str) -> Card:
     """Claim an in-game player for a Discord user. `/palintel iam <name>`.
 
     Matched case-insensitively against the game's own nicknames, and **a name that is not
@@ -155,13 +172,13 @@ def _bind(bindings, watcher, user_id: str, display_name: str, wanted: str) -> Ca
         return Card(title="Identity isn't available",
                     lines=["The binding store didn't load — check the startup log."],
                     colour=TIER_DECLINE)
-    taken = bindings.user_for(uid)
+    taken = bindings.user_for(uid, world)
     if taken is not None and taken.user_id != user_id:
         return Card(title=f"{name} is already claimed",
                     lines=[f"{taken.display_name or taken.user_id} is bound to {name}.",
                            "", "_If that's wrong, they can rebind and free it._"],
                     colour=TIER_DECLINE)
-    bindings.bind(user_id, uid, display_name=display_name, nickname=name)
+    bindings.bind(user_id, uid, world, display_name=display_name, nickname=name)
     return Card(title=f"You're {name}",
                 lines=[f"I'll answer **{display_name}** about **{name}**'s game — "
                        f"position, technologies and points.",
@@ -176,9 +193,23 @@ def _build_watcher(cfg: Config):
     every question, it just ranks by cluster size instead of distance. A missing or
     misconfigured save path degrades one word - "nearest" - and must not prevent startup.
     """
+    from .saves import SaveWatcher, active_world
+
     if cfg.save_dir is None:
-        log.info("no game.save_dir configured: 'nearest' will rank by cluster size")
-        return None
+        # **Follow whichever world is being played.** The save root is derivable on
+        # Windows (`%LOCALAPPDATA%/Pal/Saved/SaveGames/<steam id>/`) and every world names
+        # itself in `LevelMeta.sav`, so the pick can be shown rather than made silently -
+        # which is what makes a heuristic acceptable here. Setting `game.save_dir` pins
+        # one world and skips all of this.
+        found = active_world()
+        if found is None:
+            log.info("no Palworld save found and no game.save_dir set: "
+                     "'nearest' will rank by cluster size")
+            return None
+        w = SaveWatcher(None)
+        w.poll()
+        log.info("save: %s", w.describe())
+        return w
     if not (cfg.save_dir / "Players").is_dir():
         log.warning("game.save_dir has no Players/ directory: %s - "
                     "'nearest' will rank by cluster size", cfg.save_dir)
@@ -378,7 +409,8 @@ async def _answer(channel, pipe: Pipeline, text: str, who: str,
     if watcher is None:
         state, why = PlayerState(), "no save configured"
     else:
-        player_uid, why = identity.resolve(bindings, user_id, watcher.players)
+        player_uid, why = identity.resolve(bindings, user_id, watcher.players,
+                                           world=_world_id(watcher))
         state = watcher.state_for(player_uid)
     if state.tech is None and watcher is not None:
         # Worth a line in the log: an unbound speaker in a co-op world gets noticeably
@@ -644,12 +676,13 @@ def run() -> None:
         if text.lower() in ("/palintel who", "palintel who"):
             await message.channel.send(embed=to_embed(identity_card(
                 watcher.players if watcher else {}, bindings,
-                asker=str(message.author.id))))
+                asker=str(message.author.id), world=_world_id(watcher))))
             return
         if low_iam := _IAM.match(text):
             await message.channel.send(embed=to_embed(_bind(
                 bindings, watcher, str(message.author.id),
-                message.author.display_name, low_iam.group(1).strip())))
+                message.author.display_name, low_iam.group(1).strip(),
+                world=_world_id(watcher))))
             return
         if text.lower() in ("/palintel reset", "palintel reset"):
             # ADR-0013's manual clear. Scoped to the asker: one person's conversation

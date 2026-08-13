@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import struct
 import time
 import zlib
@@ -240,6 +241,129 @@ def read_player(path: Path, transform: Transform | None = None) -> PlayerSnapsho
         ancient_points=ancient,
         towers_defeated=towers,
     )
+
+
+@dataclass(frozen=True)
+class World:
+    """One saved world, and enough of its identity to say which one it is out loud.
+
+    **The naming is what makes auto-detection safe rather than reckless.** Picking the
+    most recently written world is a heuristic, and a heuristic that picks silently is
+    exactly the confidently-wrong shape this project refuses. `LevelMeta.sav` states the
+    world's name, its host and the in-game day, so the choice can be shown and a wrong one
+    is obvious at a glance instead of presenting as answers about somebody else's
+    playthrough.
+    """
+    path: Path
+    world_id: str                 # the directory name, and the key bindings are scoped by
+    name: str = ""                # WorldName, e.g. "Explorers Refuge"
+    host: str = ""                # HostPlayerName
+    host_level: int | None = None
+    in_game_day: int | None = None
+    written_at: float = 0.0       # Level.sav's mtime
+
+    def describe(self) -> str:
+        if not self.name:
+            return self.world_id[:8]
+        bits = [f"**{self.name}**"]
+        if self.host:
+            bits.append(f"host {self.host}")
+        if self.in_game_day is not None:
+            bits.append(f"day {self.in_game_day}")
+        return " · ".join(bits)
+
+
+def save_roots() -> list[Path]:
+    """Every Palworld save root on this machine, newest-written first.
+
+    `%LOCALAPPDATA%/Pal/Saved/SaveGames/<steam id>/`. The Steam id folder is enumerated
+    rather than configured - there can be more than one if the machine has had more than
+    one account, and picking between them is the same problem as picking between worlds,
+    so it is left to the caller's newest-wins rule rather than solved twice.
+    """
+    base = os.environ.get("LOCALAPPDATA")
+    if not base:
+        return []
+    root = Path(base) / "Pal" / "Saved" / "SaveGames"
+    if not root.is_dir():
+        return []
+    return [d for d in root.iterdir() if d.is_dir()]
+
+
+def read_world_meta(world_dir: Path) -> dict:
+    """`LevelMeta.sav`'s flat properties, or `{}`.
+
+    2 KB, and it parses with **no custom decoders and no type hints** - unlike `Level.sav`,
+    whose stale sub-decoders are the reason half this module reads raw blobs. It states
+    `WorldName`, `HostPlayerName`, `HostPlayerLevel` and `InGameDay` outright.
+    """
+    meta = world_dir / "LevelMeta.sav"
+    if not meta.exists():
+        return {}
+    try:
+        from palworld_save_tools.gvas import GvasFile
+
+        gvas = GvasFile.read(decompress(meta.read_bytes()))
+        props = gvas.properties
+        sd = props.get("SaveData", {}).get("value", props)
+        out = {}
+        for key, wrapped in (sd.items() if isinstance(sd, dict) else []):
+            value = wrapped.get("value") if isinstance(wrapped, dict) else wrapped
+            if isinstance(value, (str, int, float, bool)):
+                out[key] = value
+        return out
+    except Exception as e:
+        # Never fatal. A world we cannot name is still a world we can read; it just has to
+        # be shown by its id, which is worse to look at and no less correct.
+        log.info("could not read %s (%s)", meta, e)
+        return {}
+
+
+def find_worlds(roots: list[Path] | None = None) -> list[World]:
+    """Every world with a `Level.sav`, most recently written first.
+
+    A directory without one is not a world this bot can read - the 2026-08-02 world on this
+    machine is a joined session where the host holds everything, and it contains only
+    `LocalData.sav` (see Docs/multi-user-design.md section 4.1.1).
+    """
+    found: list[World] = []
+    for root in (save_roots() if roots is None else roots):
+        for world_dir in root.iterdir() if root.is_dir() else []:
+            level = world_dir / "Level.sav"
+            if not world_dir.is_dir() or not level.exists():
+                continue
+            try:
+                written = level.stat().st_mtime
+            except OSError:
+                continue
+            meta = read_world_meta(world_dir)
+            found.append(World(
+                path=world_dir, world_id=world_dir.name,
+                name=str(meta.get("WorldName", "")),
+                host=str(meta.get("HostPlayerName", "")),
+                host_level=meta.get("HostPlayerLevel"),
+                in_game_day=meta.get("InGameDay"),
+                written_at=written))
+    return sorted(found, key=lambda w: -w.written_at)
+
+
+def active_world(roots: list[Path] | None = None) -> World | None:
+    """The world most likely being played: the one written most recently.
+
+    **A heuristic, and it is allowed to be one because it is checkable and reversible.**
+    The separation on this machine is 0.7 days against 33.5, which is not marginal - and
+    where it is wrong the mistake is visible, because the name is shown, and harmless,
+    because M0's staleness gate refuses a position from a save nobody has written to
+    lately. Setting `game.save_dir` overrides it entirely.
+    """
+    worlds = find_worlds(roots)
+    if not worlds:
+        return None
+    if len(worlds) > 1:
+        log.info("worlds found: %s", ", ".join(
+            f"{w.name or w.world_id[:8]} ({_ago(time.time() - w.written_at)} ago)"
+            for w in worlds[:4]))
+    return worlds[0]
 
 
 def newest_player_save(save_dir: Path) -> Path | None:
@@ -906,9 +1030,18 @@ class SaveWatcher:
     # somewhere.
     MAX_POSITION_AGE = 900.0
 
-    def __init__(self, save_dir: Path, interval: float = 20.0,
+    def __init__(self, save_dir: Path | None = None, interval: float = 20.0,
                  roster_interval: float | None = None,
                  max_position_age: float | None = None):
+        # `None` means follow whichever world is being played. A stated path pins one and
+        # is never second-guessed: someone who names a directory means that directory.
+        self.auto = save_dir is None
+        self.world: World | None = None
+        if self.auto:
+            self.world = active_world()
+            save_dir = self.world.path if self.world else Path()
+            if self.world is not None:
+                log.info("auto-detected world: %s", self.world.describe())
         self.save_dir = Path(save_dir)
         self.interval = interval
         self.roster_interval = (self.ROSTER_INTERVAL if roster_interval is None
@@ -952,6 +1085,13 @@ class SaveWatcher:
         the bot: an exception here would kill the polling task silently and leave
         "nearest" quietly degraded for the rest of the session.
         """
+        # Following the game between worlds. Re-checked on the ordinary poll because it is
+        # a handful of stats, and because a player who quits to menu and loads another
+        # world would otherwise keep getting answers about the one they left - which reads
+        # as the bot being stale rather than as it watching the wrong place.
+        if self.auto and self._follow_active_world():
+            return False        # everything was just discarded; read it on the next tick
+
         paths = player_saves(self.save_dir)
         if not paths:
             self.error = f"no player save under {self.save_dir / 'Players'}"
@@ -1012,6 +1152,29 @@ class SaveWatcher:
             log.info("save: %s at (%.0f, %.0f), %d technologies, %s/%s points",
                      self.players.get(uid) or uid[:8], x, y, len(snap.technologies),
                      snap.points, snap.ancient_points)
+        return True
+
+    def _follow_active_world(self) -> bool:
+        """Switch to the newest world if it changed. True when it did.
+
+        **Everything is discarded on a switch, not merged.** Positions, rosters, player
+        names, base camps and the camp check all describe the world we just left, and a
+        roster from the wrong playthrough is the same confidently-wrong card as a roster
+        from the wrong player. Even the `PlayerUId`s collide - `00000000-…-0001` is the
+        host in *every* world - so keeping anything would silently re-attribute it.
+        """
+        found = active_world()
+        if found is None or (self.world is not None
+                             and found.world_id == self.world.world_id):
+            return False
+        log.info("world changed: %s -> %s",
+                 self.world.describe() if self.world else "(none)", found.describe())
+        self.world = found
+        self.save_dir = found.path
+        self.snapshots, self.snapshot = {}, None
+        self.players, self.rosters, self.roster = {}, None, None
+        self.base_camps, self.camp_check = None, None
+        self._mtime, self.roster_read_at = 0.0, 0.0
         return True
 
     def poll_roster(self, now: float | None = None) -> bool:
@@ -1219,16 +1382,26 @@ class SaveWatcher:
         useless, and actively reassuring in the one situation where the status card is
         being consulted because something looks wrong.
         """
+        # Which world, first, and only when nobody named one. An auto-detected pick is a
+        # heuristic and must be visible; a configured path is what the reader already knows.
+        lead = (f"{self.world.describe()} — " if self.auto and self.world else "")
         if len(self.snapshots) > 1:
-            # A co-op world. There is no single "the player", so naming one would be the
-            # cross-attribution this release exists to stop - the line lists them instead.
-            who = ", ".join(
-                f"{self.players.get(u) or u[:8]} ({_ago(s.age())} ago)"
-                if s.age() is not None else (self.players.get(u) or u[:8])
-                for u, s in sorted(self.snapshots.items()))
-            return f"{len(self.snapshots)} players: {who}"
+            return lead + self._describe_players()
         if self.snapshot is None:
-            return f"unavailable - {self.error}" if self.error else "not read yet"
+            return lead + (f"unavailable - {self.error}" if self.error
+                           else "not read yet")
+        return lead + self._describe_one()
+
+    def _describe_players(self) -> str:
+        """A co-op world. There is no single "the player", so naming one would be the
+        cross-attribution M1 exists to stop - the line lists them instead."""
+        who = ", ".join(
+            f"{self.players.get(u) or u[:8]} ({_ago(s.age())} ago)"
+            if s.age() is not None else (self.players.get(u) or u[:8])
+            for u, s in sorted(self.snapshots.items()))
+        return f"{len(self.snapshots)} players: {who}"
+
+    def _describe_one(self) -> str:
         x, y = self.snapshot.map_coords
         age = self.snapshot.age()
         if age is None:
