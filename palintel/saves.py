@@ -593,6 +593,134 @@ def read_rosters(save_dir: Path) -> Rosters:
     return Rosters(carried=carried, shared=shared, everyone=everyone)
 
 
+class _Cursor:
+    """A forward reader over an undecoded blob, bounds-checked at every step.
+
+    Raises rather than returning nonsense, so a layout that has moved fails loudly here
+    instead of producing plausible garbage further up. Everything that calls this catches
+    and falls back.
+    """
+
+    def __init__(self, b: bytes):
+        self.b, self.p = b, 0
+
+    def _need(self, n: int) -> None:
+        if self.p + n > len(self.b):
+            raise SaveError(f"blob ends at {len(self.b)}, wanted {n} at {self.p}")
+
+    def guid(self) -> str:
+        self._need(16)
+        out = _le_guid(self.b[self.p:self.p + 16])
+        self.p += 16
+        return out
+
+    def i32(self) -> int:
+        self._need(4)
+        (v,) = struct.unpack_from("<i", self.b, self.p)
+        self.p += 4
+        return v
+
+    def u8(self) -> int:
+        self._need(1)
+        v = self.b[self.p]
+        self.p += 1
+        return v
+
+    def skip(self, n: int) -> None:
+        self._need(n)
+        self.p += n
+
+    def string(self) -> str:
+        n = self.i32()
+        if n == 0:
+            return ""
+        if n > 0:
+            self._need(n)
+            out = self.b[self.p:self.p + n - 1].decode("utf-8", "replace")
+            self.p += n
+            return out
+        n = -n
+        self._need(n * 2)
+        out = self.b[self.p:self.p + (n - 1) * 2].decode("utf-16-le", "replace")
+        self.p += n * 2
+        return out
+
+
+# A plausibility bound on any count read out of the guild blob. A wrong offset reads a
+# chunk of a Guid as a length and produces something enormous; refusing early turns that
+# into a clean failure rather than a multi-gigabyte allocation.
+_MAX_COUNT = 1_000_000
+
+
+def guild_base_ids(level_save: Path) -> dict[str, list[str]]:
+    """Which base camps each guild claims: group id -> camp ids.
+
+    **A second opinion on `base_camps`, which is why this exists.** Base camp positions are
+    recovered by scanning an undecoded blob for a unit quaternion followed by an in-bounds
+    translation (`_transform_in`) - a structural check rather than a fixed offset, but
+    still a scan, and STATUS lists it as uncalibrated at "3 of 3 on one save". The guild
+    states its camps outright, so the two can be compared: agreement is evidence, and
+    disagreement means one of them is wrong and should be said out loud.
+
+    Same standard `build_bosses.py` holds two sources to - they agree on everything they
+    share, and the build fails if they stop.
+
+    **Fail-closed.** The layout was established by locating known values on two real saves
+    (Docs/multi-user-design.md), and one `i32` between `org_type` and the base-id count is
+    zero on both and otherwise unexplained. Anything unexpected - that field non-zero, an
+    implausible count, a short buffer - returns nothing rather than a guess, because the
+    only thing this is FOR is checking another parse, and a check that can be wrong is
+    worse than no check.
+    """
+    wsd = _world_save_data(level_save)
+    known = {str(c.get("key")) for c in wsd.get("BaseCampSaveData", {}).get("value", [])}
+
+    out: dict[str, list[str]] = {}
+    for group in wsd.get("GroupSaveDataMap", {}).get("value", []):
+        value = group.get("value", {})
+        if "Guild" not in str(value.get("GroupType", {}).get("value")):
+            continue
+        raw = _blob(value.get("RawData", {}).get("value"))
+        if not raw:
+            continue
+        try:
+            c = _Cursor(raw)
+            group_id = c.guid()
+            c.string()                       # group_name: the host's uid as a string
+            handles = c.i32()
+            if not 0 <= handles <= _MAX_COUNT:
+                raise SaveError(f"implausible handle count {handles}")
+            # Each handle is a (PlayerUId, InstanceId) pair. Skipped rather than read:
+            # this list is keyed by the map-key uid and splits 239/1 on the co-op save,
+            # so it says nothing about ownership - see the design's section 2.6.
+            c.skip(handles * 32)
+            c.u8()                           # org_type
+            unexplained = c.i32()
+            if unexplained != 0:
+                # Zero on both reference saves and not understood. Non-zero means the
+                # layout is not what was established, and every offset after it is a
+                # guess. Refuse.
+                raise SaveError(f"unexpected field {unexplained} before the base ids")
+            count = c.i32()
+            if not 0 <= count <= _MAX_COUNT:
+                raise SaveError(f"implausible base count {count}")
+            ids = [c.guid() for _ in range(count)]
+        except (SaveError, struct.error) as e:
+            log.warning("guild blob did not parse as expected (%s); no cross-check", e)
+            continue
+
+        # The self-validating step, and the reason this can be trusted at all: a camp id
+        # the camp table does not hold means the walk landed somewhere else and produced
+        # sixteen bytes that merely look like a Guid.
+        stray = [i for i in ids if i not in known]
+        if stray:
+            log.warning("guild %s claims %d camp(s) the save does not hold (%s); "
+                        "discarding the cross-check", group_id, len(stray), stray[:2])
+            continue
+        out[group_id] = ids
+    return out
+
+
 def _transform_in(blob: bytes) -> tuple[float, float, float] | None:
     """Recover a base camp's world position from an undecoded `BaseCampSaveData` blob.
 
@@ -636,6 +764,18 @@ def base_camps(level_save: Path,
     rather than raised: a base camp this cannot locate should cost that one camp, not the
     answer.
     """
+    return [xy for _, xy in located_base_camps(level_save, transform)]
+
+
+def located_base_camps(level_save: Path,
+                       transform: Transform | None = None
+                       ) -> list[tuple[str, tuple[float, float]]]:
+    """Base camps as `(camp_id, (x, y))`, so a position can be named rather than counted.
+
+    The id is `BaseCampSaveData`'s own key, which is what `guild_base_ids` returns - so
+    the two can be compared camp by camp instead of only by total. A count check would
+    pass if the scan found a phantom and missed a real one.
+    """
     transform = transform or Transform.load()
     entries = _world_save_data(level_save).get("BaseCampSaveData", {}).get("value", [])
 
@@ -646,10 +786,68 @@ def base_camps(level_save: Path,
         if found is None:
             skipped += 1
             continue
-        out.append(transform.to_map(found[0], found[1]))
+        out.append((str(entry.get("key")),
+                    transform.to_map(found[0], found[1])))
     log.info("base camps: %d located of %d (%d without a readable transform)",
              len(out), len(entries), skipped)
     return out
+
+
+@dataclass(frozen=True)
+class CampCheck:
+    """Whether the two accounts of where the base camps are agree.
+
+    `located` is what the quaternion scan recovered; `claimed` is what the guilds say they
+    own. `missing` is the interesting one - a camp the guild claims and the scan could not
+    place, which is the failure mode the scan's own log line has always reported and which
+    nothing has ever surfaced.
+    """
+    located: frozenset[str]
+    claimed: frozenset[str]
+
+    @property
+    def missing(self) -> frozenset[str]:
+        """Claimed by a guild, not located. The scan fell short."""
+        return self.claimed - self.located
+
+    @property
+    def unclaimed(self) -> frozenset[str]:
+        """Located, but no guild claims it. Not necessarily wrong - a camp can outlive
+        the guild that built it - so this is reported and never acted on."""
+        return self.located - self.claimed
+
+    @property
+    def agrees(self) -> bool:
+        return not self.missing
+
+    def describe(self) -> str:
+        if not self.claimed:
+            return f"{len(self.located)} located, no guild claim to check against"
+        if self.agrees and not self.unclaimed:
+            return f"{len(self.located)} located, all claimed by a guild"
+        parts = [f"{len(self.located)} located of {len(self.claimed)} claimed"]
+        if self.missing:
+            parts.append(f"**{len(self.missing)} not found by the scan**")
+        if self.unclaimed:
+            parts.append(f"{len(self.unclaimed)} claimed by nobody")
+        return ", ".join(parts)
+
+
+def check_base_camps(level_save: Path,
+                     transform: Transform | None = None) -> CampCheck:
+    """Compare the scanned camp positions against what the guilds claim to own."""
+    located = {cid for cid, _ in located_base_camps(level_save, transform)}
+    claimed: set[str] = set()
+    for ids in guild_base_ids(level_save).values():
+        claimed.update(ids)
+    check = CampCheck(frozenset(located), frozenset(claimed))
+    if not check.agrees:
+        # Loud, because it means the scan silently returned fewer camps than exist and
+        # "rate my base" has been answering about a subset with nothing to say so.
+        log.warning("base camp cross-check: %s", check.describe())
+    else:
+        log.info("base camp cross-check: %s", check.describe())
+    return check
 
 
 class SaveWatcher:
@@ -736,6 +934,9 @@ class SaveWatcher:
         self.roster: frozenset[str] | None = None
         # Per-player rosters and the guild's shared base Pals. None means not read.
         self.rosters: "Rosters | None" = None
+        # Whether the scanned base camp positions agree with what the guilds claim.
+        # None means the check has not run.
+        self.camp_check: "CampCheck | None" = None
         self.roster_error: str | None = None
         self.roster_read_at: float = 0.0
         # Where the player's base camps are, from the same Level.sav read. None means not
@@ -851,6 +1052,10 @@ class SaveWatcher:
             # roster does. Read here rather than in its own poll so the multi-megabyte
             # parse happens once.
             self.base_camps = base_camps(level, self._transform)
+            # A second opinion on the scan that produced those positions. Cheap - it
+            # re-reads nothing, since `_world_save_data` is the same walk - and it is the
+            # only check this project has on a parse STATUS lists as uncalibrated.
+            self.camp_check = check_base_camps(level, self._transform)
             self.roster_error = None
         except Exception as e:
             log.warning("roster read failed (%s: %s); keeping previous", type(e).__name__, e)
@@ -996,6 +1201,10 @@ class SaveWatcher:
             return (f"{who} (incl. {len(self.rosters.shared)} shared), "
                     f"{len(self.roster)} in the world, read {age}s ago")
         out = f"{len(self.roster)} owned characters, read {age}s ago"
+        if self.camp_check is not None and not self.camp_check.agrees:
+            # Only when it disagrees. A passing cross-check is not news, and a status card
+            # that reports every check that passed buries the one that did not.
+            out += f" | base camps: {self.camp_check.describe()}"
         if self.roster_error:
             # A stale roster is kept rather than cleared, so the line has to say both:
             # the count is real and the last attempt to refresh it did not land.

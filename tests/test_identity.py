@@ -261,6 +261,58 @@ def test_a_single_player_world_still_gets_its_roster_before_the_split_is_read(tm
     assert w.roster_for(RUI) == frozenset({"lamball"})
 
 
+# --- M3a: the base camp cross-check -------------------------------------------
+#
+# `_transform_in` finds camp positions by scanning for a unit quaternion followed by an
+# in-bounds translation. STATUS lists it as uncalibrated - "found 3 of 3 on one save" -
+# and until now nothing could contradict it. The guild states its camps outright, so the
+# two accounts can be compared. Same standard build_bosses.py holds its two sources to.
+
+def test_agreement_is_the_quiet_case():
+    from palintel.saves import CampCheck
+    c = CampCheck(frozenset({"a", "b"}), frozenset({"a", "b"}))
+    assert c.agrees and not c.missing and not c.unclaimed
+    assert "all claimed" in c.describe()
+
+
+def test_a_camp_the_scan_could_not_place_is_reported():
+    """The failure the scan's own log line has always reported and nothing surfaced:
+    "rate my base" quietly answering about a subset of your bases."""
+    from palintel.saves import CampCheck
+    c = CampCheck(frozenset({"a"}), frozenset({"a", "b"}))
+    assert not c.agrees
+    assert c.missing == frozenset({"b"})
+    assert "not found by the scan" in c.describe()
+
+
+def test_a_camp_no_guild_claims_is_reported_but_not_an_error():
+    """A camp can outlive the guild that built it, so this is news rather than a fault -
+    and acting on it would delete a base the player still has."""
+    from palintel.saves import CampCheck
+    c = CampCheck(frozenset({"a", "b"}), frozenset({"a"}))
+    assert c.agrees                      # nothing is MISSING
+    assert c.unclaimed == frozenset({"b"})
+    assert "claimed by nobody" in c.describe()
+
+
+def test_no_guild_claim_means_nothing_to_check_against():
+    """A save whose guild blob did not parse must not read as "every camp is missing"."""
+    from palintel.saves import CampCheck
+    c = CampCheck(frozenset({"a", "b"}), frozenset())
+    assert c.agrees
+    assert "no guild claim" in c.describe()
+
+
+def test_status_stays_quiet_when_the_check_passes(coop):
+    from palintel.saves import CampCheck
+    coop.roster = frozenset({"lamball"})
+    coop.roster_read_at = time.time()
+    coop.camp_check = CampCheck(frozenset({"a"}), frozenset({"a"}))
+    assert "base camps" not in coop.describe_roster()
+    coop.camp_check = CampCheck(frozenset(), frozenset({"a"}))
+    assert "base camps" in coop.describe_roster()
+
+
 def test_status_reports_each_player_rather_than_one_total(coop):
     coop.rosters = _rosters({RUI: {"lamball"}, LUCK: {"cattiva"}}, {"anubis"},
                             {"lamball", "cattiva", "anubis"})
