@@ -35,8 +35,11 @@ class PlayerState:
     inherent to reading a save rather than the game's memory and fine for a question
     answered against a region.
 
-    `player_level` is still always None: it lives in a `Level.sav` blob whose decoder is
-    stale for 1.0.2 (see saves.py), so level gating is not yet on.
+    `player_level` is the level the GAME states, and only the host's - `LevelMeta.sav`
+    carries `HostPlayerLevel` and nothing carries anyone else's. A joining player keeps
+    None and Q6 falls back to inferring a floor. It was recorded here as permanently None
+    until 2026-08-13, on the strength of the per-player level being behind a stale
+    `Level.sav` decoder, which was true and was not the only place it was written down.
     """
     player_level: int | None = None
     player_coords: tuple[float, float] | None = None
@@ -783,11 +786,18 @@ class Pipeline:
             # Unlike every other class here, this one needs NO argument: "what should I
             # research next" is complete on its own. So there is no missing-argument
             # decline - the empty call is the common case, not a model failure.
+            # A level the SPEAKER named wins - "what can I unlock at level 30" is a
+            # question about level 30 whatever the save says. Failing that, the level the
+            # GAME states, which beats the floor `plan` would otherwise infer from the
+            # unlocked set: the floor under-reports by construction, and on the reference
+            # save it reads 57 against a stated 61, so four levels of technology were
+            # being withheld from a player who could research them.
+            said = call.args.get("player_level")
             try:
                 result = progression.plan(
                     state.tech or progression.PlayerTech(),
                     goal=goal,
-                    player_level=call.args.get("player_level"),
+                    player_level=said if said is not None else state.player_level,
                     currency=call.args.get("currency"),
                 )
             except progression.ProgressionError as e:

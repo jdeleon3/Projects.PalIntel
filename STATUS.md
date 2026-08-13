@@ -319,7 +319,23 @@ markers on each card were walked too, outside the base, with deposits standing t
 
 ### Known-uncalibrated
 
-- `min_player_level` / `danger` shipped **uncalibrated** — the rule asks for ~20 nodes of
+- ~~**Player level is permanently `None`**~~ — **wrong for the host, corrected 2026-08-13.**
+  The per-player level really is behind a stale `Level.sav` decoder, and that was written
+  down in three places as though it settled the question. **`LevelMeta.sav` states
+  `HostPlayerLevel` outright** — 2 KB, no custom decoders, no type hints. The reference save
+  reads **61** against the floor Q6 infers of **57**, and those four levels were withholding
+  **30 researchable technologies**, among them the Large-Scale Electric Egg Incubator. Only
+  the *host's* level is stated; a joining player still gets the floor, and handing them the
+  host's number would be the cross-attribution M1 exists to prevent. Fifth instance of this
+  project's recurring pattern: the data was there and nothing asked.
+- `min_player_level` / `danger` shipped **uncalibrated**, and **is now live for the host**
+  — `player_level` reaching `PlayerState` turns on `find_resource_nodes`'s level filter,
+  which had never fired. Measured before shipping: the highest `min_player_level` in the
+  data is **60**, so at the stated 61 it filters **zero** of 8,665 clusters. Had the floor
+  of 57 been wired in instead it would have hidden **657**, including 330 stone — which is
+  the argument for the stated number over the inference, not merely a convenience. It
+  becomes a real filter for a lower-level player, where the rule is still uncalibrated and
+  the card still reports how many it withheld. — the rule asks for ~20 nodes of
   known difficulty read in-game and has had none. **It has one now, from 2026-08-12, and
   it was expensive**: a level 68–72 spawn area is lethal at this player's level, and the
   card that named it said nothing about that. One reading is not a calibration, but it is
