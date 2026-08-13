@@ -154,9 +154,9 @@ async function loadOverview() {
     sp.append(box);
   }
 
-  $("#t-bot").textContent = data.bot.reachable ? "connected" : "not connected";
-  $("#t-bot").className = "slot-value" + (data.bot.reachable ? " is-good" : "");
-  $("#t-bot").title = data.bot.note;
+  // The bot slot and panel belong to `renderBot`, which polls on its own timer. Writing
+  // them from here too would have the two fight over the same element on every refresh.
+  if (data.bot) renderBot(data.bot);
 }
 
 async function loadSave() {
@@ -565,3 +565,114 @@ $("#cfg-save").addEventListener("click", async () => {
   state.textContent = res.note || "saved";
   btn.disabled = true;
 });
+
+/* --- bot process ----------------------------------------------------------
+ *
+ * Every decision comes from the heartbeat rather than from a handle this page holds.
+ * "Did the console start one" is the wrong question; "is one running" is the right one,
+ * because two bots on a single Discord token both answer and the only symptom is every
+ * question arriving twice.
+ */
+let botPoll = null;
+
+function renderBot(s) {
+  const slot = $("#t-bot");
+  const running = !!s.running;
+  slot.textContent = running
+    ? (s.adopted ? "running (not ours)" : "running")
+    : (s.starting ? "starting…" : "stopped");
+  slot.className = "slot-value" + (running ? " is-good" : s.starting ? " is-stale" : "");
+  slot.title = s.adopted
+    ? "started outside this console — it can still be stopped from here"
+    : (s.reason || "");
+
+  $("#bot-start").disabled = running || !!s.starting;
+  $("#bot-stop").disabled = !running;
+  $("#bot-restart").disabled = !running;
+
+  const p = $("#p-bot");
+  p.textContent = "";
+  if (!running) {
+    p.append(rows([
+      ["state", s.starting ? "starting…" : "not running"],
+      ["why", s.reason || "—"],
+      ["log", el("code", "", s.log || "")],
+    ]));
+    if (s.tail) {
+      p.append(el("p", "tail-title", "last output"));
+      p.append(el("div", "tail", s.tail));
+    }
+    return;
+  }
+
+  const r = s.receive;
+  const pairs = [
+    ["pid", `${s.pid}${s.adopted ? "  (started outside this console)" : ""}`],
+    ["uptime", s.uptime != null ? ago(s.uptime) : "—"],
+    ["router", s.router || "—"],
+    ["voice", s.voice || "—"],
+  ];
+  if (r) {
+    /* `opus err` climbing while `ok` also climbs is the signature of partial corruption,
+       which is the receive failure that sounds fine. */
+    pairs.push(["receive",
+      `ok ${r.ok} · failed ${r.failed} · opus err ${r.opus_errors}`,
+      r.opus_errors ? "bad" : ""]);
+  }
+  pairs.push(["save", s.save || "—"]);
+  if (s.counts) {
+    const c = s.counts;
+    pairs.push(["this hour",
+      Object.entries(c).map(([k, v]) => `${k} ${v}`).join(" · ") || "nothing yet"]);
+  }
+  pairs.push(["heartbeat", `${(s.age ?? 0).toFixed(0)}s ago`]);
+  p.append(rows(pairs));
+}
+
+async function loadBot() {
+  try {
+    renderBot(await api("/api/bot"));
+  } catch (e) {
+    $("#t-bot").textContent = "unknown";
+  }
+}
+
+async function botAction(action, btn) {
+  const buttons = [$("#bot-start"), $("#bot-stop"), $("#bot-restart")];
+  buttons.forEach((b) => (b.disabled = true));
+  btn.classList.add("is-busy");
+  const p = $("#p-bot");
+  p.textContent = "";
+  p.append(rows([["state", action === "stop" ? "stopping…" : "starting…"],
+                 ["note", "loading the datasets happens before Discord is dialled"]]));
+
+  let res;
+  try {
+    res = await fetch(`/api/bot/${action}`, {
+      method: "POST",
+      headers: { "X-PalIntel-Token": TOKEN, "Content-Type": "application/json" },
+      body: "{}",
+    }).then((r) => r.json());
+  } catch (e) {
+    res = { ok: false, error: e.message };
+  }
+  btn.classList.remove("is-busy");
+
+  await loadBot();
+  if (!res.ok) {
+    /* The bot's own words and its own output. This is the case the console exists for:
+       a config it refuses means it exits before anything else can report why. */
+    p.append(el("p", "tail-title", "failed"));
+    p.append(el("div", "tail", res.error + (res.log ? "\n\n" + res.log : "")));
+  }
+  loadOverview();
+}
+
+$("#bot-start").addEventListener("click", (e) => botAction("start", e.currentTarget));
+$("#bot-stop").addEventListener("click", (e) => botAction("stop", e.currentTarget));
+$("#bot-restart").addEventListener("click", (e) => botAction("restart", e.currentTarget));
+
+loadBot();
+/* Slower than the 5s heartbeat: the console is glanced at, not watched, and a tighter
+   poll would spend more on rendering than the information is worth. */
+botPoll = setInterval(loadBot, 8000);

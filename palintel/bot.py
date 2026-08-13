@@ -613,6 +613,7 @@ def run() -> None:
     # One session id for capture, spend AND latency - see where `session_id` is created
     # below. Declared up here because `activity` is built before that block runs.
     session_id = time.strftime("%Y%m%d-%H%M%S")
+    start_time = time.time()
     # Persisted, which it was not until 2026-08-13. The 2026-08-12 voice p95 of 6.2s
     # against a 2.5s budget - a Phase 1 exit criterion still recorded as failing - existed
     # only in a status line pasted into a chat log, because this kept a one-hour in-memory
@@ -635,7 +636,7 @@ def run() -> None:
 
     # Boxed, because a reconnect re-fires on_ready and a second polling task would double
     # the save reads for no benefit.
-    tasks: dict[str, object] = {"save": None}
+    tasks: dict[str, object] = {"save": None, "beat": None}
 
     @client.event
     async def on_ready() -> None:
@@ -647,6 +648,10 @@ def run() -> None:
                       "to that server with permission to view the channel")
         if watcher is not None and not tasks["save"]:
             tasks["save"] = client.loop.create_task(watch_saves())
+        # Started here rather than at import: a heartbeat before the gateway connects
+        # would claim a bot is running while it is still deciding whether it can.
+        if not tasks["beat"]:
+            tasks["beat"] = client.loop.create_task(beat())
 
     @client.event
     async def on_message(message: "discord.Message") -> None:
@@ -771,6 +776,41 @@ def run() -> None:
                       activity, watcher, started=time.monotonic(),
                       channel_kind="text", spend=spend,
                       user_id=str(message.author.id), bindings=bindings)
+
+    async def beat() -> None:
+        """Publish what only this process knows, on a timer.
+
+        Voice state, the receive counters, the router's identity and uptime live in memory
+        and died with the process; the console reported them as unavailable because they
+        genuinely were. This is also how a second bot is prevented - see botstate: a
+        console that cannot see a running bot will happily start another one on the same
+        Discord token, and the only symptom is every question answered twice.
+        """
+        from . import botstate
+
+        while True:
+            try:
+                mic = listener["mic"]
+                stats = getattr(mic, "stats", None)
+                botstate.write({
+                    "started_at": start_time,
+                    "uptime": time.monotonic() - activity.started,
+                    "session": session_id,
+                    "router": pipe.router.name,
+                    "channel_id": cfg.discord.channel_id,
+                    "voice": _voice_status(cfg, mic),
+                    "receive": stats() if callable(stats) else None,
+                    "save": watcher.describe() if watcher else "not configured",
+                    "world": (watcher.world.world_id
+                              if watcher and watcher.world else None),
+                    "counts": activity.counts(),
+                    "spend_usd": spend.total if spend else 0.0,
+                })
+            except Exception:
+                # A heartbeat failure must never take the bot down. Its only consequence
+                # is the console showing "not connected" for a bot that is answering fine.
+                log.exception("heartbeat failed")
+            await asyncio.sleep(botstate.BEAT_SECONDS)
 
     async def watch_saves() -> None:
         """Re-read the save on a timer for as long as the bot runs.
@@ -1017,7 +1057,14 @@ def run() -> None:
 
     # No log_handler kwarg here: that is discord.py's API. py-cord forwards run()'s
     # kwargs straight to start(), which rejects it. Logging is configured above instead.
-    client.run(cfg.discord.token)
+    try:
+        client.run(cfg.discord.token)
+    finally:
+        # A clean shutdown says so immediately rather than making the console wait out the
+        # staleness window. Absence and staleness mean the same thing, which is what lets
+        # a killed bot be handled correctly too - this is a courtesy, not the mechanism.
+        from . import botstate
+        botstate.clear()
 
 
 if __name__ == "__main__":

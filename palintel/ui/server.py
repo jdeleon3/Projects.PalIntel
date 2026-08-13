@@ -118,11 +118,9 @@ async def api_overview(request: web.Request) -> web.Response:
         "spend": sources.spend_state(),
         "latency": sources.latency_state(),
         "sessions": len(sources.list_sessions()),
-        # Named here rather than left implicit: a console that silently omits what it
-        # cannot see would read as "the bot has no voice" rather than "ask the bot".
-        "bot": {"reachable": False,
-                "unavailable": ["voice", "receive counters", "router", "uptime"],
-                "note": "process control and live bot state arrive in a later phase"},
+        # From the heartbeat the bot writes, which is also what stops a second bot being
+        # started on the same token. See botstate.
+        "bot": request.app["supervisor"].status(),
     })
 
 
@@ -152,9 +150,51 @@ async def api_config_write(request: web.Request) -> web.Response:
     return _json(result, status=200 if result.get("ok") else 400)
 
 
+async def api_bot(request: web.Request) -> web.Response:
+    sup = request.app["supervisor"]
+    state = sup.status()
+    # Only when something is wrong. A log tail beside a healthy bot is noise, and it is
+    # the thing you want instantly when the bot will not start.
+    if not state.get("running"):
+        state["tail"] = sup.tail()
+    return _json(state)
+
+
+async def api_bot_action(request: web.Request) -> web.Response:
+    """start | stop | restart. POSTs, so the Origin check in `guard` applies.
+
+    Run in a thread: `wait_started` blocks for up to 45 seconds waiting for a heartbeat,
+    and doing that on the event loop would freeze the console that is meant to be
+    reporting progress.
+    """
+    import asyncio
+
+    sup = request.app["supervisor"]
+    action = request.match_info["action"]
+    loop = asyncio.get_running_loop()
+
+    if action == "start":
+        result = sup.start()
+        if result["ok"]:
+            result = await loop.run_in_executor(None, sup.wait_started)
+    elif action == "stop":
+        result = await loop.run_in_executor(None, sup.stop)
+    elif action == "restart":
+        result = await loop.run_in_executor(None, sup.restart)
+    else:
+        return _json({"ok": False, "error": f"unknown action {action!r}"}, status=404)
+
+    if not result.get("ok") and "log" not in result:
+        result["log"] = sup.tail()
+    return _json(result, status=200 if result.get("ok") else 400)
+
+
 def build_app(token: str, port: int, save_dir: Path | None = None) -> web.Application:
     app = web.Application(middlewares=[guard])
+    from .process import Supervisor
+
     app["token"], app["port"], app["save_dir"] = token, port, save_dir
+    app["supervisor"] = Supervisor()
     app.add_routes([
         web.get("/", index),
         web.get("/static/{name}", static_file),
@@ -165,6 +205,8 @@ def build_app(token: str, port: int, save_dir: Path | None = None) -> web.Applic
         web.get("/api/sessions/{session}/clip/{uid}", api_clip),
         web.get("/api/config", api_config),
         web.post("/api/config", api_config_write),
+        web.get("/api/bot", api_bot),
+        web.post("/api/bot/{action}", api_bot_action),
     ])
     return app
 

@@ -48,3 +48,7 @@ obj/
 Notes/
 # Who each Discord user is in the game. Holds Discord user ids - never committed.
 data/players.json
+
+# The bot heartbeat and its captured startup output. Runtime state, not source.
+data/bot-state.json
+data/bot.log
