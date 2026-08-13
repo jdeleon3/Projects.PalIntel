@@ -405,7 +405,7 @@ async def _answer(channel, pipe: Pipeline, text: str, who: str,
     route_ms = (time.monotonic() - t_route) * 1000
     declined = isinstance(outcome.call, Decline)
     if activity is not None:
-        activity.timed("route", route_ms, text[:60])
+        activity.timed("route", route_ms, text[:60], who=who)
     kind = "decline" if declined else outcome.call.name
     # **Which path answered, from whether a model call happened - not from the rationale
     # text.** The old test was `"cue" in outcome.call.rationale`, which is a string sniff
@@ -438,7 +438,11 @@ async def _answer(channel, pipe: Pipeline, text: str, who: str,
             entity=(args.get("pal") or args.get("boss") or args.get("resource")
                     or args.get("item")),
             score=round(top.score, 3) if top else None,
-            outcome="declined" if declined else "answered"))
+            outcome="declined" if declined else "answered",
+            # Without this a party session is one corpus with several voices in it, and
+            # two people asking similar questions look exactly like one person rephrasing
+            # - which is the shape the alias harvester reads as a correction.
+            who=who))
     if spend is not None:
         # **After routing, before posting**, so a Discord failure cannot lose the charge -
         # the money is spent the moment the router returns, whatever happens to the card.
@@ -494,7 +498,11 @@ async def _answer(channel, pipe: Pipeline, text: str, who: str,
             # because they are a different promise to the player and are slow for a
             # reason the routing policy asks for. See activity.TIMED_KINDS.
             kind_timed = f"{channel_kind}_decline" if declined else channel_kind
-            activity.timed(kind_timed, (time.monotonic() - started) * 1000, text[:60])
+            # Attributed, because the graded p95 is the number a party session will move
+            # most: one person on a bad connection, or one asking only model-path
+            # questions, drags a single population and cannot be seen inside it.
+            activity.timed(kind_timed, (time.monotonic() - started) * 1000,
+                           text[:60], who=who)
 
     if outcome.illustrate is None:
         return
@@ -556,7 +564,14 @@ def run() -> None:
         sys.exit(f"config error: {e}")
 
     pipe = build_pipeline(cfg)
-    activity = ActivityLog()
+    # One session id for capture, spend AND latency - see where `session_id` is created
+    # below. Declared up here because `activity` is built before that block runs.
+    session_id = time.strftime("%Y%m%d-%H%M%S")
+    # Persisted, which it was not until 2026-08-13. The 2026-08-12 voice p95 of 6.2s
+    # against a 2.5s budget - a Phase 1 exit criterion still recorded as failing - existed
+    # only in a status line pasted into a chat log, because this kept a one-hour in-memory
+    # window and wrote nothing. Costs persisted; latency did not.
+    activity = ActivityLog(session=session_id)
     watcher = _build_watcher(cfg)
     # Who each Discord user is in the game. Loaded once and written on every bind; see
     # identity.py for why this is persisted when PlayerState never is.
@@ -611,6 +626,8 @@ def run() -> None:
                 roster=watcher.describe_roster() if watcher else "not configured",
                 spend=(spend_mod.describe(spend, cfg.cost.balance_usd,
                                           cfg.cost.warn_below_usd)
+                       + (f"\n{by}" if (by := spend_mod.describe_users(
+                           spend_mod.all_charges())) else "")
                        if cfg.cost.enabled else ""),
                 router=pipe.router.name,
                 artwork=_artwork_status(cfg, pipe))))
@@ -732,11 +749,11 @@ def run() -> None:
 
     listener = {"mic": None}   # boxed so on_ready can see it across re-fires
 
-    # One session id for the whole run, shared by capture and spend so a session's
-    # clips, log and bill sit in one directory. Created here rather than inside the
-    # voice block because TYPED queries cost money too, and the first version had the
-    # spend log unreachable from the text handler for exactly that reason.
-    session_id = time.strftime("%Y%m%d-%H%M%S")
+    # `session_id` is created at the top of `run`, beside the ActivityLog that also needs
+    # it. One id for the whole run, shared by capture, spend AND latency so a session's
+    # clips, log, bill and timings sit in one directory. It was created here originally
+    # because TYPED queries cost money too, and the first version had the spend log
+    # unreachable from the text handler for exactly that reason.
     spend = spend_mod.SpendLog(session_id) if cfg.cost.enabled else None
     if spend is not None:
         log.info("spend: %s", spend_mod.describe(
@@ -791,6 +808,22 @@ def run() -> None:
             # cheaper and far less fragile than teaching the transcriber to take bytes,
             # and these are one-to-three second clips.
             uid = f"{int(time.time() * 1000):x}"
+            # **Observed when Discord can tell us, configured when only the mic can.**
+            # Resolved HERE rather than just before `_answer`, because everything timed or
+            # captured below belongs to a speaker too - and a party session's clips and
+            # timings with no name on them are one corpus with several voices in it.
+            #
+            # The mic cannot say who spoke, so attribution is `voice.speaker` - naming the
+            # person at the machine is what lets a spoken question be followed up in text,
+            # which is what ADR-0012 promises. Unset, it stays "voice": guessing which
+            # Discord user is sitting there would attribute speech to the wrong person in
+            # a shared channel, and that is worse than not joining the two.
+            #
+            # A Discord packet carries its member, so on that source the guess disappears
+            # and the promise holds for everyone in the channel rather than for one person
+            # by declaration. `display_name` because that is the key the text path uses.
+            who = (getattr(speaker, "display_name", None) or str(speaker)
+                   if speaker is not None else cfg.voice.speaker or "voice")
             # Captured or not, the WAV is written either way - faster-whisper reads a
             # file, not a buffer. Capture only changes WHERE, and whether it survives.
             path = (str(capture.write_wav(uid, utt.pcm) or f"{tmp.name}/{uid}.wav")
@@ -807,7 +840,7 @@ def run() -> None:
             stt_ms = (time.monotonic() - t_stt) * 1000
             log.info("voice: heard %r (%.1fs audio, %.0fms STT, closed on %s)",
                      text, utt.seconds, stt_ms, utt.reason)
-            activity.timed("stt", stt_ms, f"{utt.seconds:.1f}s audio")
+            activity.timed("stt", stt_ms, f"{utt.seconds:.1f}s audio", who=who)
             if not text.strip():
                 # Wake word fired on something that was not speech. Silence is right:
                 # posting "I didn't catch that" to a false trigger is channel noise for
@@ -848,18 +881,6 @@ def run() -> None:
                     await text_channel.send("I caught my name but not the question.")
                 return
 
-            # **Observed when Discord can tell us, configured when only the mic can.**
-            # The mic cannot say who spoke, so attribution is `voice.speaker` - naming the
-            # person at the machine is what lets a spoken question be followed up in text,
-            # which is what ADR-0012 promises. Unset, it stays "voice": guessing which
-            # Discord user is sitting there would attribute speech to the wrong person in
-            # a shared channel, and that is worse than not joining the two.
-            #
-            # A Discord packet carries its member, so on that source the guess disappears
-            # and the promise holds for everyone in the channel rather than for one person
-            # by declaration. `display_name` because that is the key the text path uses.
-            who = (getattr(speaker, "display_name", None) or str(speaker)
-                   if speaker is not None else cfg.voice.speaker or "voice")
             # On the Discord source the packet names its member, so a spoken question can
             # be attributed to a bound player exactly like a typed one - which is what
             # makes party voice and per-player state the same feature rather than two.

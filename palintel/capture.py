@@ -54,6 +54,15 @@ class Utterance:
     label: str = "auto"
     source: str = "gameplay"
     at: float = 0.0
+    # Who said it. Empty on the microphone, which cannot tell speakers apart; the member's
+    # display name on the Discord source, where every packet names its sender.
+    #
+    # **A party session without this is one corpus with several voices in it and no way to
+    # separate them.** The analysis this capture exists to feed - alias harvesting,
+    # failure runs, rephrase pairs - all assume one speaker rephrasing themselves. Two
+    # people asking similar questions look exactly like one person rephrasing, which is
+    # the shape `harvest_aliases.py` would read as a correction and learn from.
+    who: str = ""
 
     def as_json(self) -> dict:
         d = {k: getattr(self, k) for k in self.__dataclass_fields__}
