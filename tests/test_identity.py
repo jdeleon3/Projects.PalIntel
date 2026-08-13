@@ -17,7 +17,7 @@ import time
 import pytest
 
 from palintel.identity import Bindings, resolve
-from palintel.saves import PlayerSnapshot, SaveWatcher
+from palintel.saves import PlayerSnapshot, Rosters, SaveWatcher, _le_guid, _slot_instance
 
 RUI = "00000000-0000-0000-0000-000000000001"
 LUCK = "48f23c66-0000-0000-0000-000000000000"
@@ -157,3 +157,114 @@ def test_the_staleness_gate_is_per_player(coop):
     object.__setattr__(coop.snapshots[RUI], "written_at", time.time() - 86400)
     assert coop.coords_for(RUI) is None
     assert coop.coords_for(LUCK) == (230.0, -486.0)
+
+
+# --- M2: the roster, per player and per guild ---------------------------------
+#
+# Numbers from the same two worlds. The solo one is the important assertion: the change
+# is behaviour-preserving there, so it can be checked against a total that already
+# existed rather than against a judgement.
+
+import struct                                                       # noqa: E402
+import uuid                                                         # noqa: E402
+
+
+def test_a_slot_names_the_character_it_holds():
+    """Slot RawData is PlayerUId(16) + InstanceId(16) + 6, read off real slots."""
+    player = uuid.UUID("00000000-0000-0000-0000-000000000001")
+    inst = uuid.UUID("4dabb608-4319-cdf2-c0ed-febf0d881363")
+
+    def le(u):
+        return struct.pack("<4I", *struct.unpack(">4I", u.bytes))
+
+    assert _slot_instance(le(player) + le(inst) + b"\x00" * 6) == str(inst)
+
+
+def test_an_empty_slot_holds_nobody():
+    assert _slot_instance(b"\x00" * 38) is None
+    assert _slot_instance(b"\x00" * 8) is None
+
+
+def test_guid_byte_order_is_little_endian_uint32():
+    """Reading this big-endian yields a valid-looking Guid that joins to nothing."""
+    assert _le_guid(bytes.fromhex("00000000" "00000000" "00000000" "01000000")) == RUI
+
+
+def _rosters(carried, shared, everyone):
+    return Rosters(carried={k: frozenset(v) for k, v in carried.items()},
+                   shared=frozenset(shared), everyone=frozenset(everyone))
+
+
+def test_the_solo_roster_is_unchanged_by_the_split():
+    """**M2's exit criterion.** 184 carried + 11 species held only in base containers =
+    the 195 the union always returned. Any other number is the trap: filtering on
+    OwnerPlayerUId alone silently drops base-camp Pals, six of them ordinary Pals the
+    counter card would shortlist."""
+    carried = {f"c{i}" for i in range(184)}
+    only_shared = {f"s{i}" for i in range(11)}
+    r = _rosters({RUI: carried}, carried | only_shared, carried | only_shared)
+    assert len(r.everyone) == 195
+    assert len(r.for_player(RUI)) == 195
+
+
+def test_neither_coop_player_is_given_the_union():
+    """`Rui` owns 32 and `OutofLuck` 39 of a 53-species world. Handing either of them 53
+    is a 66% over-count, and the counter card would shortlist Pals the other player has."""
+    rui = {f"r{i}" for i in range(13)} | {f"both{i}" for i in range(19)}
+    luck = {f"l{i}" for i in range(20)} | {f"both{i}" for i in range(19)}
+    # 8 shared species, and on the real save only ONE of them is found nowhere else -
+    # base Pals are mostly duplicates of ones somebody also carries. 52 carried + 1 = 53.
+    shared = {f"both{i}" for i in range(7)} | {"only-in-base"}
+    r = _rosters({RUI: rui, LUCK: luck}, shared, rui | luck | shared)
+    assert len(r.for_player(RUI)) == 32 + 1      # 7 of the 8 he already carries
+    assert len(r.for_player(LUCK)) == 39 + 1
+    assert len(r.everyone) == 53
+    assert r.for_player(RUI) != r.for_player(LUCK)
+    # Neither is handed the other's carried Pals, which is the over-count itself.
+    assert not (r.for_player(RUI) & {f"l{i}" for i in range(20)})
+
+
+def test_guild_pals_reach_every_member():
+    """Base Pals are shared by construction - that is what a guild is - so both members
+    field them and neither is told they own the other's carried Pals."""
+    r = _rosters({RUI: {"lamball"}, LUCK: {"cattiva"}}, {"anubis"},
+                 {"lamball", "cattiva", "anubis"})
+    assert "anubis" in r.for_player(RUI) and "anubis" in r.for_player(LUCK)
+    assert "cattiva" not in r.for_player(RUI)
+
+
+def test_an_unattributable_speaker_gets_none_not_the_union():
+    """None stays None to the card, which says it has not looked. The union would be a
+    claim about Pals that are somebody else's."""
+    r = _rosters({RUI: {"lamball"}}, set(), {"lamball"})
+    assert r.for_player(None) is None
+    assert r.for_player("someone-who-just-joined") is None
+
+
+def test_the_watcher_does_not_hand_a_coop_player_the_world_roster(coop):
+    coop.rosters = _rosters({RUI: {"lamball"}, LUCK: {"cattiva"}}, {"anubis"},
+                            {"lamball", "cattiva", "anubis"})
+    coop.roster = coop.rosters.everyone
+    assert coop.roster_for(RUI) == frozenset({"lamball", "anubis"})
+    assert coop.roster_for(None) is None
+    assert coop.state_for(RUI).owned_species == frozenset({"lamball", "anubis"})
+
+
+def test_a_single_player_world_still_gets_its_roster_before_the_split_is_read(tmp_path):
+    """The per-player read is on a slow timer, so there is a window where only the world
+    roster exists. With one player the two sets are the same by construction, so
+    answering from it is not a guess."""
+    (tmp_path / "Players").mkdir()
+    w = SaveWatcher(tmp_path)
+    w.snapshots = {RUI: _snap(RUI, (1.0, 2.0), 10, 5, 1)}
+    w.roster = frozenset({"lamball"})
+    assert w.roster_for(RUI) == frozenset({"lamball"})
+
+
+def test_status_reports_each_player_rather_than_one_total(coop):
+    coop.rosters = _rosters({RUI: {"lamball"}, LUCK: {"cattiva"}}, {"anubis"},
+                            {"lamball", "cattiva", "anubis"})
+    coop.roster = coop.rosters.everyone
+    line = coop.describe_roster()
+    assert "Rui 2" in line and "OutofLuck 2" in line
+    assert "in the world" in line
