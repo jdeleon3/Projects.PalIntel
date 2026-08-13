@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en" data-token="%%TOKEN%%">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PalIntel Console</title>
+<link rel="stylesheet" href="/static/app.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%2314110D'/><path d='M8 22V10h5a4 4 0 010 8H8' stroke='%23F9A825' stroke-width='2.5' fill='none'/></svg>">
+</head>
+<body>
+
+<!-- The transport bar: the handful of facts that must always be true and visible.
+     Modelled on a recorder's transport strip rather than a web nav - this is the row you
+     glance at mid-game to answer "is it reading the right world, and is it fresh". -->
+<header class="transport">
+  <div class="mark">
+    <span class="mark-p">P</span>
+    <span class="mark-name">PALINTEL</span>
+    <span class="mark-sub">console</span>
+  </div>
+
+  <div class="transport-slot" id="slot-world">
+    <span class="slot-label">world</span>
+    <span class="slot-value" id="t-world">reading…</span>
+  </div>
+
+  <div class="transport-slot" id="slot-fresh">
+    <span class="slot-label">save</span>
+    <span class="slot-value" id="t-fresh">—</span>
+  </div>
+
+  <div class="transport-slot" id="slot-bot">
+    <span class="slot-label">bot</span>
+    <span class="slot-value" id="t-bot">not connected</span>
+  </div>
+
+  <button class="refresh" id="refresh" type="button" aria-label="Re-read the save">
+    <span class="refresh-dot" aria-hidden="true"></span>re-read
+  </button>
+</header>
+
+<div class="frame">
+  <nav class="rail" aria-label="Sections">
+    <button class="rail-item is-active" data-view="status" type="button">
+      <span class="rail-key">01</span><span class="rail-text">Status</span>
+    </button>
+    <button class="rail-item" data-view="sessions" type="button">
+      <span class="rail-key">02</span><span class="rail-text">Sessions</span>
+    </button>
+    <div class="rail-foot">
+      <span class="rail-note">read-only</span>
+      <span class="rail-note dim">config &amp; control<br>arrive next</span>
+    </div>
+  </nav>
+
+  <main class="stage">
+
+    <!-- ---------------------------------------------------------------- STATUS -->
+    <section class="view is-active" id="view-status">
+      <div class="grid">
+
+        <article class="panel span-6" style="--i:0">
+          <h2 class="panel-title">World<span class="chip chip-stated">stated</span></h2>
+          <div id="p-world" class="loading">reading the save…</div>
+        </article>
+
+        <article class="panel span-6" style="--i:1">
+          <h2 class="panel-title">Players</h2>
+          <div id="p-players" class="loading">reading the save…</div>
+        </article>
+
+        <article class="panel span-7" style="--i:2">
+          <h2 class="panel-title">
+            Latency<span class="chip chip-measured">measured</span>
+          </h2>
+          <p class="panel-note">
+            Against the Phase&nbsp;1 budgets. These are exit criteria and they are
+            <em>failing</em>; a console that only showed what passes would be decoration.
+          </p>
+          <div id="p-latency" class="loading">reading…</div>
+        </article>
+
+        <article class="panel span-5" style="--i:3">
+          <h2 class="panel-title">Spend<span class="chip chip-measured">measured</span></h2>
+          <div id="p-spend" class="loading">reading…</div>
+        </article>
+
+        <article class="panel span-12" style="--i:4">
+          <h2 class="panel-title">Save integrity</h2>
+          <div id="p-integrity" class="loading">reading the save…</div>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- -------------------------------------------------------------- SESSIONS -->
+    <section class="view" id="view-sessions">
+      <div class="split">
+        <aside class="list-pane">
+          <h2 class="pane-title">Capture sessions</h2>
+          <ol class="session-list" id="session-list">
+            <li class="loading">reading…</li>
+          </ol>
+        </aside>
+        <div class="detail-pane" id="session-detail">
+          <div class="empty">
+            <p class="empty-mark">02</p>
+            <p>Pick a session.</p>
+            <p class="empty-note">
+              Every utterance the bot captured, what it routed to, and the clip itself.
+              A human label is the only thing that counts — <code>auto</code> is the
+              router's opinion of itself.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
