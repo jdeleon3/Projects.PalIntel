@@ -113,6 +113,14 @@ class Outcome:
     # that would have sat in front of the text card the player is actually waiting for.
     # The caller posts the answer, then draws.
     illustrate: "Callable[[], None] | None" = None
+    # What the model call behind this answer cost, or None when no model was called.
+    #
+    # Stamped from the ROUTER'S OWN return value in `handle`, not from `self.call`, and
+    # that distinction is load-bearing: `_dispatch` builds a fresh `Decline` when a model
+    # names a tool and omits its required argument, so reading usage off the final call
+    # would drop the charge for exactly the queries the router found hardest. Carried on
+    # the Outcome so it survives whatever the dispatcher decides.
+    usage: "object | None" = None
 
     @property
     def card(self) -> Card:
@@ -332,20 +340,29 @@ class Pipeline:
         #    asking at once cannot resolve each other's pronouns.
         context = self.memory.recent(who)
         call = self.router.route(utterance, candidates, context)
+        # Read ONCE, here, off the router's own return value - never off the router object
+        # afterwards. See `Outcome.usage` and `FastPathRouter.last_usage`: a shared slot
+        # read after the executor returns is what let two concurrent queries swap costs.
+        usage = getattr(call, "usage", None)
         if isinstance(call, Decline):
-            return self._decline(call, candidates)
+            return self._decline(call, candidates, usage=usage)
 
         # 3. Dispatch, once or twice. A chained call answers a question that is genuinely
         #    two questions - "where can I find something to beat Anubis" is a location
         #    question and a counter question, and choosing one gambles the TIER rather
         #    than the fact.
         outcome = self._dispatch(call, utterance, state, who, candidates)
+        outcome.usage = usage
         if call.then is None or isinstance(outcome.call, Decline):
             return outcome
 
+        # The chained half comes from `call.then`, which only the deterministic fast path
+        # produces - so it costs nothing and there is no second usage to add.
         second = self._dispatch(call.then, utterance, state, who, candidates,
                                 remember=False)
-        return self._merge(outcome, second)
+        merged = self._merge(outcome, second)
+        merged.usage = usage
+        return merged
 
     def _merge(self, primary: Outcome, secondary: Outcome) -> Outcome:
         """Two answers on one message, or the primary alone.
@@ -811,9 +828,16 @@ class Pipeline:
         self.memory.remember(Turn(who=who, tool=call.name, entities=entities,
                                   summary=summary))
 
-    def _decline(self, call: Decline, candidates: list[Candidate]) -> Outcome:
+    def _decline(self, call: Decline, candidates: list[Candidate],
+                 usage: object | None = None) -> Outcome:
+        """An honest decline card.
+
+        `usage` is passed only from `handle`, where the router's own answer is in hand.
+        Declines raised INSIDE `_dispatch` leave it None and are stamped by `handle`
+        afterwards, so a model call that produced an unusable tool call is still billed.
+        """
         log.info("decline: %s", call.reason)
-        return Outcome([cards.decline_card(call)], call, candidates)
+        return Outcome([cards.decline_card(call)], call, candidates, usage=usage)
 
     def _cards_for(self, entities: list[str], render) -> list[Card]:
         """One card per entity, or a clarifying question past the cap.

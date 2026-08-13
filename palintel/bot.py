@@ -308,9 +308,17 @@ async def _answer(channel, pipe: Pipeline, text: str, who: str,
     # over prose no branch is obliged to write: `_tech_named_call` says "named technology
     # 'Breed Farm' at 0.98", so all five technology lookups in the 2026-08-12 session were
     # answered by the stub and logged as model calls - in both the capture log and the
-    # spend ledger. `last_usage` is now None exactly when nothing was called, which is the
-    # fact both of them wanted in the first place.
-    usage = getattr(pipe.router, "last_usage", None)
+    # spend ledger. Usage is None exactly when nothing was called, which is the fact both
+    # of them wanted in the first place.
+    #
+    # **Read off the OUTCOME, never off `pipe.router`.** The router is one object shared by
+    # every caller and `pipe.handle` runs in an executor with several workers, so a
+    # `pipe.router.last_usage` read here happens after other queries may have entered and
+    # cleared it. Two overlapping questions - one voice, one typed - would swap costs, or
+    # log a real model call as a $0 fast-path row. That is the 2026-08-12 ledger bug
+    # arriving a second time by a different mechanism, and it is why the usage now travels
+    # on the answer instead of sitting in a slot anyone can read.
+    usage = outcome.usage
     answered_by = "model" if usage is not None else "fast"
     if capture is not None and uid:
         # What the SYSTEM decided, written as label "auto". Never as truth: labels taken

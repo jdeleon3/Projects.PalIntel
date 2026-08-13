@@ -316,28 +316,31 @@ class ClaudeRouter:
             return Decline(reason="router unreachable - check your connection",
                            transient=True)
 
-        self.last_usage = Usage.of(response, self._model)
+        # A LOCAL first - see the same line in routing_gemini. Every return below carries
+        # `usage` explicitly so the bill travels with the answer; `self.last_usage` stays
+        # for the single-threaded eval harnesses and is no longer what the bot reads.
+        usage = Usage.of(response, self._model)
+        self.last_usage = usage
 
         # A refusal carries no usable content; check before reading blocks.
         if response.stop_reason == "refusal":
             log.warning("router refused: %s", response.stop_details)
-            return Decline(reason="router declined to answer that")
+            return Decline(reason="router declined to answer that", usage=usage)
 
         tool_use = next((b for b in response.content if b.type == "tool_use"), None)
         if tool_use is None:
             said = " ".join(b.text for b in response.content if b.type == "text").strip()
-            log.info("router declined %s: %s", self.last_usage,
-                     said or "(no reason given)")
+            log.info("router declined %s: %s", usage, said or "(no reason given)")
             return Decline(reason=said or "no matching query type",
-                           known_options=self._resources)
+                           known_options=self._resources, usage=usage)
 
         # strict:true guarantees the schema, but null-valued optionals still arrive as
         # keys - drop them so the dispatcher's defaults apply.
         args = {k: v for k, v in dict(tool_use.input).items() if v is not None}
-        log.info("router -> %s(%s) %s", tool_use.name, args, self.last_usage)
+        log.info("router -> %s(%s) %s", tool_use.name, args, usage)
         name, args = unpack(tool_use.name, args)
         return ToolCall(name=name, args=args,
-                        rationale=f"{self.name} chose {tool_use.name}")
+                        rationale=f"{self.name} chose {tool_use.name}", usage=usage)
 
 
 def available(api_key: str | None = None) -> bool:

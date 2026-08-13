@@ -8,6 +8,8 @@ no fabricated coordinates, suspect clusters never served, declines stay honest.
 from __future__ import annotations
 
 import math
+import threading
+from dataclasses import replace
 
 import pytest
 
@@ -351,7 +353,9 @@ class _Fixed:
     def route(self, utterance, candidates, context=None):
         self.calls += 1
         self.last_usage = self._usage
-        return self._result
+        # A real backend stamps the usage onto what it returns as well as onto itself.
+        # Modelled here because that is what makes the cost survive a concurrent caller.
+        return replace(self._result, usage=self._usage)
 
 
 def test_timeout_falls_through_to_the_stub(kb: KnowledgeBase):
@@ -416,3 +420,229 @@ def test_a_stub_restatement_decline_is_not_billed(kb: KnowledgeBase):
     router = FastPathRouter(stub, model)
     router.route("what about the alpha?", [])
     assert model.calls == 0 and router.last_usage is None
+
+def test_usage_travels_on_the_answer_not_on_the_router(kb: KnowledgeBase):
+    """The charge must be readable from the Outcome alone.
+
+    `bot._answer` used to read `pipe.router.last_usage` AFTER `run_in_executor` returned.
+    That is a shared slot on an object every caller uses, so the value it holds by then
+    belongs to whichever query most recently entered `route` - not to this one.
+    """
+    stub = StubRouter(kb.lexicon, {n.resource for n in kb.nodes})
+    spent = object()
+    router = FastPathRouter(stub, _Fixed(Decline(reason="considered"), usage=spent))
+    pipe = Pipeline(kb, router)
+
+    assert pipe.handle("how do I breed a Vanwyrm").usage is spent
+    # The stub answers this one outright, so no model call and nothing to bill.
+    assert pipe.handle("where's the nearest coal").usage is None
+
+
+def test_concurrent_queries_are_not_billed_each_others_tokens(kb: KnowledgeBase):
+    """The 2026-08-13 defect: the 2026-08-12 ledger bug, arriving again by another route.
+
+    A fast-path query and a model query overlap on one shared router. Reading the cost off
+    the router after the fact gives whichever value the OTHER thread left there, so a real
+    model call gets logged as a $0 fast-path row - or a free answer gets charged. Both
+    figures the ledger exists to produce, wrong in the direction that empties a prepaid
+    balance early, which is exactly what happened the first time.
+
+    The barrier forces the interleaving that makes this deterministic rather than hoping
+    the scheduler produces it.
+    """
+    spent = object()
+    entered = threading.Event()
+    proceed = threading.Event()
+
+    class _Slow:
+        """A model backend that is inside `route` while the other thread runs."""
+        name = "slow"
+
+        def __init__(self):
+            self.last_usage = None
+
+        def route(self, utterance, candidates, context=None):
+            entered.set()
+            # Hold the model call open until the fast-path query has been and gone.
+            proceed.wait(timeout=5)
+            self.last_usage = spent
+            return Decline(reason="considered", usage=spent)
+
+    stub = StubRouter(kb.lexicon, {n.resource for n in kb.nodes})
+    router = FastPathRouter(stub, _Slow())
+    pipe = Pipeline(kb, router)
+    out: dict[str, object] = {}
+
+    def model_query():
+        out["model"] = pipe.handle("how do I breed a Vanwyrm")
+
+    t = threading.Thread(target=model_query)
+    t.start()
+    assert entered.wait(timeout=5), "the model backend never started"
+
+    # Runs entirely inside the other query's model call, and must not be billed for it.
+    fast = pipe.handle("where's the nearest coal")
+    proceed.set()
+    t.join(timeout=5)
+
+    assert fast.usage is None, "a fast-path answer was billed a concurrent model call"
+    assert out["model"].usage is spent, "a model call lost its charge to a concurrent query"
+
+    # And the point of the whole change: the OLD read is demonstrably wrong here, so this
+    # test bites rather than merely agreeing with the new code. The fast-path query reset
+    # `_went_to_model` to False while the model query was still inside `route`, so the
+    # model call that genuinely happened reports None and would be logged as a $0
+    # fast-path row - under-reporting spend and over-reporting how much of play never
+    # reaches the model. Both are the 2026-08-12 failure, exactly.
+    assert router.last_usage is None
+    assert out["model"].usage is not router.last_usage
+
+
+def test_fast_path_defers_anything_it_is_not_sure_of(kb: KnowledgeBase):
+    """The stub claiming a query it cannot answer is the whole risk of the fast path."""
+    stub = StubRouter(kb.lexicon, {n.resource for n in kb.nodes})
+    model = _Fixed(ToolCall(name="find_resource_nodes", args={"resource": "ore"}))
+    pipe = Pipeline(kb, FastPathRouter(stub, model))
+    # Names a resource, but asks about inventory rather than location - the model
+    # declined this one in the A5 run, and the stub must not answer it either.
+    pipe.handle("do I have enough sulfur for this")
+    pipe.handle("how do I breed a Vanwyrm")
+    assert model.calls == 2
+
+
+@pytest.mark.parametrize("cues,claims", [("standard", False), ("wide", True)])
+def test_cue_width_is_configurable(kb: KnowledgeBase, cues: str, claims: bool):
+    """'any sulfur around here' is the phrasing 'wide' exists to catch."""
+    stub = StubRouter(kb.lexicon, {n.resource for n in kb.nodes}, cues=cues)
+    call = stub.route("hey pal, is there any sulfur around here",
+                      kb.lexicon.rank("hey pal, is there any sulfur around here"))
+    assert isinstance(call, ToolCall) == claims
+
+
+def test_unknown_cue_set_fails_loudly(kb: KnowledgeBase):
+    with pytest.raises(ValueError, match="unknown cue set"):
+        StubRouter(kb.lexicon, cues="agressive")
+
+
+def test_both_failing_reports_the_transport_not_the_vocabulary(kb: KnowledgeBase):
+    stub = StubRouter(kb.lexicon, {n.resource for n in kb.nodes})
+    r = FallbackRouter(_Fixed(Decline(reason="gemini unreachable", transient=True)), stub)
+    out = Pipeline(kb, r).handle("how do I breed a Vanwyrm")
+    assert isinstance(out.call, Decline)
+    assert out.call.reason == "gemini unreachable"
+    assert out.call.known_options  # still names what it can answer
+
+
+# ------------------------------------------------------------------ stt hotwords
+
+def test_hotwords_hoist_the_spoken_resources_only(kb: KnowledgeBase):
+    """Bias decays along the list, and `sorted()` buried the resources at the bottom.
+
+    They are the only lowercase entries, so ASCII put all 313 capitalised Pal names ahead
+    of the nouns Q1 answers about. Phase 1 hoisted every resource; Phase 2 re-measured
+    that over 185 clips with a Pal tool registered and found hoisting is a BUDGET - the
+    set had grown from 5 to 19, and the extra fourteen cost 8 Pal clips. Hoisting only
+    the five the eval set exercises scores 19/19 and 101/166, better than every other
+    ordering on both classes at once.
+    """
+    from palintel.stt import VOICE_RESOURCES, hotword_order
+
+    order = hotword_order(kb.lexicon)
+    assert order[:len(VOICE_RESOURCES)] == list(VOICE_RESOURCES)
+    # The rest of the resources are still present, behind the Pals rather than ahead.
+    assert set(order[len(VOICE_RESOURCES):]) & set(kb.lexicon.resources())
+    # Reordered, not filtered: Phase 2 needs every Pal name still in the list.
+    assert set(order) == set(kb.lexicon.canonical_names)
+    assert len(order) == len(set(order))
+
+
+@pytest.mark.parametrize("utterance, resource", [
+    # Both were the slowest ANSWERED queries of a real session: clean entities that
+    # paid a full model round trip because the cue list had never seen the phrasing.
+    ("hey pal, can I get coal at this level?", "coal"),
+    ("hey pal, what's the best place to farm quartz?", "quartz"),
+])
+def test_cues_cover_the_phrasings_a_session_actually_used(kb: KnowledgeBase,
+                                                          utterance, resource):
+    stub = StubRouter(kb.lexicon, {n.resource for n in kb.nodes})
+    call = stub.route(utterance, kb.lexicon.rank(utterance))
+    assert isinstance(call, ToolCall)
+    assert call.args["resource"] == resource
+
+
+def test_widening_never_claims_the_inventory_question(kb: KnowledgeBase):
+    """Names a resource, is not a location question, and the model declined it too.
+
+    It has stayed deferred through every widening, which is the evidence that the cue
+    gate discriminates rather than just matching resource nouns.
+    """
+    for cues in ("standard", "proximity", "wide"):
+        stub = StubRouter(kb.lexicon, {n.resource for n in kb.nodes}, cues=cues)
+        utterance = "hey pal, do I have enough sulfur for this?"
+        assert isinstance(stub.route(utterance, kb.lexicon.rank(utterance)), Decline)
+
+
+# --------------------------------------------------------- permissive backstop
+
+def test_backstop_rescues_what_the_fast_path_would_not(kb: KnowledgeBase):
+    """The backstop must be MORE permissive than the fast path, or it is dead code.
+
+    An identical stub cannot rescue anything: the fast path asked it first, so whatever
+    reaches the model is by definition something it already declined. The first version
+    of this wiring shared one instance and could not rescue a single query while its
+    docstring claimed it answered clear resource queries outright.
+
+    "where's the nearest goal?" is verbatim from a session - coal heard as "goal",
+    ranking 0.75, under the fast path's 0.78 and over the backstop's 0.68.
+    """
+    from palintel.pipeline import build_router
+    from palintel.routing import BACKSTOP_CONFIDENT, MIN_CONFIDENT
+
+    assert BACKSTOP_CONFIDENT < MIN_CONFIDENT
+
+    locatable = {n.resource for n in kb.nodes}
+    fast = StubRouter(kb.lexicon, locatable)
+    backstop = StubRouter(kb.lexicon, locatable, cues="wide",
+                          resource_floor=BACKSTOP_CONFIDENT)
+    utterance = "hey pal, where's the nearest goal?"
+    cands = kb.lexicon.rank(utterance)
+
+    assert isinstance(fast.route(utterance, cands), Decline)      # too weak to preempt
+    rescued = backstop.route(utterance, cands)
+    assert isinstance(rescued, ToolCall)                          # good enough to salvage
+    assert rescued.args["resource"] == "coal"
+
+    router = FastPathRouter(fast, FallbackRouter(
+        _Fixed(Decline(reason="gemini unreachable", transient=True)), backstop))
+    out = Pipeline(kb, router).handle(utterance)
+    assert isinstance(out.call, ToolCall)
+    assert out.call.args["resource"] == "coal"
+
+
+def test_backstop_does_not_loosen_the_pal_guard(kb: KnowledgeBase):
+    """A permissive backstop answers weaker RESOURCE matches. It must not become quicker
+    to decide an utterance names a Pal, which is what happened when one constant gated
+    both - and which now steals the query from the resource branch rather than merely
+    giving up on it."""
+    locatable = {n.resource for n in kb.nodes}
+    backstop = StubRouter(kb.lexicon, locatable, cues="wide",
+                          resource_floor=BACKSTOP_CONFIDENT)
+    utterance = "hey pal, where can I find Suzaku?"
+    call = backstop.route(utterance, kb.lexicon.rank(utterance))
+    assert isinstance(call, ToolCall) and call.name == "find_pal_spawns"
+
+    # The guard's own bar is unmoved by the lower resource floor: "near a store" ranks
+    # ore at 0.75 against a Pal at 0.75, and must still reach the resource branch.
+    heard = "we're sitting near a store"
+    out = backstop.route(heard, kb.lexicon.rank(heard))
+    assert isinstance(out, ToolCall) and out.name == "find_resource_nodes"
+
+
+def test_backstop_floor_stays_above_where_wrong_answers_start(kb: KnowledgeBase):
+    """0.64 put a resource card on "can I get Zendelord before the first tower"."""
+    locatable = {n.resource for n in kb.nodes}
+    utterance = "Hey pal, can I get Zendelord before the first tower?"
+    cands = kb.lexicon.rank(utterance)
+    safe = StubRouter(kb.lexicon, locatable, cues="wide",
+                      resource_floor=BACKSTOP_CONFIDENT)
+    assert isinstance(safe.route(utterance, cands), Decline)
