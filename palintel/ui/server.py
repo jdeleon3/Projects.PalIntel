@@ -126,6 +126,32 @@ async def api_overview(request: web.Request) -> web.Response:
     })
 
 
+async def api_config(request: web.Request) -> web.Response:
+    from . import config_edit
+
+    return _json(config_edit.read())
+
+
+async def api_config_write(request: web.Request) -> web.Response:
+    """Apply settings. Guarded by the `Origin` check in `guard`, being a POST.
+
+    A rejected write returns 400 with the reason the *bot* gave, not a generic failure:
+    the whole point is that you find out here rather than by starting the bot and watching
+    it exit.
+    """
+    from . import config_edit
+
+    try:
+        payload = await request.json()
+    except Exception:
+        return _json({"ok": False, "error": "expected JSON"}, status=400)
+    if not isinstance(payload, dict):
+        return _json({"ok": False, "error": "expected an object"}, status=400)
+
+    result = config_edit.write(payload)
+    return _json(result, status=200 if result.get("ok") else 400)
+
+
 def build_app(token: str, port: int, save_dir: Path | None = None) -> web.Application:
     app = web.Application(middlewares=[guard])
     app["token"], app["port"], app["save_dir"] = token, port, save_dir
@@ -137,6 +163,8 @@ def build_app(token: str, port: int, save_dir: Path | None = None) -> web.Applic
         web.get("/api/sessions", api_sessions),
         web.get("/api/sessions/{session}", api_session),
         web.get("/api/sessions/{session}/clip/{uid}", api_clip),
+        web.get("/api/config", api_config),
+        web.post("/api/config", api_config_write),
     ])
     return app
 
