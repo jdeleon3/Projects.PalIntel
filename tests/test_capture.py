@@ -7,10 +7,12 @@ that reads as truth when it is only what the router believed.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
-from palintel.capture import FEEDBACK_KINDS, SessionCapture, Utterance, read_session
+from palintel.capture import (FEEDBACK_KINDS, UNEXPECTED, SessionCapture, Utterance,
+                              read_feedback, read_session)
 from palintel.config import CaptureConfig
 
 
@@ -100,6 +102,36 @@ def test_an_unwritable_directory_disables_rather_than_raises(tmp_path):
     assert c.write_wav("a", b"\x00") is None
 
 
-def test_three_feedback_kinds_each_routing_to_a_different_fix():
-    """A fourth nobody presses is clutter on every card."""
-    assert set(FEEDBACK_KINDS) == {"misheard", "wrong_entity", "wrong_class"}
+def test_the_feedback_kinds_lead_with_free_text():
+    """Three diagnoses, each routing to a different fix, plus the one that asks instead.
+
+    The diagnoses are a ROUTER's vocabulary. Play on 2026-08-12 pressed `wrong_class`
+    twice for things that were not a wrong class - the nearest available button - which is
+    what earned `unexpected` its slot at the head of the row rather than a fourth
+    diagnosis nobody presses.
+    """
+    assert set(FEEDBACK_KINDS) == {UNEXPECTED, "misheard", "wrong_entity", "wrong_class"}
+    assert next(iter(FEEDBACK_KINDS)) == UNEXPECTED
+
+
+def test_a_note_rides_with_the_label_and_never_replaces_it(tmp_path: Path):
+    """Prose does not aggregate and the scorers consume the label, so a note is an
+    attachment. It must not be possible to record one without a kind."""
+    c = SessionCapture(root=tmp_path, session="s")
+    c.record_feedback(7, UNEXPECTED, who="jd", note="  sent me somewhere I died  ")
+    rows = [json.loads(line) for line in
+            (c.dir / "log.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert rows[-1]["feedback"] == UNEXPECTED
+    assert rows[-1]["label"] == "user"
+    assert rows[-1]["note"] == "sent me somewhere I died"
+
+
+def test_a_note_survives_a_card_no_clip_claims(tmp_path: Path):
+    """`/palintel wrong` accepts a reply to a card answered from the text channel, where
+    there is no utterance to fold onto. `read_session` drops those; `read_feedback` is
+    what stops the most expensive row in the file being lost silently."""
+    c = SessionCapture(root=tmp_path, session="s")
+    c.record_feedback(999, UNEXPECTED, note="typed query, no clip")
+    assert read_session(c.dir / "log.jsonl") == []
+    assert [r["note"] for r in read_feedback(c.dir / "log.jsonl")] \
+        == ["typed query, no clip"]

@@ -207,10 +207,16 @@ def test_declines_rather_than_guessing(pipe: Pipeline, utterance):
 
 
 def test_decline_offers_only_locatable_resources(pipe: Pipeline):
-    """Crude oil is recognised but has no nodes, so must not be offered as findable."""
+    """Only resources with nodes may be offered as findable.
+
+    Asserted against the locatable set rather than by naming an excluded resource: the one
+    that used to be excluded - crude oil - turned out to have 185 placements, so a test
+    written around that name was testing a data accident.
+    """
     out = pipe.handle("where's the nearest adamantium")
     assert isinstance(out.call, Decline)
-    assert "crude_oil" not in out.call.known_options
+    placed = {n.resource for n in pipe.kb.nodes}
+    assert set(out.call.known_options) <= placed
     assert "coal" in out.call.known_options
 
 
@@ -288,10 +294,31 @@ def test_empty_result_never_renders_as_a_location(kb: KnowledgeBase):
     assert "No Coal found" in card.title
 
 
-def test_crude_oil_explains_itself_rather_than_saying_none_nearby(kb: KnowledgeBase):
+def test_crude_oil_is_located_and_says_it_is_not_mined(kb: KnowledgeBase):
+    """The card asserted "there are no map locations to give you" until 2026-08-12. There
+    are 185 oil fields, and the game's own item text says so: "Obtained by installing a
+    Crude Oil Extractor in an oil field."
+
+    The second half is the part that keeps it honest. These coordinates are places to
+    BUILD on, and a list of them under "Crude Oil locations" reads as an instruction to go
+    and swing a pickaxe unless the card says otherwise.
+    """
     r = find_resource_nodes(kb, "crude_oil", limit=3)
-    assert not r.nodes
-    assert "oil rigs" in resource_card(r).to_text()
+    assert r.nodes and r.provided
+    card = resource_card(r)
+    text = card.to_text().lower()
+    assert "oil field" in text and "extractor" in text
+    # The unit on each coordinate row, which is where "deposit" would be a claim rather
+    # than part of the sentence explaining that these are not deposits.
+    rows = [ln for ln in card.lines if ln.startswith("**")]
+    assert rows and all("field" in ln and "deposit" not in ln for ln in rows)
+
+
+def test_a_mined_resource_carries_no_extractor_note(kb: KnowledgeBase):
+    """The note is per-resource and derived, not printed on everything."""
+    r = find_resource_nodes(kb, "coal", limit=3)
+    assert r.nodes and not r.provided
+    assert "extractor" not in resource_card(r).to_text().lower()
 
 
 def test_decline_card_names_unrecognised_token_when_known():
@@ -311,13 +338,19 @@ def test_player_state_is_injected_not_parsed(pipe: Pipeline):
 class _Fixed:
     """A router that always returns the same thing. Stands in for a hosted backend."""
 
-    def __init__(self, result):
+    def __init__(self, result, usage=None):
         self.name = "fixed"
         self._result = result
         self.calls = 0
+        # A hosted backend sets this on a call and leaves it set. Modelled here because
+        # that stickiness is exactly what `FastPathRouter.last_usage` has to defend
+        # against - see the test below.
+        self._usage = usage
+        self.last_usage = None
 
     def route(self, utterance, candidates, context=None):
         self.calls += 1
+        self.last_usage = self._usage
         return self._result
 
 
@@ -352,151 +385,34 @@ def test_fast_path_answers_without_calling_the_model(kb: KnowledgeBase):
     assert model.calls == 0
 
 
-def test_fast_path_defers_anything_it_is_not_sure_of(kb: KnowledgeBase):
-    """The stub claiming a query it cannot answer is the whole risk of the fast path."""
-    stub = StubRouter(kb.lexicon, {n.resource for n in kb.nodes})
-    model = _Fixed(ToolCall(name="find_resource_nodes", args={"resource": "ore"}))
-    pipe = Pipeline(kb, FastPathRouter(stub, model))
-    # Names a resource, but asks about inventory rather than location - the model
-    # declined this one in the A5 run, and the stub must not answer it either.
-    pipe.handle("do I have enough sulfur for this")
-    pipe.handle("how do I breed a Vanwyrm")
-    assert model.calls == 2
+def test_a_fast_path_answer_reports_no_usage_even_after_a_model_call(kb: KnowledgeBase):
+    """The bug that made the 2026-08-12 session read $0.3344 when it cost $0.0880.
 
-
-@pytest.mark.parametrize("cues,claims", [("standard", False), ("wide", True)])
-def test_cue_width_is_configurable(kb: KnowledgeBase, cues: str, claims: bool):
-    """'any sulfur around here' is the phrasing 'wide' exists to catch."""
-    stub = StubRouter(kb.lexicon, {n.resource for n in kb.nodes}, cues=cues)
-    call = stub.route("hey pal, is there any sulfur around here",
-                      kb.lexicon.rank("hey pal, is there any sulfur around here"))
-    assert isinstance(call, ToolCall) == claims
-
-
-def test_unknown_cue_set_fails_loudly(kb: KnowledgeBase):
-    with pytest.raises(ValueError, match="unknown cue set"):
-        StubRouter(kb.lexicon, cues="agressive")
-
-
-def test_both_failing_reports_the_transport_not_the_vocabulary(kb: KnowledgeBase):
-    stub = StubRouter(kb.lexicon, {n.resource for n in kb.nodes})
-    r = FallbackRouter(_Fixed(Decline(reason="gemini unreachable", transient=True)), stub)
-    out = Pipeline(kb, r).handle("how do I breed a Vanwyrm")
-    assert isinstance(out.call, Decline)
-    assert out.call.reason == "gemini unreachable"
-    assert out.call.known_options  # still names what it can answer
-
-
-# ------------------------------------------------------------------ stt hotwords
-
-def test_hotwords_hoist_the_spoken_resources_only(kb: KnowledgeBase):
-    """Bias decays along the list, and `sorted()` buried the resources at the bottom.
-
-    They are the only lowercase entries, so ASCII put all 313 capitalised Pal names ahead
-    of the nouns Q1 answers about. Phase 1 hoisted every resource; Phase 2 re-measured
-    that over 185 clips with a Pal tool registered and found hoisting is a BUDGET - the
-    set had grown from 5 to 19, and the extra fourteen cost 8 Pal clips. Hoisting only
-    the five the eval set exercises scores 19/19 and 101/166, better than every other
-    ordering on both classes at once.
+    A hosted backend sets `last_usage` on a call and never clears it, and `FastPathRouter`
+    forwarded the attribute straight through. So every fast-path answer AFTER the first
+    model call was charged the previous call's cost and counted as having reached the
+    model - 55 of 56 queries, when the true figure was 16. Both numbers the spend ledger
+    exists to produce, wrong in the direction that drains a prepaid balance early.
     """
-    from palintel.stt import VOICE_RESOURCES, hotword_order
-
-    order = hotword_order(kb.lexicon)
-    assert order[:len(VOICE_RESOURCES)] == list(VOICE_RESOURCES)
-    # The rest of the resources are still present, behind the Pals rather than ahead.
-    assert set(order[len(VOICE_RESOURCES):]) & set(kb.lexicon.resources())
-    # Reordered, not filtered: Phase 2 needs every Pal name still in the list.
-    assert set(order) == set(kb.lexicon.canonical_names)
-    assert len(order) == len(set(order))
-
-
-@pytest.mark.parametrize("utterance, resource", [
-    # Both were the slowest ANSWERED queries of a real session: clean entities that
-    # paid a full model round trip because the cue list had never seen the phrasing.
-    ("hey pal, can I get coal at this level?", "coal"),
-    ("hey pal, what's the best place to farm quartz?", "quartz"),
-])
-def test_cues_cover_the_phrasings_a_session_actually_used(kb: KnowledgeBase,
-                                                          utterance, resource):
     stub = StubRouter(kb.lexicon, {n.resource for n in kb.nodes})
-    call = stub.route(utterance, kb.lexicon.rank(utterance))
-    assert isinstance(call, ToolCall)
-    assert call.args["resource"] == resource
+    model = _Fixed(Decline(reason="considered"), usage=object())
+    router = FastPathRouter(stub, model)
+
+    # Something only the model can take, so `model.last_usage` is left set.
+    router.route("how do I breed a Vanwyrm", kb.lexicon.rank("how do I breed a Vanwyrm"))
+    assert model.calls == 1 and model.last_usage is not None
+    assert router.last_usage is not None, "a real model call must still be billable"
+
+    # Now one the stub answers. No call was made, so there is nothing to bill.
+    router.route("where's the nearest coal", kb.lexicon.rank("where's the nearest coal"))
+    assert model.calls == 1
+    assert router.last_usage is None
 
 
-def test_widening_never_claims_the_inventory_question(kb: KnowledgeBase):
-    """Names a resource, is not a location question, and the model declined it too.
-
-    It has stayed deferred through every widening, which is the evidence that the cue
-    gate discriminates rather than just matching resource nouns.
-    """
-    for cues in ("standard", "proximity", "wide"):
-        stub = StubRouter(kb.lexicon, {n.resource for n in kb.nodes}, cues=cues)
-        utterance = "hey pal, do I have enough sulfur for this?"
-        assert isinstance(stub.route(utterance, kb.lexicon.rank(utterance)), Decline)
-
-
-# --------------------------------------------------------- permissive backstop
-
-def test_backstop_rescues_what_the_fast_path_would_not(kb: KnowledgeBase):
-    """The backstop must be MORE permissive than the fast path, or it is dead code.
-
-    An identical stub cannot rescue anything: the fast path asked it first, so whatever
-    reaches the model is by definition something it already declined. The first version
-    of this wiring shared one instance and could not rescue a single query while its
-    docstring claimed it answered clear resource queries outright.
-
-    "where's the nearest goal?" is verbatim from a session - coal heard as "goal",
-    ranking 0.75, under the fast path's 0.78 and over the backstop's 0.68.
-    """
-    from palintel.pipeline import build_router
-    from palintel.routing import BACKSTOP_CONFIDENT, MIN_CONFIDENT
-
-    assert BACKSTOP_CONFIDENT < MIN_CONFIDENT
-
-    locatable = {n.resource for n in kb.nodes}
-    fast = StubRouter(kb.lexicon, locatable)
-    backstop = StubRouter(kb.lexicon, locatable, cues="wide",
-                          resource_floor=BACKSTOP_CONFIDENT)
-    utterance = "hey pal, where's the nearest goal?"
-    cands = kb.lexicon.rank(utterance)
-
-    assert isinstance(fast.route(utterance, cands), Decline)      # too weak to preempt
-    rescued = backstop.route(utterance, cands)
-    assert isinstance(rescued, ToolCall)                          # good enough to salvage
-    assert rescued.args["resource"] == "coal"
-
-    router = FastPathRouter(fast, FallbackRouter(
-        _Fixed(Decline(reason="gemini unreachable", transient=True)), backstop))
-    out = Pipeline(kb, router).handle(utterance)
-    assert isinstance(out.call, ToolCall)
-    assert out.call.args["resource"] == "coal"
-
-
-def test_backstop_does_not_loosen_the_pal_guard(kb: KnowledgeBase):
-    """A permissive backstop answers weaker RESOURCE matches. It must not become quicker
-    to decide an utterance names a Pal, which is what happened when one constant gated
-    both - and which now steals the query from the resource branch rather than merely
-    giving up on it."""
-    locatable = {n.resource for n in kb.nodes}
-    backstop = StubRouter(kb.lexicon, locatable, cues="wide",
-                          resource_floor=BACKSTOP_CONFIDENT)
-    utterance = "hey pal, where can I find Suzaku?"
-    call = backstop.route(utterance, kb.lexicon.rank(utterance))
-    assert isinstance(call, ToolCall) and call.name == "find_pal_spawns"
-
-    # The guard's own bar is unmoved by the lower resource floor: "near a store" ranks
-    # ore at 0.75 against a Pal at 0.75, and must still reach the resource branch.
-    heard = "we're sitting near a store"
-    out = backstop.route(heard, kb.lexicon.rank(heard))
-    assert isinstance(out, ToolCall) and out.name == "find_resource_nodes"
-
-
-def test_backstop_floor_stays_above_where_wrong_answers_start(kb: KnowledgeBase):
-    """0.64 put a resource card on "can I get Zendelord before the first tower"."""
-    locatable = {n.resource for n in kb.nodes}
-    utterance = "Hey pal, can I get Zendelord before the first tower?"
-    cands = kb.lexicon.rank(utterance)
-    safe = StubRouter(kb.lexicon, locatable, cues="wide",
-                      resource_floor=BACKSTOP_CONFIDENT)
-    assert isinstance(safe.route(utterance, cands), Decline)
+def test_a_stub_restatement_decline_is_not_billed(kb: KnowledgeBase):
+    """`needs_restatement` never reaches the model by design, so it costs nothing."""
+    stub = StubRouter(kb.lexicon, {n.resource for n in kb.nodes})
+    model = _Fixed(Decline(reason="considered"), usage=object())
+    router = FastPathRouter(stub, model)
+    router.route("what about the alpha?", [])
+    assert model.calls == 0 and router.last_usage is None

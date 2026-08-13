@@ -78,6 +78,16 @@ MIN_ACTORS = 4
 # the percentile of the 32 marked areas' roughness that defines "flat enough".
 FLAT_PERCENTILE = 0.75
 
+# Which placement kinds are read as samples of the GROUND. Resource spawners and Pal
+# spawners sit on terrain; a `level_object` is a relic, a note or a tower barrier, which
+# sit on, in and above it. The bar below is calibrated over this population, so changing
+# it changes the calibration - which is exactly what happened when the cell scan widened
+# to collect oil fields and this file was reading the whole file.
+# `dungeon` is a portal marker - an entrance, which is on the ground like the other two.
+# Left out of a first draft of this set, which moved 8 cells and dropped 6; the diff is
+# how the omission was found, and it is the reason this is a named set and not a guess.
+GROUND_KINDS = {"node", "pal_spawn", "dungeon"}
+
 
 def _grid(points, radius: float) -> dict[tuple[int, int], list]:
     cells: dict[tuple[int, int], list] = {}
@@ -121,7 +131,14 @@ def build(version: str) -> dict:
     # A roughness value per grid cell, at base-radius resolution. Stored as a grid rather
     # than per candidate site so this dataset does not have to know what a candidate is,
     # and so a query never has to load 54,894 heights to answer one question.
-    cells = _grid(placements, radius)
+    # **Say what counts as a ground sample.** This grid is the flatness proxy and its bar
+    # is calibrated against the 32 areas the game marks, so the actor population it is
+    # computed over is part of the calibration. Reading `placements.json` unfiltered meant
+    # a 2026-08-12 resource fix - collecting `BP_LevelObject_*` so crude oil's 185 oil
+    # fields could be found - moved 84 cells and added 88 more, for terrain reasons that
+    # did not exist. Named here rather than inherited from whatever the scan collects.
+    ground = [p for p in placements if p["kind"] in GROUND_KINDS]
+    cells = _grid(ground, radius)
     roughness: dict[str, int] = {}
     for (gx, gy), members in cells.items():
         if len(members) < MIN_ACTORS:

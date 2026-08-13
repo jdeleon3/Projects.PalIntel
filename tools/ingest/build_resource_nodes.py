@@ -21,7 +21,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from _cluster import anchor, cluster, spread
-from _resources import derive
+from _resources import derive, provided
 
 REPO = Path(__file__).resolve().parents[2]
 RAW = REPO / "data" / "raw"
@@ -277,7 +277,8 @@ def main() -> None:
 
     out = {
         "game_version": args.version,
-        "source": "BP_PalMapObjectSpawner_* actors in PL_MainWorld5 World Partition cells",
+        "source": "BP_PalMapObjectSpawner_* and BP_LevelObject_* item-provider actors in "
+                  "PL_MainWorld5 World Partition cells",
         "scope": "overworld only - dungeon and instanced maps are NOT included",
         "cluster_radius_map_units": args.radius,
         "transform_id": "palworld-1.0.2-linear-axisswap-v2",
@@ -291,7 +292,6 @@ def main() -> None:
             "danger_bands": {"low": "<=20", "moderate": "21-40", "high": ">40"},
         },
         "known_gaps": [
-            "crude_oil has no spawner class in the overworld; it is not a placed node",
             "min_player_level omits the '+5 inside raid-triggering territory' term - "
             "raid territory is not in any extracted table, and a proxy would make the "
             "rule untraceable to its inputs",
@@ -301,6 +301,12 @@ def main() -> None:
             "Soralite and Paloxite and are now separate resources",
         ],
         "resource_display_names": dict(sorted(display.items())),
+        # Resources you build a structure on rather than swing a pickaxe at. A coordinate
+        # alone reads as "come here and mine it", and for crude oil the game's own answer
+        # is "install a Crude Oil Extractor in an oil field" - so the card has to say
+        # which kind of place it is pointing at. Derived, not listed: see
+        # `_resources.provided`.
+        "provided_resources": sorted(provided()),
         "stats": {
             "deposits": len(nodes),
             "clusters": len(records),

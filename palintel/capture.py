@@ -132,30 +132,56 @@ class SessionCapture:
 
 
     def record_feedback(self, message_id: int, kind: str,
-                        who: str | None = None) -> None:
+                        who: str | None = None, note: str | None = None) -> None:
         """A human's verdict on a card, keyed by the message it was posted as.
 
         Outranks `auto` everywhere downstream, and that is the point: labels derived
         from the router's own behaviour are self-confirming, so this is the only channel
         that can contradict it. Written as its own line - the answer is long since
         posted and nothing is waiting.
+
+        `note` is what the player typed. It is an ATTACHMENT to a label and never a
+        replacement for one: prose does not aggregate, and `harvest_aliases.py` and the
+        scorers consume the label. What it adds is the half no inference can reach - see
+        `UNEXPECTED` below.
         """
         if not self._ok:
             return
+        row = {"message_id": message_id, "feedback": kind, "label": "user",
+               "by": who, "at": time.time()}
+        if note:
+            row["note"] = note.strip()[:NOTE_LIMIT]
         try:
             with self.log_path.open("a", encoding="utf-8") as f:
-                f.write(json.dumps({"message_id": message_id, "feedback": kind,
-                                    "label": "user", "by": who,
-                                    "at": time.time()}) + "\n")
+                f.write(json.dumps(row) + "\n")
         except OSError as e:
             log.warning("capture: could not record feedback: %s", e)
 
 
-# What each button means. Deliberately three: an emoji nobody presses is clutter on
-# every card, and the distinctions here are the ones that route to different fixes -
-# a mis-heard name is a lexicon problem, a wrong class is a routing problem, and a
-# wrong entity with a clean transcript is neither.
+# Long enough for a sentence about what went wrong, short enough that nobody writes a
+# report mid-fight. Discord's own modal maximum is 4000; this is a nudge, not a limit.
+NOTE_LIMIT = 500
+
+# The free-text label, and deliberately FIRST in the row.
+#
+# The other three ask the player to diagnose - was it the microphone, the entity, or the
+# class? - which is a router's vocabulary, not a player's. Measured on 2026-08-12: of six
+# labels pressed, two were `wrong_class` for things that were not a wrong class at all
+# (a technology recommendation that silently dropped "for my mining pals", and a corpus
+# answer that restated the question). The taxonomy did not fit and the player used the
+# nearest button.
+#
+# It also reaches what analysis cannot. Replaying that session against the save recovered
+# the spend bug, the coordinate parser and the dropped filter - all deterministic. It could
+# not recover *"I walked to those coordinates and died"*, which was the most important
+# thing the session produced and arrived only because the player said so afterwards.
+UNEXPECTED = "unexpected"
+
+# What each button means. The three diagnoses are the ones that route to different fixes -
+# a mis-heard name is a lexicon problem, a wrong class is a routing problem, and a wrong
+# entity with a clean transcript is neither.
 FEEDBACK_KINDS = {
+    UNEXPECTED: ("📝", "Not what I expected"),
     "misheard": ("🔇", "Mis-heard me"),
     "wrong_entity": ("❌", "Wrong Pal or item"),
     "wrong_class": ("🤷", "Answered the wrong question"),
@@ -196,3 +222,26 @@ def read_session(path: Path) -> list[dict]:
         else:
             out[uid].update(row)
     return [out[u] for u in order]
+
+
+def read_feedback(path: Path) -> list[dict]:
+    """Every human verdict in the log, joined or not.
+
+    `read_session` folds feedback onto the utterance that claimed its message and drops
+    anything that matches none - which is silent, and fine while every card came from a
+    captured clip. It stopped being fine when `/palintel wrong` began accepting a reply to
+    a card from the TEXT channel, where there is no clip and therefore no utterance to
+    fold onto: the note is the most expensive thing in the file to obtain and the easiest
+    to lose.
+    """
+    rows = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if "feedback" in row:
+            rows.append(row)
+    return rows

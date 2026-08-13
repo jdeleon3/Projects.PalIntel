@@ -40,10 +40,18 @@ CANONICAL_OVERRIDE = {"Quartz": "quartz"}
 # these ids, the eval set and the lexicon silently stop lining up with the data.
 PHASE1_RESOURCES = {"ore", "coal", "sulfur", "quartz"}
 
-# Recognised but not placed. The player can name crude oil and deserves a real answer,
-# but it has no overworld spawner class - it comes from oil rigs - so it belongs in the
-# lexicon and not in the node dataset. cards.NOT_PLACED renders the difference.
-UNPLACED_RESOURCES = {"crude_oil": "Crude Oil"}
+# Recognised but not placed: in the lexicon so the player can name it, out of the node
+# dataset because nothing places it. `cards.NOT_PLACED` renders the difference.
+#
+# **Empty since 2026-08-12.** Its only entry was crude oil, on the reasoning that it "has
+# no overworld spawner class - it comes from oil rigs". It has 185 placements of
+# `BP_LevelObject_OilField_C`, whose CDO names `CrudeOil` outright; the derivation below
+# never saw them because it reads `BP_PalMapObjectSpawner*` and an oil field is a
+# `BP_LevelObject`. **An absence in a filtered search was written down as a fact about the
+# world**, and a card published it. Crude Oil's `type_b` is `MaterialOre`, so it now
+# derives as locatable with no help at all - which is the test that the fix is a widening
+# and not a second special case.
+UNPLACED_RESOURCES: dict[str, str] = {}
 
 
 def slug(name: str) -> str:
@@ -112,3 +120,34 @@ def derive(root: Path | None = None) -> tuple[dict[str, str], dict[str, str]]:
             f"ABORT: the derived mapping no longer produces {sorted(missing)}. Every "
             "recorded evaluation and the lexicon's aliases are written against those ids.")
     return mapping, display
+
+
+def provided(root: Path | None = None) -> set[str]:
+    """Canonical ids you cannot mine - you build a structure on the spot instead.
+
+    A `BP_PalMapObjectSpawner` is swung at with a pickaxe; a `BP_LevelObject` item
+    provider is something you place a machine on. Both are fixed positions yielding a
+    material, which is why they share a dataset, and the difference still has to reach the
+    card: a coordinate on its own says "come here and mine it", and for crude oil the
+    game's own answer is "install a Crude Oil Extractor in an oil field".
+
+    Told apart by the ABSENCE of a master row - a mined node has `material_type`, which is
+    the tool category, and a provider has none - rather than by a list of class names, so
+    the distinction survives a patch adding another provider.
+    """
+    raw = (root or RAW)
+    items = json.loads((raw / "items.json").read_text(encoding="utf-8"))
+    drops = json.loads((raw / "node_drops.json").read_text(encoding="utf-8"))
+
+    out: set[str] = set()
+    for entry in drops:
+        if not entry.get("drops") or entry.get("material_type") is not None:
+            continue
+        primary = max(entry["drops"], key=lambda d: d["Num"])["StaticItemId"]["Key"]
+        item = items.get(primary)
+        if not item or not item.get("name"):
+            continue
+        if item.get("type_b") not in LOCATABLE_CATEGORIES:
+            continue
+        out.add(CANONICAL_OVERRIDE.get(primary) or slug(item["name"]))
+    return out

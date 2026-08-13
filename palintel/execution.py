@@ -22,6 +22,10 @@ class ResourceResult:
     # The other way to get it. Populated for 11 of 18 resources; empty is the normal
     # case for stone, wood and the World Tree materials, which nothing drops.
     droppers: list[Dropper] = field(default_factory=list)
+    # True when these coordinates are places to BUILD on rather than to mine - see
+    # `KnowledgeBase.provided_resources`. Carried on the result rather than looked up in
+    # the card, so a card cannot render a coordinate without the fact travelling with it.
+    provided: bool = False
 
 
 def find_resource_nodes(
@@ -65,6 +69,7 @@ def find_resource_nodes(
         level_filtered=level_filtered,
         total_available=total,
         droppers=kb.droppers.get(resource, []),
+        provided=resource in kb.provided_resources,
     )
 
 
@@ -98,6 +103,30 @@ class SpawnResult:
     # Attribution for the line above, because unlike everything else on this card those
     # facts are not extracted from the game files. See ADR-0014's amendment.
     ranch_source: str = ""
+    # The closest area of the returned kind, when it did NOT rank into `areas`. Both of
+    # these exist for the same reason and neither reorders anything: the ranking answers
+    # "where is the best place to farm this Pal" and the player asked "where can I find
+    # one", and those diverge badly. Play on 2026-08-12 asked for Lovander while STANDING
+    # in a Lovander area (4 points, 15% share, 8 units away) and was sent to a denser one
+    # 818 units off - roughly 3.8 km of travel, at night, past the point of being an
+    # answer to the question asked.
+    #
+    # **Stated, not promoted.** Distance does not enter the sort - `-density` first was
+    # measured in Phase 2 and distance-first was measured WRONG there (Cattiva, a 1-point
+    # area 191 units out while a 60-point one went unmentioned), so nothing here overturns
+    # it. The card gets one more row and the player gets both numbers.
+    nearest: "SpawnArea | None" = None
+    # A field alpha, when ordinary spawns are what was returned. Same shape, worse failure:
+    # `SPAWN_KINDS` falls through to the FIRST kind with any rows, so 25 ordinary Anubis
+    # areas hid the alpha entirely - and the alpha was nearest of all 26 AND densest of all
+    # 26 (share 1.00 against 0.05), so it would have ranked first had it been allowed to
+    # compete. The player walked to the ordinary spawns at level 68-72 and died; the alpha
+    # they had already beaten sits at level 55, 831 units away.
+    #
+    # Not merged into `areas`: interleaving a level 12 field spawn with a level 55 alpha
+    # is still not one answer to one question, which is why the fall-through exists. It is
+    # named on its own line instead.
+    field_alpha: "SpawnArea | None" = None
 
 
 def find_pal_spawns(
@@ -155,9 +184,38 @@ def find_pal_spawns(
     else:
         matches.sort(key=lambda a: (-a.density, a.area_id))
 
+    shown = matches[:limit]
+
+    # The two "and also" rows. Both are computed AFTER the sort and neither feeds back
+    # into it - see the field comments on SpawnResult for what each one is for.
+    nearest = None
+    if near is not None and shown:
+        closest = min(matches, key=lambda a: (a.distance_to(*near), a.area_id))
+        best = min(a.distance_to(*near) for a in shown)
+        # **Half, and it is a chosen number, not a derived one.** The row exists to name a
+        # materially shorter walk, and without a bar it fires on noise: Anubis's closest
+        # ordinary area is 1,962 units out against 1,997 for the ranked one - 2% nearer,
+        # lower share, and printing it would cost a row to change nothing. Lovander's is
+        # 8 units against 818. Halving the travel is where "there is a closer one" starts
+        # being worth saying, and anything finer is a distinction the player cannot act on.
+        if closest not in shown and closest.distance_to(*near) <= best / 2:
+            nearest = closest
+
+    # Only when ordinary spawns are what came back. If the alpha IS the answer, it is
+    # already in `areas` and `kind_substituted` has said so on the card's first line.
+    field_alpha = None
+    if wanted == "normal":
+        alphas = [a for a in mine if a.kind == "alpha"]
+        if alphas:
+            # Nearest when the save is readable, densest otherwise - the same ordering
+            # question the main sort answers, asked over a set that is almost always 1.
+            field_alpha = (min(alphas, key=lambda a: (a.distance_to(*near), a.area_id))
+                           if near is not None
+                           else max(alphas, key=lambda a: (a.density, a.area_id)))
+
     return SpawnResult(
         pal=pal,
-        areas=matches[:limit],
+        areas=shown,
         near=near,
         kind=wanted,
         kind_substituted=substituted,
@@ -165,6 +223,8 @@ def find_pal_spawns(
         in_overworld=pal not in kb.pals_without_areas,
         ranch=kb.ranch.get(pal),
         ranch_source=kb.ranch_source,
+        nearest=nearest,
+        field_alpha=field_alpha,
     )
 
 

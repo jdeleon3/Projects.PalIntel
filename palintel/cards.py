@@ -74,14 +74,23 @@ class Card:
 
 SEP = " | "  # ASCII: Windows consoles mangle typographic separators
 
-# Resources the player can name but which are not placed nodes. Extraction found no
-# spawner class for crude oil in the overworld, so "no results" would be technically
-# true and actively misleading - it reads as "none nearby" rather than "not a thing I
-# can locate". See Docs/03-data-ingestion.md.
-NOT_PLACED = {
-    "crude_oil": "Crude oil isn't a mineable node - it comes from oil rigs, "
-                 "so there are no map locations to give you.",
-}
+# Resources the player can name but which are not placed nodes, so that "no results"
+# cannot read as "none nearby" when the truth is "not a thing I can locate".
+#
+# **Empty since 2026-08-12, and its one entry was WRONG rather than merely stale.** It
+# said crude oil "isn't a mineable node - it comes from oil rigs, so there are no map
+# locations to give you". There are 185 of them. `BP_LevelObject_OilField_C` is placed
+# across the map, its CDO states `ProvidableStaticItemId: CrudeOil` outright, and the
+# game's own item text says "Obtained by installing a Crude Oil Extractor in an oil
+# field". The extraction that "found no spawner class" was filtering on
+# `BP_PalMapObjectSpawner*`, and an oil field is a `BP_LevelObject`.
+#
+# Kept rather than deleted, because the mechanism is right and this project will need it
+# again: some material will be craft-only or rig-only, and a bare "no results" about it
+# is the wrong answer. What the entry proves is that **a card must not turn the absence
+# of a search result into a claim about the world.** That is what this one did, in a
+# comment that even cited the doc it was wrong in.
+NOT_PLACED: dict[str, str] = {}
 
 
 def resource_card(result: ResourceResult) -> Card:
@@ -105,9 +114,19 @@ def resource_card(result: ResourceResult) -> Card:
         )
 
     lines = []
+    if result.provided:
+        # **Leading, because it changes what the coordinates are for.** These are places
+        # to build on, not to mine, and a list of coordinates under "Crude Oil locations"
+        # otherwise reads as "go here and swing". Worded from the game's own item text
+        # rather than paraphrased: "Obtained by installing a Crude Oil Extractor in an oil
+        # field."
+        lines.append(f"_These are **oil fields** - places to install an extractor, not "
+                     f"deposits to mine. {name} comes out of the machine, not the ground._")
     for i, n in enumerate(result.nodes, 1):
         bits = [f"**{i}. ({n.map_x:.0f}, {n.map_y:.0f})**",
-                f"{n.node_count} deposit{'s' if n.node_count != 1 else ''}"]
+                (f"{n.node_count} field{'s' if n.node_count != 1 else ''}"
+                 if result.provided
+                 else f"{n.node_count} deposit{'s' if n.node_count != 1 else ''}")]
         if result.near is not None:
             bits.append(f"{n.distance_to(*result.near):.0f} units away")
         if n.danger:
@@ -246,28 +265,21 @@ def spawn_card(result: SpawnResult) -> Card:
                      f"{KIND_LABEL.get(result.kind, result.kind)}._")
 
     for i, a in enumerate(result.areas, 1):
-        bits = [f"**{i}. ({a.map_x:.0f}, {a.map_y:.0f})**"]
-        bits.append(f"lvl {a.level_min}" if a.level_min == a.level_max
-                    else f"lvl {a.level_min}-{a.level_max}")
-        if result.near is not None:
-            bits.append(f"{a.distance_to(*result.near):.0f} units away")
-        # A one-point area is a single spawner, not a region. Saying "1 spawn point"
-        # sets the right expectation for standing there.
-        bits.append(f"{a.spawn_points} spawn point"
-                    f"{'s' if a.spawn_points != 1 else ''}")
-        if a.kind != "normal":
-            bits.append(KIND_LABEL.get(a.kind, a.kind))
-        elif a.encounter_share < 0.99:
-            # "<1%" rather than "0%". 1,432 of 19,272 areas sit under half a percent, and
-            # rounding them to zero says the encounter never happens when the honest
-            # statement is that it is rare - a false claim in the one field that exists
-            # to stop the player camping a spot for nothing.
-            share = (f"{a.encounter_share:.0%}" if a.encounter_share >= 0.005
-                     else "<1%")
-            bits.append(f"{share} of spawns here")
-        if a.night_only:
-            bits.append("night only")
-        lines.append(SEP.join(bits))
+        lines.append(_area_line(a, result, f"**{i}. ({a.map_x:.0f}, {a.map_y:.0f})**"))
+
+    # The two "and also" rows, in the order a player needs them: how far, then how hard.
+    # Both are facts the ranking was already holding and not printing - see the field
+    # comments in execution.SpawnResult. They are rendered with the same columns as the
+    # numbered rows on purpose: an alternative shown in a different format reads as a
+    # different kind of claim, and these are the same kind.
+    if result.nearest is not None:
+        lines.append(_area_line(result.nearest, result,
+                                f"**Nearest:** ({result.nearest.map_x:.0f}, "
+                                f"{result.nearest.map_y:.0f})"))
+    if result.field_alpha is not None:
+        lines.append(_area_line(result.field_alpha, result,
+                                f"**Field alpha:** ({result.field_alpha.map_x:.0f}, "
+                                f"{result.field_alpha.map_y:.0f})"))
 
     lines += _ranch_lines(result)
 
@@ -275,8 +287,39 @@ def spawn_card(result: SpawnResult) -> Card:
     if result.near is None:
         # Say what the ordering means rather than letting "1." imply nearest.
         footer += SEP + "sorted by likelihood (no position known)"
+    else:
+        # With a `Nearest:` row on the card, "1." needs saying out loud - otherwise the
+        # two rows read as a contradiction rather than as two different questions.
+        footer += SEP + "numbered by likelihood, not by distance"
     return Card(title=f"{result.pal} locations", lines=lines, footer=footer,
                 colour=TIER_FACT)
+
+
+def _area_line(a, result: SpawnResult, lead: str) -> str:
+    """One spawn-area row. Shared so the `Nearest:` and `Field alpha:` rows carry exactly
+    the same columns as the numbered ones, and cannot drift away from them."""
+    bits = [lead]
+    bits.append(f"lvl {a.level_min}" if a.level_min == a.level_max
+                else f"lvl {a.level_min}-{a.level_max}")
+    if result.near is not None:
+        bits.append(f"{a.distance_to(*result.near):.0f} units away")
+    # A one-point area is a single spawner, not a region. Saying "1 spawn point"
+    # sets the right expectation for standing there.
+    bits.append(f"{a.spawn_points} spawn point"
+                f"{'s' if a.spawn_points != 1 else ''}")
+    if a.kind != "normal":
+        bits.append(KIND_LABEL.get(a.kind, a.kind))
+    elif a.encounter_share < 0.99:
+        # "<1%" rather than "0%". 1,432 of 19,272 areas sit under half a percent, and
+        # rounding them to zero says the encounter never happens when the honest
+        # statement is that it is rare - a false claim in the one field that exists
+        # to stop the player camping a spot for nothing.
+        share = (f"{a.encounter_share:.0%}" if a.encounter_share >= 0.005
+                 else "<1%")
+        bits.append(f"{share} of spawns here")
+    if a.night_only:
+        bits.append("night only")
+    return SEP.join(bits)
 
 
 def clarify_card(options: list[str]) -> Card:
@@ -499,16 +542,18 @@ MAX_NAMED_OPTIONS = 6
 
 def decline_card(decline: Decline) -> Card:
     if decline.needs_restatement:
-        # Not "I didn't catch that" - we caught it perfectly and simply have nothing for
-        # it to refer to. Saying so asks for something specific and achievable, which a
-        # generic apology does not, and it is ADR-0013's requirement that expired context
-        # be named rather than silently ignored.
+        # Not "I didn't catch that" - we caught it perfectly and something specific and
+        # achievable is missing. The REASON says which, and it is the only thing said
+        # here: this decline has had two causes since 2026-08-12 - an expired referent
+        # (ADR-0013, which requires it be named rather than silently ignored) and a
+        # coordinate that would not parse - and a hardcoded "I've forgotten what we were
+        # talking about" narrated the first at the second, which is a confident
+        # explanation of the wrong thing.
         return Card(
-            title="What was that about?",
             # ASCII only: the CLI renderer runs on a cp1252 console, where an em-dash
             # arrives as a replacement character.
-            lines=["I've forgotten what we were talking about - say the name again.",
-                   f"_{decline.reason}_"],
+            title="Say that again?",
+            lines=[decline.reason],
             colour=TIER_DECLINE,
         )
 

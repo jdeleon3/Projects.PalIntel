@@ -284,6 +284,9 @@ class ClaudeRouter:
 
     def route(self, utterance: str, candidates: list[Candidate],
               context: list | None = None) -> ToolCall | Decline:
+        # See the same line in routing_gemini: `last_usage` means the call this route
+        # made, so a raising request cannot leave the previous one's cost to be re-billed.
+        self.last_usage = None
         try:
             response = self._client.messages.create(
                 model=self._model,
