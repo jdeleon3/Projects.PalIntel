@@ -172,6 +172,45 @@ def by_tool(rows: list[dict]) -> list[tuple[str, int, int, float]]:
                   key=lambda x: -x[3])
 
 
+def by_user(rows: list[dict]) -> list[tuple[str, int, int, float]]:
+    """(who, queries, billed, usd), dearest first.
+
+    **The question one shared prepaid balance makes worth asking.** Spend is $0.0048 a
+    request and a party of four asking freely is four times the burn, so "who is spending
+    it" stops being idle curiosity the moment more than one person can ask. `who` has been
+    written on every charge since the ledger existed and nothing has ever read it back.
+
+    Note `billed` against `queries`: the interesting number is usually not the money but
+    the share reaching the model at all, which is what says whether somebody's phrasings
+    are missing the fast path.
+    """
+    agg: dict[str, list] = {}
+    for r in rows:
+        a = agg.setdefault(r.get("who") or "(unattributed)", [0, 0, 0.0])
+        a[0] += 1
+        a[1] += bool(r.get("billed"))
+        a[2] += r.get("usd", 0.0)
+    return sorted(((w, n, b, u) for w, (n, b, u) in agg.items()),
+                  key=lambda x: -x[3])
+
+
+def describe_users(rows: list[dict], limit: int = 5) -> str:
+    """Per-person spend for `/palintel status`, or "" when only one person has asked.
+
+    Empty for a single speaker on purpose: a breakdown of one is noise, and the status
+    card is already dense. It appears exactly when it starts meaning something.
+    """
+    users = by_user(rows)
+    if len(users) < 2:
+        return ""
+    shown = users[:limit]
+    parts = [f"{w} {n}q" + (f"/${u:.3f}" if u >= 0.0005 else "")
+             for w, n, _b, u in shown]
+    if len(users) > limit:
+        parts.append(f"+{len(users) - limit} more")
+    return " | ".join(parts)
+
+
 def describe(session: "SpendLog | None", balance_usd: float = 0.0,
              warn_below: float = 0.0, root: Path = SESSIONS) -> str:
     """One line for `/palintel status`.

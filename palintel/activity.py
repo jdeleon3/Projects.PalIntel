@@ -17,10 +17,19 @@ microphone to disk, which is exactly what ADR-0004's privacy argument avoids.
 """
 from __future__ import annotations
 
+import json
+import logging
 import threading
 import time
 from collections import deque
 from dataclasses import dataclass
+from pathlib import Path
+
+log = logging.getLogger("palintel.activity")
+
+# Beside the spend ledger and the capture clips, so one session's clips, bill and timings
+# sit in one directory and can be read together.
+SESSIONS = Path(__file__).resolve().parents[1] / "data" / "sessions"
 
 # One hour of events at a plausible worst case is small; the cap exists so a detector
 # stuck firing on a fan cannot grow the deque without bound.
@@ -67,30 +76,66 @@ class Event:
     # everywhere else - an event that merely happened has no duration, and storing 0
     # would put it in the percentiles as if it were instant.
     ms: float | None = None
+    # Who the query belonged to. Empty for stage events that belong to no one speaker.
+    who: str = ""
 
 
 class ActivityLog:
-    """Thread-safe ring buffer of pipeline events.
+    """Thread-safe ring buffer of pipeline events, optionally persisted.
 
     Written from the audio thread and the event loop both, so every access takes the
     lock. The work under it is a deque append, which is cheap enough to do in an audio
     callback.
+
+    **The window is one hour and the buffer is memory only, which lost a measurement.**
+    The 2026-08-12 session's voice p95 of 6.2s against a 2.5s budget - a Phase 1 exit
+    criterion, still recorded as failing - exists nowhere but a status line somebody pasted
+    into a chat log. Spend persists because `spend.py` writes a row per query; latency did
+    not, so the two halves of "how is this performing" had completely different lifespans.
+
+    A `session` id turns on an append-only JSONL beside the spend ledger, in the same
+    session directory, so a run's timings survive it and can be compared with the next.
     """
 
-    def __init__(self, window: float = DEFAULT_WINDOW):
+    def __init__(self, window: float = DEFAULT_WINDOW, session: str | None = None,
+                 root: Path | None = None):
         self.window = window
         self.started = time.monotonic()
         self._events: deque[Event] = deque(maxlen=MAX_EVENTS)
         self._lock = threading.Lock()
+        self.path: Path | None = None
+        if session:
+            self.path = (root or SESSIONS) / session / "latency.jsonl"
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+
+    def _persist(self, event: Event) -> None:
+        """Append one timed event. Never raises: a full disk must not stop the bot.
+
+        Only TIMED events are written. An event that merely happened has no duration, and
+        the file exists to answer "how long did it take", not to be a second copy of the
+        counters - which are cheap to recompute and worthless after the fact.
+        """
+        if self.path is None or event.ms is None:
+            return
+        try:
+            with self.path.open("a", encoding="utf-8") as f:
+                f.write(json.dumps({"at": time.time(), "kind": event.kind,
+                                    "ms": round(event.ms, 1), "who": event.who,
+                                    "detail": event.detail[:80]}) + "\n")
+        except OSError as e:
+            log.warning("could not write latency to %s (%s)", self.path, e)
 
     def record(self, kind: str, detail: str = "") -> None:
         with self._lock:
             self._events.append(Event(time.monotonic(), kind, detail))
 
-    def timed(self, kind: str, ms: float, detail: str = "") -> None:
+    def timed(self, kind: str, ms: float, detail: str = "", who: str = "") -> None:
         """Record a stage duration. `kind` is one of TIMED_KINDS."""
+        event = Event(time.monotonic(), kind, detail, ms, who)
         with self._lock:
-            self._events.append(Event(time.monotonic(), kind, detail, ms))
+            self._events.append(event)
+        # Outside the lock: this is file IO, and the audio thread calls `timed`.
+        self._persist(event)
 
     def percentiles(self, kind: str,
                     window: float | None = None) -> tuple[int, float, float] | None:

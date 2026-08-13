@@ -519,9 +519,16 @@ a session has shown the degradation is not enough.
 session block above: the Q6 narrowing that defers, the `item_source` card title, and Q7
 retrieval diversity. Each is small; each wants its own sweep rather than a ride-along.
 
-**2. Persist latency.** `activity.py` writes nothing, so this session's p95 exists only in
-a pasted status line. Costs persist, latency does not, and the p95 is a Phase 1 exit
-criterion still recorded as failing.
+~~**2. Persist latency.**~~ **Done 2026-08-13 (M4).** `activity.py` kept a one-hour
+in-memory window and wrote nothing, so the 2026-08-12 voice p95 of 6.2s against a 2.5s
+budget — a Phase 1 exit criterion still recorded as failing — existed only in a status line
+pasted into a chat log. It now appends `data/sessions/<session>/latency.jsonl` beside the
+spend ledger and the clips, **attributed per speaker**, so a party session can show whose
+queries are slow rather than one blended population. Only *timed* events are written:
+counters are cheap to recompute and worthless after the fact. A write failure logs and
+carries on — a full disk must cost a measurement, never an answer. **The p95 itself is
+still unmeasured since the fixes**; what changed is that the next session's number will
+survive it.
 
 **[`Docs/test-plan.md`](Docs/test-plan.md) is the full inventory** — every untested class
 and every reading that needs retaking, with the exact wording to say, what each item is
