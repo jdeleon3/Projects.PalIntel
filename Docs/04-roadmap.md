@@ -781,7 +781,15 @@ Node actors are `BP_PalMapObjectSpawner_*_C`; Pal spawn zones are `BP_PalSpawner
 
 **Three corrections the data forced:**
 
-1. **`crude_oil` is not a placed node.** No spawner class exists for it in the overworld.
+1. ~~**`crude_oil` is not a placed node.**~~ **Wrong, and it took until 2026-08-12 and a
+   player standing on one to find out.** What was true: no `BP_PalMapObjectSpawner` class
+   exists for it. What was written down: it is not placed. There are **185**
+   `BP_LevelObject_OilField_C` actors, the blueprint names `CrudeOil` outright, and the
+   game's item text says *"Obtained by installing a Crude Oil Extractor in an oil field."*
+   Restored to `ResourceType`; see the 2026-08-12 session section.
+
+   The original note, kept because the inference is the lesson:
+   No spawner class exists for it in the overworld.
    Removed from `ResourceType` ([02-data-model.md](02-data-model.md) §3.1) — Q1 cannot
    answer "where is oil" the way it answers "where is coal".
 
@@ -2947,6 +2955,291 @@ not looked reads as a deliberate caveat rather than as a read that never happene
 
 ---
 
+## The second play session — the first one that could kill you (2026-08-12)
+
+**52 utterances, 57 minutes, six human labels, the first play of Phase 4.** The session
+that produced the largest single correction to what this project *believed about itself*,
+and the first one where following a card had a consequence in the game.
+
+Findings split cleanly in two, and the split is the most useful thing in this section.
+Three defects came out of the logs alone — deterministic, replayable, no help needed. Two
+came only from the player saying what happened afterwards, and **no amount of analysis
+could have produced them**, which is what the feedback work below is for.
+
+### The spend ledger was wrong by 3.8×, and both of its numbers were the wrong ones
+
+`/palintel status` reported **$0.3344 over 56 queries, 55/56 reached the model**. The true
+figures are **$0.0880 and 16/56**.
+
+`FastPathRouter.__getattr__` forwarded `last_usage` to the model backend, which sets it on
+a call and never clears it. So every fast-path answer *after the first model call* read the
+previous call's usage, was flagged `billed: True`, and had that call's cost added again.
+The first row in the ledger is `billed: False` — it is the only query that preceded any
+model call — and after that the flag never goes false again.
+
+Corroborated two ways, which is what makes the corrected number trustworthy rather than
+merely smaller: counting rows whose usage tuple *changes* gives 16, and 21 rows logged
+`path=model` minus the 5 that the stub actually answered gives 16.
+
+**Both questions the module's own docstring says it exists to answer were wrong** — what a
+session costs, and what fraction of play reaches the model at all — and wrong in the
+direction that empties a prepaid balance early. This landed the day after `cost.balance_usd`
+was added to STATUS as a decision waiting on the player. Setting it against a ledger
+over-reporting by 3.8× would have produced a wall of "balance exhausted" warnings with two
+thirds of the money still there.
+
+*Fixed* by making `last_usage` a property that returns `None` unless this route went to the
+model, and by clearing it at the top of each backend's `route()` so a raising request cannot
+leave the previous one's cost to be re-billed. `None` is a meaningful value here —
+`charge_from(None, …)` logs a `$0` row with `billed=False`, which is how the fraction gets
+counted — so it can never be left to a stale read.
+
+**And a second bug underneath it, of a kind worth naming separately.** The bot decided which
+path answered by testing `"cue" in outcome.call.rationale` — a string sniff over prose no
+branch is obliged to write. `_tech_named_call` says *"named technology 'Breed Farm' at
+0.98"*, so all five technology lookups in this session were answered by the stub in
+milliseconds and recorded as model calls, in **both** the capture log and the spend ledger.
+The path is now derived from whether a call happened, which is the fact both readers wanted
+in the first place. *A measurement taken from how a component describes itself is not a
+measurement.*
+
+### A spawn card sent the player somewhere they died, and the right answer was in the file
+
+Asked *"where can I find Anubis"*, the card offered three level 68–72 areas about 2,000
+units away. The player travelled and could not survive there. The level **55** field alpha —
+the one they had already beaten — sits 831 units away.
+
+It was in the dataset the whole time, and it was not a ranking problem:
+
+```
+alpha   (-133.8,  -93.7)  lvl 55-55   3 pts  share 1.00  density 3.00  d= 831
+normal  (-1294.9, -602.6) lvl 68-72  17 pts  share 0.05  density 0.85  d=2000   <- shown
+```
+
+**Nearest of all 26 areas and densest of all 26.** It would have ranked first on the
+existing sort. `find_pal_spawns` falls through `SPAWN_KINDS` to the *first kind with any
+rows*, so 25 ordinary areas hid it before the sort could see it. Saying the word "alpha"
+retrieved it correctly; saying "boss" did not; asking the plain question gave the lethal
+answer.
+
+*Fixed* with a `Field alpha:` row rather than by merging the kinds — the fall-through's own
+reasoning still holds, since interleaving a level 12 field spawn with a level 55 alpha is
+not one answer to one question. The row states the fact and reorders nothing.
+
+**This also produced the first calibration datum `min_player_level` / `danger` has ever
+had.** That rule has shipped uncalibrated since Phase 1, asking for ~20 nodes of known
+difficulty read in game and receiving none. A level 68–72 area is lethal at this player's
+level, and nothing on the card said so.
+
+### Three markers in one place, and the player was standing in a fourth
+
+Asked for Lovander, the card gave three areas 818–872 units out. They read as one
+destination because density is spatially clustered, so the top three by density all sit
+inside one habitat. **There was a Lovander area 8 units away** — 4 spawn points at 15%
+share against 38 at 39% — and the ranking never mentioned it, because distance enters the
+sort only as a tiebreak.
+
+Nothing here overturns the Phase 2 finding that distance-first ranking was *wrong*
+(Cattiva: a 1-point area 191 units out while a 60-point one went unmentioned). The card
+gains a `Nearest:` row and both numbers, and the footer now says *"numbered by likelihood,
+not by distance"* so the two rows read as answers to two questions rather than as a
+contradiction.
+
+**The bar on that row is a chosen number and is labelled as one.** It fires only when the
+nearest area is at most *half* the distance of the best-ranked one. Without a bar it fires
+on noise: Anubis's closest ordinary area is 1,962 units against 1,997 — 2% nearer, lower
+share, a row that would change nothing. Lovander's is 8 against 818.
+
+### The minus sign nobody can pronounce
+
+Every spoken form of a negative coordinate was unparseable:
+
+```
+'rate the spot at 9999, negative 9999'  -> None     # verbatim from the session
+'rate the spot at 185, negative 475'    -> None
+'rate the spot at 185 minus 475'        -> None
+'rate the spot at 185, -475'            -> (185.0, -475.0)   # written only
+```
+
+Whisper writes a spoken minus as the **word**, always. `_COORD_FORMS` accepted only the
+glyph. Since Palworld's map is negative over most of the island — the comment on that regex
+says so itself — this was the common case for the feature, on the only channel it is used
+on.
+
+Two consequences, and the second is worse than a missed parse. The failed parse **fell
+through to the player's own position**, so the card came back titled *"Where you're
+standing"* about somewhere they had not named. And the off-map refusal built the same week
+could never fire, because refusing a coordinate requires reading one: *"rate the spot at
+9999, negative 9999"* was answered as a rating of (284, 625).
+
+*Fixed* by rewriting the spoken word to a sign before matching, so all three forms gain it
+at once. **Not** by widening the parser to accept `321-500`: reading that as (321, −500)
+would read *"level 30-40"* as (30, −40), in bounds and confidently wrong, which is the exact
+trade the strictness exists for. An announced pair that will not parse now **defers** with
+a restatement request instead of substituting a position. Swept: 0 of the 271 A5
+transcripts are claimed by the new decline.
+
+That decline also forced a small correction next door. The restatement card carried a
+hardcoded *"I've forgotten what we were talking about"*, written when an expired referent
+was its only cause. It now shows the decline's own reason and nothing else — otherwise the
+second cause gets a confident explanation of the first.
+
+### One stated filter silently dropped, in the branch whose neighbour warns about it
+
+*"What tech should I research for my mining pals"* returned the unnarrowed list, led by
+**Advanced Arrow**. `_TECH_GOAL_WORDS` has no mapping for "mining", so `goal=None` and the
+filter vanished. *"What weapon should I research next"* correctly titles the card
+"— Weapon".
+
+The player pressed `wrong_class`, and the comment ten lines above `_TECH_GOAL_WORDS`
+describes this exact failure — *"a filter the player stated, silently gone, on the fast
+path"* — while guarding only the ancient-points pool. **Not fixed in this pass**, and
+deliberately: the general rule it wants is *a narrowing we cannot map means defer*, which is
+the same rule `_base_call`'s `weak` flag already implements one class over, and applying it
+to Q6 needs a sweep of its own rather than riding along with four unrelated fixes. It is
+written down here so it is not rediscovered.
+
+### `item_source` answers, and the class is narrower than its card claims
+
+*"Where can I find cakes"* returned **"Cake comes from — Lovander | 1 | 1%"**. True, and the
+wrong answer: cake is crafted at a Cooking Pot, and the player was mid-breeding-unlock, for
+which cake is the consumable. *"Where do I get a high quality pal oil"* returned 41 sources
+led by Mammorest at 100%, 5–10, which is genuinely useful.
+
+So the long-open *"does `item_source` work?"* question resolves as: **it routes correctly, it
+is right about drops, and its card title asserts more than the dataset holds.** `by_item` is
+a drop table; *"Cake comes from"* is a claim about provenance. Also unfixed here, and the
+fix is a title and a footer rather than a dataset.
+
+### What the buttons could not say, and the change that follows from it
+
+Six labels were pressed. Two were `wrong_class` for things that were not a wrong class —
+the dropped Q6 filter above, and a corpus answer that restated the question. The taxonomy
+(`misheard` / `wrong_entity` / `wrong_class`) is a **router's** vocabulary and the player
+reached for the nearest button in it.
+
+And the two defects that mattered most in this session — the lethal spawn card and the
+rating of an unnamed place — are both *"I acted on the card and the world disagreed"*.
+Neither is knowable until you travel. Replaying the session against the save recovered the
+spend bug, the coordinate parser and the dropped filter, all deterministic; it could not
+have recovered *"I walked to those coordinates and died"*, which arrived only because the
+player said so.
+
+So the feedback channel gained two things:
+
+- **A fourth button, first in the row, that asks instead of diagnosing.** `📝 Not what I
+  expected` opens a modal with one optional free-text field. The button rides in the card's
+  existing `send()` payload at no extra API cost and the modal is created only on a click.
+  The note is an **attachment to a label, never a replacement**: prose does not aggregate,
+  and `harvest_aliases.py` and the scorers consume the label.
+- **`/palintel wrong`, as a reply to the card.** A Discord reply already carries the message
+  id, which is the join key `record_feedback` wants, and it works on a phone. `FeedbackView`
+  has no timeout but plenty of scrollback above it; the message-id join was always
+  retroactive and only the buttons were not.
+
+Two smaller things fell out of building it. `capture` was local to `start_voice()`, so a
+feedback channel reachable only from the voice path would have been dead for exactly the
+case it exists for; it now lives at bot scope beside `spend`, for the same reason and after
+the same mistake. And `read_session` silently drops feedback whose message no captured
+utterance claims — fine while every card came from a clip, not fine once a reply can arrive
+against a text-channel card — so `read_feedback` now returns every verdict joined or not,
+and the analyser reports the orphans rather than losing the most expensive row in the file.
+
+**The analyser prints the notes above every inference it makes.** Everything else in that
+tool is a hypothesis formed by looking at transcripts; those are sentences the player wrote.
+The session's own numbers argue for the ordering: both rephrase proposals it produced were
+junk (`'grappling' → Anubis` at similarity 0.73 across 75 seconds, from two unrelated
+questions), and its docstring already records that frame similarity provably cannot separate
+real pairs from false ones. One sentence retires the whole inference.
+
+### The three things the player said afterwards, and what each one was
+
+The session's own logs were exhausted before any of these surfaced. Each arrived as a
+sentence, and each was a defect.
+
+**"It gave me three locations in the same place"** — the Lovander ranking above.
+
+**"I asked while standing inside base 3 and got bases 1 and 2."** `MAX_CARDS` is 2 and the
+order was the save's. Base 3 sits at (284.47, 625.09) and the player was at (284, 625):
+**0.5 units inside it.** The two shown were 1,046 and 1,113 units away, and the card
+finished with *"...and 1 more base not shown"*. Every number needed to choose correctly was
+already on that card. Now sorted by distance when the position is known, and left in save
+order when it is not — nothing to sort by is not a reason to invent an order.
+
+**"There are nodes around the map you can place a crude oil extractor on."** This one is
+the worst, because the product had published the opposite as a sentence:
+
+> Crude oil isn't a mineable node - it comes from oil rigs, so there are no map locations
+> to give you.
+
+There are 185. `BP_LevelObject_OilField_C` is placed across the island (map x −1594..923,
+y −1773..695), its CDO reads `ProvidableStaticItemId: { Key: "CrudeOil" }`, and the game's
+own item text — in a table this project already ingests — says *"Obtained by installing a
+Crude Oil Extractor in an oil field."*
+
+The chain of reasoning that produced the false card is worth reading in order, because
+every step was locally sound:
+
+1. `PakExtract`'s `drops` mode reads blueprints whose filename starts
+   `BP_PalMapObjectSpawner`. An oil field is a `BP_LevelObject`.
+2. The derivation therefore produced no crude oil entry, so `_resources.py` recorded
+   `UNPLACED_RESOURCES = {"crude_oil": "Crude Oil"}` with the comment *"it has no
+   overworld spawner class - it comes from oil rigs"*.
+3. `cards.NOT_PLACED` turned that into a sentence for the player, and cited
+   `03-data-ingestion.md` while doing it.
+4. `02-data-model.md` and this file recorded it as a correction *the data forced*.
+5. Four tests asserted it, and the node dataset shipped it as a `known_gaps` entry.
+
+**An absence in a filtered search became a claim about the world, and then propagated into
+two documents, a dataset, a card and four tests.** This is the fourth time a filter written
+for one purpose has been read as a census here — after 81 of 532 data tables, one key in
+one boss table, and three actor prefixes of 1,295 classes — and the first time the
+conclusion was published as prose to the player rather than left in a dataset.
+
+*Fixed by widening the search, not by naming the class.* The `drops` mode now asks all 30
+`BP_LevelObject_*` blueprints whether their CDO carries `ProvidableStaticItemId`; exactly
+one says yes, and **which one is now a fact about the pak rather than a name somebody
+typed**. The cell scan collects the whole `BP_LevelObject` family for the same reason —
+~800 extra rows that cost nothing, since `build_resource_nodes.py` selects by class
+membership in the derived map. Crude Oil's `type_b` is already `MaterialOre`, so it derives
+as locatable with no further help, which is the test that this is a widening rather than a
+second special case.
+
+**Two things it changed downstream, and both matter more than the lookup.** *"Where should
+I build my base for crude oil"* — asked in this session and answered with a bare node card,
+because `_base_call`'s `weak` guard correctly refused a resource with nothing to measure —
+now works. And the card says what kind of place it is pointing at:
+
+```
+Crude Oil locations
+_These are **oil fields** - places to install an extractor, not deposits to mine._
+**1. (282, 631)** | 2 fields | 6 units away | danger: high | lvl 41+
+```
+
+That last part is carried as `provided_resources`, derived from the **absence of a master
+row** — a mined node has a `material_type`, which is its tool category, and an item
+provider has none — so a patch adding another provider gets the note without anyone editing
+a list. A coordinate under "Crude Oil locations" with no such line reads as an instruction
+to go and swing a pickaxe.
+
+`NOT_PLACED` is kept and empty. The mechanism is right — some material will be craft-only,
+and a bare "no results" about it is the wrong answer — and what its one entry proves is
+that **a card must not turn the absence of a search result into a claim about the world.**
+
+### What did not change
+
+`score_fast_path.py` is unchanged across all of it — 14/18 Q1, 43/49 Q2, zero wrong — and
+`score_branches.py` remains 16/16 written. 671 tests green. The session yielded **zero
+aliases**: both rephrase proposals came back `NO SURFACE FORM`, so unlike 2026-08-11 there
+was no mangling worth making permanent.
+
+One thing the session lost, and it is worth fixing before the next: `activity.py` keeps
+latency in a one-hour in-memory window and writes nothing. The voice p95 of **6.2s against
+the 2.5s budget** exists only in a status line pasted into a chat log. Costs persist,
+latency does not.
+
+---
+
 ## Phase 5 — Hardening (ongoing)
 
 - ~~**Fast-path intent matcher**~~ — **pulled forward into Phase 1**, because the latency
@@ -3034,7 +3327,10 @@ Volcano, Sakura, Skyland, Viking, Yakushima all have marker classes and none is 
 `PL_MainWorld5` — or if the lifetime is recovered, which would let a card say how long is
 left rather than how likely it is to be there.
 
-### Backlog — Discord voice receive, blocked on DAVE
+### Discord voice receive — "blocked on DAVE" for months, and DAVE was never the block
+
+> **Resolved 2026-08-13.** Read the original entry below first: it is preserved
+> unedited because the way it was wrong is the point. The resolution follows it.
 
 **The single largest capability the project has lost, and it is the only one lost to
 something outside the repo.** Discord's DAVE end-to-end encryption broke voice reception
@@ -3075,6 +3371,63 @@ so restoring reception is closer to configuration than to a port.
 **How it gets checked**: re-run route 1 at each patch refresh, alongside the "patch refresh
 exercised against a real Palworld update" item above. Both are the same kind of task —
 something outside the repo moved, and only re-running tells you.
+
+---
+
+**Resolved 2026-08-13 — and none of the three routes was the answer, because all three
+shared a premise that was false.**
+
+Route 1 was right about cost and wrong about what to re-check. The first measurement taken
+against a live channel — instrumenting py-cord's own receive path rather than reading its
+warning — showed **DAVE decrypting 99.8% of packets**. The cryptography had been working
+the entire time. Route 3, "implement DAVE", would have been months of hot-path
+cryptographic code replacing a layer that was already correct, and its cost is exactly why
+it was ranked last. It was ranked last for the right reason and would still have been
+wasted.
+
+What was actually broken sat *above* the cryptography: py-cord 2.8 shipped a new
+`voice/receive/` package against the old `sinks/core.py`, so `start_recording()` raised
+`AttributeError` before a single packet was read — for **every** sink, including py-cord's
+own `WaveSink`. Twelve more defects below that. Fixed in
+[`PyDiscordDave`](../../PyDiscordDave/README.md), which does none of the cryptography;
+`davey` already did that correctly.
+
+**The measurements that changed a decision, which is what this file is for:**
+
+| Measurement | Decision it reversed |
+|---|---|
+| DAVE decrypts 99.8% of packets | "Blocked on DAVE" — the premise of this entire entry |
+| `push == writes + discard` closing exactly | Located a 5-gate delivery failure that four separate patches had failed to move |
+| Opus round trip scores **0.957** against a **0.951** microphone baseline | Killed the theory that 48→16 kHz aliasing was costing wake-word recall. The naive decimation in `voice.py` was the right call, and its own comment said "revisit only if wake-word recall says otherwise" — recall said no |
+| `concealed=59{'passthrough_unencrypted': 59}` | Proved a *fix shipped hours earlier* was splicing 1.2s of synthesised audio into live speech, reaching the transcript as "PayPal" for "Hey pal" |
+| Wake score 0.95 → mistranscription; 0.20 → perfect | Killed the assumption that detector confidence is a proxy for audio quality |
+
+**Two of the thirteen defects were this repo's**, and neither could have been found without
+Discord audio, because both are consequences of a property the microphone does not have:
+**Discord stops transmitting entirely when a speaker stops talking.** `UtteranceBuffer`
+counted quiet frames, which assumes silence still produces frames — so an utterance never
+closed until the speaker said something else, and two questions 30s apart arrived as one.
+And `_tail` plus openWakeWord's rolling context spliced pre-silence audio onto the front of
+the next "hey pal". `WakeWord.reset` existed for exactly that boundary and nothing called
+it.
+
+**What this cost, stated plainly:** the capability was surrendered for months on the
+strength of a library's warning string. The warning was true — reception *was* broken — and
+said nothing about why. **This is the fourth time in this project that a blockage was named
+from a symptom rather than from a measurement**, and the first where the misattribution was
+to another project entirely. The cheapest possible check, attaching a counter to py-cord's
+own receive path, was never run.
+
+**What remains** is in [`STATUS.md`](../STATUS.md) under the same backlog entry, and none
+of it is transport: wake-word recall still has no number (and the one apparent improvement
+is confounded by a microphone change mid-session), proper-noun mistranscriptions belong to
+the lexicon-alias item, and `artwork.py:52` is unrelated. **`mic.py` stays the default and
+the fallback** — [ADR-0012](adr/0012-dual-input-channels.md) is restored, not replaced.
+
+**How it gets checked from here**: `discord_voice.stats()` and the per-minute health line.
+After these fixes a silent failure no longer raises, so a counter moving is the only
+evidence there is — which is precisely how the fabricated-audio defect above was caught,
+and how it would otherwise have shipped indefinitely reading green.
 
 ---
 
