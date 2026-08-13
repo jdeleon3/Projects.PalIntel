@@ -340,11 +340,19 @@ markers on each card were walked too, outside the base, with deposits standing t
   percentiles are measured against the game's own marked areas, so each one moves in steps
   of about three points and only 15 of the 32 have a measurable roughness at all. It is a
   calibration taken from the game rather than invented, and it is not a large sample.
-- **Base camp positions are parsed out of an undecoded blob.** `BaseCampSaveData` has no
-  decoder in 0.24.0, so `saves.base_camps` scans for a unit quaternion followed by an
-  in-bounds translation. That is a structural check rather than a fixed offset — a wrong
-  window is rejected rather than returned — but it is the same class of parsing as
-  `_character_id`, and it found 3 of 3 on one save.
+- ~~**Base camp positions are parsed out of an undecoded blob.**~~ **Now has a second
+  source, 2026-08-13.** `BaseCampSaveData` has no decoder in 0.24.0, so `saves.base_camps`
+  scans for a unit quaternion followed by an in-bounds translation — a structural check
+  rather than a fixed offset, but a scan, and it had only ever been checked against itself
+  ("3 of 3 on one save"). **The guild states its camps outright**, and `check_base_camps`
+  now compares the two **camp by camp rather than by count** — a total would pass if the
+  scan found a phantom and missed a real one. They agree on all four camps across both
+  worlds: solo 3 of 3, co-op 1 of 1, same ids. Same standard `build_bosses.py` holds its
+  two sources to. A disagreement is logged as a warning and shown on `/palintel status`;
+  agreement stays silent, because a card reporting every check that passed buries the one
+  that did not. The guild parse is **fail-closed** — an unexplained field non-zero, an
+  implausible count, or any camp id the save does not hold discards the check rather than
+  guessing, since a check that can be wrong is worse than no check.
 - **Work-suitability levels are unverified against the UI.** `WorkSuitability_*` runs
   1–8 with one Pal at the top of each job. Lamball's 1/1/1 matches the game exactly, so
   the scale is probably the displayed one — but nobody has opened the Paldeck and counted
