@@ -15,11 +15,12 @@ logs, because a save-format change must degrade the *quality* of an answer, neve
 the bot down — [ADR-0005](../Docs/adr/0005-save-file-player-state.md)'s "state
 unavailable" path is load-bearing, not decorative.
 
-**Player level is not available here.** It lives in `Level.sav`'s
-`CharacterSaveParameterMap` inside a `RawData` blob whose decoder in 0.24.0 is stale for
-1.0.2 (it fails with "EOF not reached"). So `PlayerState.player_level` stays None and
-level gating stays off; position, which is what "nearest" needs, comes from the player
-save alone and needs no blob decoding at all.
+**Player level was recorded as unavailable, and for the host it is not.** The per-player
+level does live in `Level.sav`'s `CharacterSaveParameterMap`, inside a `RawData` blob whose
+decoder in 0.24.0 is stale for 1.0.2 ("EOF not reached") - but `LevelMeta.sav` states
+`HostPlayerLevel` outright, in 2 KB that parses with no custom decoders and no type hints.
+So the host's level is known (`SaveWatcher.level_for`), and a joining player's still is not:
+they keep the floor Q6 infers from what they have unlocked. See `read_world_meta`.
 
 **The owned-Pal roster is available, though, and it did not need those decoders fixed.**
 `owned_species` reads `Level.sav` with no custom decoders at all and reads `CharacterID`
@@ -1278,6 +1279,36 @@ class SaveWatcher:
         snap = self.snapshot_for(uid)
         return snap.age() if snap else None
 
+    def host_uid(self) -> str | None:
+        """Which player `LevelMeta.HostPlayerName` refers to, when that is unambiguous.
+
+        Matched by name rather than assumed to be `00000000-…-0001`. The local player's uid
+        IS that on both reference worlds, but "the host is the local player" is an inference
+        and the name is a statement - and where they disagree the statement is right.
+        Two players sharing a name resolve to nobody, for the same reason `/palintel iam`
+        refuses that case.
+        """
+        if self.world is None or not self.world.host:
+            return None
+        hits = [u for u, n in self.players.items()
+                if n and n.lower() == self.world.host.lower()]
+        return hits[0] if len(hits) == 1 else None
+
+    def level_for(self, uid: str | None) -> int | None:
+        """A player's level, when the game states it. **Only the host's is stated.**
+
+        `LevelMeta.sav` carries `HostPlayerLevel`, so the number this project has recorded
+        as permanently unavailable - it lives in a `Level.sav` blob whose decoder is stale -
+        has been sitting in a 2 KB file that parses with no decoders at all.
+
+        Only the host's. A joining player's level is not in there, so they still get None
+        and Q6 falls back to inferring a floor from what they have unlocked. Handing them
+        the host's number would be the cross-attribution M1 exists to prevent.
+        """
+        if uid is None or self.world is None or self.world.host_level is None:
+            return None
+        return self.world.host_level if uid == self.host_uid() else None
+
     def state_for(self, uid: str | None):
         """The `PlayerState` for one speaker. **The whole point of M1.**
 
@@ -1296,6 +1327,7 @@ class SaveWatcher:
         if uid is None:
             return PlayerState()
         return PlayerState(
+            player_level=self.level_for(uid),
             player_coords=self.coords_for(uid),
             owned_species=self.roster_for(uid),
             tech=self.player_tech(uid),

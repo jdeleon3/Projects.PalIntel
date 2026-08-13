@@ -432,6 +432,52 @@ def test_a_binding_with_no_world_is_dropped_rather_than_migrated(tmp_path):
     assert len(Bindings(path)) == 0
 
 
+# --- the host's level, which was recorded as unavailable -----------------------
+
+def _with_world(w, host="Rui", host_level=61):
+    from palintel.saves import World
+    w.world = World(path=None, world_id="w", name="Explorers Refuge",
+                    host=host, host_level=host_level, in_game_day=130)
+    return w
+
+
+def test_the_host_gets_the_level_the_game_states(coop):
+    """`HostPlayerLevel` is in LevelMeta.sav, which parses with no custom decoders - so
+    the number this project recorded as permanently None was never actually out of reach."""
+    _with_world(coop)
+    assert coop.host_uid() == RUI
+    assert coop.level_for(RUI) == 61
+    assert coop.state_for(RUI).player_level == 61
+
+
+def test_a_joining_player_does_not_get_the_hosts_level(coop):
+    """Only the host's level is stated. Handing it to everyone would be exactly the
+    cross-attribution M1 exists to prevent - and it is a number Q6 gates on."""
+    _with_world(coop)
+    assert coop.level_for(LUCK) is None
+    assert coop.state_for(LUCK).player_level is None
+
+
+def test_the_host_is_matched_by_name_not_assumed_to_be_uid_0001(coop):
+    """The local player's uid IS 0001 on both reference worlds, but that is an inference
+    and the name is a statement. Where they disagree the statement wins."""
+    _with_world(coop, host="OutofLuck")
+    assert coop.host_uid() == LUCK
+    assert coop.level_for(LUCK) == 61 and coop.level_for(RUI) is None
+
+
+def test_two_players_sharing_the_hosts_name_resolve_to_nobody(coop):
+    _with_world(coop)
+    coop.players = {RUI: "Rui", LUCK: "Rui"}
+    assert coop.host_uid() is None
+    assert coop.level_for(RUI) is None
+
+
+def test_no_world_metadata_means_no_level_rather_than_a_guess(coop):
+    _with_world(coop, host_level=None)
+    assert coop.level_for(RUI) is None
+
+
 def test_status_reports_each_player_rather_than_one_total(coop):
     coop.rosters = _rosters({RUI: {"lamball"}, LUCK: {"cattiva"}}, {"anubis"},
                             {"lamball", "cattiva", "anubis"})
