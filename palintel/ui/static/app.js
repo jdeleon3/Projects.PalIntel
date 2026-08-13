@@ -63,6 +63,7 @@ document.querySelectorAll(".rail-item").forEach((btn) => {
     btn.classList.add("is-active");
     $(`#view-${btn.dataset.view}`).classList.add("is-active");
     if (btn.dataset.view === "sessions") loadSessions();
+    if (btn.dataset.view === "settings") loadSettings();
   });
 });
 
@@ -396,3 +397,171 @@ async function openSession(id) {
 $("#refresh").addEventListener("click", () => { loadSave(); loadOverview(); });
 loadOverview();
 loadSave();
+
+/* --- settings -------------------------------------------------------------
+ *
+ * A dirty-tracking form: only fields you actually changed are sent, so a save cannot
+ * rewrite a value you never touched. That matters because the write is a surgical line
+ * edit — sending everything back would rewrite every line in the file and turn a
+ * one-setting change into a whole-file diff.
+ */
+let cfgLoaded = false;
+const cfgOriginal = new Map();
+const cfgDirty = new Map();
+
+function cfgMark(name, value, field) {
+  const same = String(cfgOriginal.get(name) ?? "") === String(value ?? "");
+  if (same) cfgDirty.delete(name); else cfgDirty.set(name, value);
+  field.classList.toggle("is-dirty", !same);
+  $("#cfg-save").disabled = cfgDirty.size === 0;
+  const state = $("#cfg-state");
+  state.className = "save-state";
+  state.textContent = cfgDirty.size
+    ? `${cfgDirty.size} change${cfgDirty.size === 1 ? "" : "s"} pending`
+    : "";
+}
+
+/* The help text carries `code` and **bold**, because these strings are the same
+   explanations the TOML comments give and they are worth reading. Built as nodes rather
+   than innerHTML so a config value can never become markup. */
+function richText(s) {
+  const frag = document.createDocumentFragment();
+  const re = /(`[^`]+`|\*\*[^*]+\*\*)/g;
+  let last = 0, m;
+  while ((m = re.exec(s))) {
+    if (m.index > last) frag.append(s.slice(last, m.index));
+    const t = m[0];
+    frag.append(t.startsWith("`")
+      ? el("code", "", t.slice(1, -1))
+      : el("strong", "", t.slice(2, -2)));
+    last = m.index + t.length;
+  }
+  if (last < s.length) frag.append(s.slice(last));
+  return frag;
+}
+
+async function loadSettings() {
+  if (cfgLoaded) return;
+  cfgLoaded = true;
+  const host = $("#cfg-form");
+  let d;
+  try {
+    d = await api("/api/config");
+  } catch (e) {
+    host.innerHTML = `<p class="bad">${e.message}</p>`;
+    return;
+  }
+  $("#cfg-path").textContent = d.path;
+  if (!d.ok) {
+    host.innerHTML = `<div class="cfg-error">${d.error}</div>`;
+    return;
+  }
+  $("#cfg-token").textContent = d.token_set
+    ? `Discord token: ${d.token_hint} — never sent to this page, and not editable here.`
+    : "No Discord token set. The bot will refuse to start without one.";
+
+  host.textContent = "";
+  const groups = new Map();
+  for (const f of d.fields) {
+    if (!groups.has(f.section)) groups.set(f.section, []);
+    groups.get(f.section).push(f);
+  }
+
+  for (const [section, fields] of groups) {
+    const g = el("div", "cfg-group");
+    g.append(el("h3", "", section));
+    for (const f of fields) {
+      const name = `${f.section}.${f.key}`;
+      cfgOriginal.set(name, f.value ?? "");
+      const row = el("div", "cfg-field");
+      const lab = el("label", "cfg-label", f.label);
+      lab.htmlFor = `cfg-${name}`;
+      row.append(lab);
+
+      let input;
+      if (f.kind === "bool") {
+        const wrap = el("label", "toggle");
+        input = document.createElement("input");
+        input.type = "checkbox";
+        input.checked = !!f.value;
+        input.id = `cfg-${name}`;
+        const track = el("span", "toggle-track");
+        const text = el("span", "toggle-text", input.checked ? "on" : "off");
+        wrap.append(input, track, text);
+        input.addEventListener("change", () => {
+          text.textContent = input.checked ? "on" : "off";
+          cfgMark(name, input.checked, row);
+        });
+        row.append(wrap);
+      } else if (f.kind === "choice") {
+        input = document.createElement("select");
+        input.id = `cfg-${name}`;
+        for (const c of f.choices) {
+          const o = document.createElement("option");
+          o.value = o.textContent = c;
+          if (c === f.value) o.selected = true;
+          input.append(o);
+        }
+        input.addEventListener("change", () => cfgMark(name, input.value, row));
+        row.append(input);
+      } else {
+        input = document.createElement("input");
+        input.type = (f.kind === "int" || f.kind === "float") ? "number" : "text";
+        if (f.kind === "float") input.step = "any";
+        input.id = `cfg-${name}`;
+        input.value = f.value ?? "";
+        input.readOnly = f.readonly;
+        if (!f.readonly) {
+          input.addEventListener("input", () => cfgMark(name, input.value, row));
+        }
+        row.append(input);
+      }
+
+      if (f.help) {
+        const help = el("p", "cfg-help");
+        help.append(richText(f.help));
+        row.append(help);
+      }
+      g.append(row);
+    }
+    host.append(g);
+  }
+}
+
+$("#cfg-save").addEventListener("click", async () => {
+  const btn = $("#cfg-save");
+  const state = $("#cfg-state");
+  const host = $("#cfg-form");
+  host.querySelectorAll(".cfg-error").forEach((n) => n.remove());
+  btn.disabled = true;
+  state.className = "save-state";
+  state.textContent = "validating…";
+
+  const payload = Object.fromEntries(cfgDirty);
+  let res;
+  try {
+    res = await fetch("/api/config", {
+      method: "POST",
+      headers: { "X-PalIntel-Token": TOKEN, "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then((r) => r.json());
+  } catch (e) {
+    res = { ok: false, error: e.message };
+  }
+
+  if (!res.ok) {
+    state.className = "save-state bad";
+    state.textContent = "not saved";
+    /* The bot's own words, not a generic failure: finding out here is the point. */
+    host.prepend(el("div", "cfg-error", res.error));
+    btn.disabled = false;
+    return;
+  }
+
+  for (const [k, v] of cfgDirty) cfgOriginal.set(k, v);
+  cfgDirty.clear();
+  document.querySelectorAll(".cfg-field.is-dirty").forEach((n) => n.classList.remove("is-dirty"));
+  state.className = "save-state ok";
+  state.textContent = res.note || "saved";
+  btn.disabled = true;
+});

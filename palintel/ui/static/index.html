@@ -47,9 +47,11 @@
     <button class="rail-item" data-view="sessions" type="button">
       <span class="rail-key">02</span><span class="rail-text">Sessions</span>
     </button>
+    <button class="rail-item" data-view="settings" type="button">
+      <span class="rail-key">03</span><span class="rail-text">Settings</span>
+    </button>
     <div class="rail-foot">
-      <span class="rail-note">read-only</span>
-      <span class="rail-note dim">config &amp; control<br>arrive next</span>
+      <span class="rail-note dim">process control<br>arrives next</span>
     </div>
   </nav>
 
@@ -114,6 +116,27 @@
           </div>
         </div>
       </div>
+    </section>
+
+    <!-- -------------------------------------------------------------- SETTINGS -->
+    <section class="view" id="view-settings">
+      <div class="settings-head">
+        <div>
+          <h2 class="pane-title">Settings</h2>
+          <p class="panel-note">
+            Written straight into <code id="cfg-path">config.local.toml</code>, in place —
+            your comments survive. Nothing is saved until it has been loaded through the
+            bot's own config parser, so a file it would refuse never reaches disk.
+            <strong>The bot reads this at startup; restart it to apply.</strong>
+          </p>
+          <p class="panel-note" id="cfg-token"></p>
+        </div>
+        <div class="settings-actions">
+          <span class="save-state" id="cfg-state"></span>
+          <button class="btn" id="cfg-save" type="button" disabled>Save changes</button>
+        </div>
+      </div>
+      <div id="cfg-form"><p class="loading">reading config…</p></div>
     </section>
 
   </main>
