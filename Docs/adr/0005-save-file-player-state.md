@@ -29,6 +29,26 @@ live save data, not against something the player has to say aloud.
 **Read-only, without exception.** The application never writes to the save directory.
 `PlayerState` is held in memory and never persisted by this application.
 
+### Amendment, 2026-08-13 — one mapping is persisted, and it is not player state
+
+Multi-user needs to know which Discord user is which in-game player, and nothing in either
+system knows about the other. That mapping is written to `data/players.json`
+(`palintel/identity.py`), which is gitignored because it holds Discord user ids.
+
+This does not weaken the rule above. What is persisted is a **claim a person made about
+themselves** — "I am Rui" — not anything read out of the save. No position, roster,
+technology set or coordinate is written anywhere, and the save directory is still never
+written to.
+
+The alternative was holding bindings in memory, and it was rejected on use rather than on
+principle: rebinding everyone after each restart is how a feature stops being used.
+
+**One player state field is still never persisted and never guessed.** A speaker the bot
+cannot place resolves to `None`, and every card answers about the world and says so.
+Falling back to "the most recently written save" would make the feature work for whoever
+autosaved last and silently lie to everyone else — see
+[`Docs/multi-user-design.md`](../multi-user-design.md) §6.
+
 ## Alternatives considered
 
 | Alternative | Rejected because |

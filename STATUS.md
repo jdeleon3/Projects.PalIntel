@@ -457,8 +457,28 @@ interleaving**, so it bites rather than agreeing with the new code.
 Still open in the same family: **`Memory._by_user` has no lock**, unlike `ActivityLog`, and
 `recent()` mutates the deque it iterates. A narrow race today, routine under multi-user.
 
-**0d. Multi-user is designed, not built** — [`Docs/multi-user-design.md`](Docs/multi-user-design.md),
-2026-08-13, from probes against the live save. The headline is that `Pipeline.handle`
+**0d. Multi-user: M0–M2 and M4 SHIPPED 2026-08-13, M3 split and half deferred.** Designed
+and built the same day — [`Docs/multi-user-design.md`](Docs/multi-user-design.md) is the
+design, and it is annotated with what construction changed. **None of it has been played.**
+
+| | |
+|---|---|
+| **M0** `0a527e2`, `8b2e2f0` | Usage travels on the returned call, not a shared router (a concurrency defect that re-created the 2026-08-12 ledger bug); the staleness gate; `Memory` takes an RLock |
+| **M1** `8ac7d45` | Every `Players/*.sav` read rather than the newest. Identity binding by in-game name, `/palintel who` and `/palintel iam`. **Unbound resolves to nobody, never the host** |
+| **M2** `3b892d1` | Roster is `carried ∪ guild containers`. Solo still reads **195**; co-op gives `Rui` 35 and `OutofLuck` 41, never 53 |
+| **M3a** `c43f8d8` | The guild's own camp list as an independent check on the quaternion scan — agrees camp-by-camp on all four across both worlds |
+| **M3b** | **Deliberately not built.** Both worlds hold one guild, so no available data distinguishes working code from broken. M2's shared set carries the same assumption |
+| **M4** `ea2714c` | Per-user spend, latency persisted per speaker, capture attribution |
+
+Exit criteria were met against the real saves, not fixtures: `Rui` answered at 35
+technologies and 83/7 points, `OutofLuck` at 61 and 59/8, an unbound third person at
+nothing, and the solo world unchanged throughout. **What that does not say is that anyone
+has used it** — `/palintel iam` has never been typed, and two people asking at once has
+still never happened.
+
+The discovery that produced all of it, kept because the reasoning is the expensive part:
+
+The headline is that `Pipeline.handle`
 already takes `(utterance, state, who)` and the single-user assumption is eight lines in
 `bot._answer`, and that **position, technologies and both point pools are already one file
 per player** in `Players/*.sav` — `newest_player_save()` is the only reason they are not.
