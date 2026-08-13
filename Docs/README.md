@@ -34,6 +34,8 @@ from a model.**
 | [02-data-model.md](02-data-model.md) | Entity schemas, both stores, the entity lexicon |
 | [03-data-ingestion.md](03-data-ingestion.md) | Sourcing, normalizing, embedding, and validating the datasets |
 | [04-roadmap.md](04-roadmap.md) | Phased build plan with exit criteria |
+| [console.md](console.md) | **`python -m palintel.ui`** — running and inspecting the bot: live status, capture-session review, config editing, start/stop |
+| [multi-user-design.md](multi-user-design.md) | Serving several players: per-player state, identity binding, and why a friend-hosted world is unreachable |
 | [test-plan.md](test-plan.md) | **What is untested or needs retaking in game**, with the wording to say and what to expect |
 | [corpus-sources.md](corpus-sources.md) | Register of community sources for the Q7 corpus — scored, licence and robots recorded, **nothing ingested**, awaiting review |
 | [play-session-protocol.md](play-session-protocol.md) | The latency-grading script and the ground-truth walk record. Superseded for everyday use by `test-plan.md` |
