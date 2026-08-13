@@ -361,7 +361,12 @@ class GeminiRouter:
             return Decline(reason="gemini unreachable", transient=True)
 
         u = data.get("usageMetadata", {})
-        self.last_usage = GeminiUsage(
+        # A LOCAL first, then the instance field. Every return below carries `usage`
+        # explicitly, so the bill travels with the answer and no caller has to read it
+        # back off `self` - which is what let two concurrent queries swap costs.
+        # `self.last_usage` is kept for the single-threaded eval harnesses
+        # (score_router.py, router_variance.py) and is no longer what the bot reads.
+        usage = GeminiUsage(
             input=u.get("promptTokenCount", 0),
             output=u.get("candidatesTokenCount", 0),
             thoughts=u.get("thoughtsTokenCount", 0),
@@ -372,12 +377,13 @@ class GeminiRouter:
             cache_read=u.get("cachedContentTokenCount", 0),
             model=self._model,
         )
+        self.last_usage = usage
 
         cands = data.get("candidates") or []
         if not cands:
             # Safety block or empty generation - an honest decline, not a crash.
             log.warning("gemini returned no candidate: %s", data.get("promptFeedback"))
-            return Decline(reason="gemini returned no candidate")
+            return Decline(reason="gemini returned no candidate", usage=usage)
         parts = (cands[0].get("content") or {}).get("parts") or []
         call = next((p["functionCall"] for p in parts if "functionCall" in p), None)
         # SYSTEM is shared with the local backend, where declining means emitting a JSON
@@ -387,20 +393,19 @@ class GeminiRouter:
         # tool and a hard error; it is really a decline wearing the local backend's
         # clothes. See the SYSTEM note in routing_local.py.
         if call is not None and call.get("name") not in self.tool_names:
-            log.info("gemini declined via a %r call %s", call.get("name"),
-                     self.last_usage)
+            log.info("gemini declined via a %r call %s", call.get("name"), usage)
             call = None
         if call is None:
             said = _reason_from(parts)
-            log.info("gemini declined %s: %s", self.last_usage, said or "(no reason)")
+            log.info("gemini declined %s: %s", usage, said or "(no reason)")
             return Decline(reason=said or "no matching query type",
-                           known_options=self._resources)
+                           known_options=self._resources, usage=usage)
 
         args = {k: v for k, v in (call.get("args") or {}).items() if v is not None}
         name, args = unpack(call["name"], args)
-        log.info("gemini -> %s(%s) %s", name, args, self.last_usage)
+        log.info("gemini -> %s(%s) %s", name, args, usage)
         return ToolCall(name=name, args=args,
-                        rationale=f"{self.name} chose {call['name']}")
+                        rationale=f"{self.name} chose {call['name']}", usage=usage)
 
 
 def available(api_key: str | None = None) -> bool:

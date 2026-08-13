@@ -196,11 +196,17 @@ class LocalRouter:
         except TimeoutError:
             return Decline(reason="local router timed out")
 
-        self.last_usage = LocalUsage(
+        # A LOCAL first - see the same line in routing_gemini. Every return below carries
+        # `usage` explicitly so the bill travels with the answer; `self.last_usage` stays
+        # for the single-threaded eval harnesses and is no longer what the bot reads.
+        # Zero-cost here, but it is still the count of what a local model did, and the
+        # ledger's "what fraction of play reaches a model" question wants it either way.
+        usage = LocalUsage(
             input=data.get("prompt_eval_count", 0),
             output=data.get("eval_count", 0),
             model=self._model,
         )
+        self.last_usage = usage
 
         raw = (data.get("message") or {}).get("content", "")
         try:
@@ -209,19 +215,20 @@ class LocalRouter:
             # The grammar should make this unreachable; if it fires, the schema was not
             # applied and the run is measuring something other than what it claims.
             log.error("local router returned non-JSON despite grammar: %r", raw[:200])
-            return Decline(reason="local router returned unparseable output")
+            return Decline(reason="local router returned unparseable output",
+                           usage=usage)
 
         tool = out.get("tool", "decline")
         found = [e for e in out.get("entities", []) if e in self._entities]
         if tool == "decline":
-            log.info("local router declined %s", self.last_usage)
+            log.info("local router declined %s", usage)
             return Decline(reason="intent or entity unclear",
-                           known_options=self._resources)
+                           known_options=self._resources, usage=usage)
 
         args = {f"entity_{i}": e for i, e in enumerate(found)}
-        log.info("local router -> %s(%s) %s", tool, args, self.last_usage)
+        log.info("local router -> %s(%s) %s", tool, args, usage)
         return ToolCall(name=tool, args=args,
-                        rationale=f"{self.name} chose {tool}")
+                        rationale=f"{self.name} chose {tool}", usage=usage)
 
 
 def available(host: str = HOST) -> bool:

@@ -10,6 +10,21 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
+# What a model call cost, carried BY THE ANSWER rather than left on the router.
+#
+# `last_usage` was instance state on a shared router, read by the caller *after*
+# `run_in_executor` returned - so two overlapping queries interleaved and one was billed
+# the other's tokens, or None. The same defect twice: the 2026-08-12 session found
+# `FastPathRouter` forwarding a stale `last_usage` and reported $0.3344 over 56 queries
+# when it was $0.0880 over 16.
+#
+# A frozen field on the returned call cannot go stale and cannot be read by the wrong
+# thread, because there is no shared slot to read. `None` stays meaningful and is not a
+# gap: it means *no model was called*, which is what `charge_from(None, ...)` logs as a
+# $0 fast-path row, and what answers "how much of play never reaches the model at all".
+Usage = Any
+
+
 @dataclass(frozen=True)
 class ToolCall:
     name: str
@@ -25,6 +40,10 @@ class ToolCall:
     # only the deterministic fast path sets it, because only it can see that two cue
     # families fired. A model that wants two answers should be asked twice.
     then: "ToolCall | None" = None
+    # What the model call that produced this cost, or None when none was made. See the
+    # note above `Usage`: this travels with the answer precisely so nothing has to read
+    # it off a router that another thread is already using.
+    usage: Usage = None
 
 
 @dataclass(frozen=True)
@@ -50,6 +69,10 @@ class Decline:
     # named rather than silently ignored: answering "what about the alpha" against no
     # referent is how a confident card about the wrong Pal gets made.
     needs_restatement: bool = False
+    # A decline can cost money too - the model was asked and said no - so it carries the
+    # same field a ToolCall does, for the same reason. Omitting it here would under-report
+    # spend by exactly the queries the router found hardest.
+    usage: Usage = None
 
 
 def find_resource_nodes_schema(resources: list[str]) -> dict[str, Any]:

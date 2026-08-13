@@ -131,17 +131,33 @@ class FastPathRouter:
     def last_usage(self):
         """The usage of a call THIS route made, or None when the fast path answered.
 
-        A property rather than a forward, and it is the whole fix for a measurement that
-        was wrong for a day. `__getattr__` handed callers `self.full.last_usage`, which
-        the model backend sets on a call and never clears - so every fast-path answer
-        after the first model call read the PREVIOUS call's usage and was billed for it.
-        The 2026-08-12 session reported $0.3344 over 56 queries with "55/56 reached the
-        model"; it was $0.0880 and 16/56. Both numbers `spend.py` exists to produce, and
-        both wrong in the direction that empties a prepaid balance early.
+        **Single-threaded callers only.** `ToolCall.usage` / `Decline.usage` is the
+        supported way to read what a query cost; this property remains for the eval
+        harnesses (`score_router.py`, `router_variance.py`), which drive one query at a
+        time and read it between calls.
+
+        The history is worth keeping, because the same bug has now appeared twice by two
+        different mechanisms:
+
+        1. **Staleness, 2026-08-12.** `__getattr__` handed callers `self.full.last_usage`,
+           which the model backend sets on a call and never clears - so every fast-path
+           answer after the first model call read the PREVIOUS call's usage and was billed
+           for it. The session reported $0.3344 over 56 queries with "55/56 reached the
+           model"; it was $0.0880 and 16/56. Fixed by this property.
+        2. **Concurrency, 2026-08-13.** `_went_to_model` and the backend's `last_usage`
+           are both instance state on a router shared by every caller, while `bot._answer`
+           read them *after* `run_in_executor` returned. Two overlapping queries interleave
+           and one is billed the other's tokens, or None - which logs a real model call as
+           a $0 fast-path row in both the ledger and the capture corpus. Reachable whenever
+           text and voice overlap; routine the moment a second person can ask.
+
+        The second one cannot be fixed by a property, because the staleness is between
+        threads rather than between calls. It is fixed by not having a shared slot at all:
+        the usage now travels on the returned `ToolCall` / `Decline`.
 
         None is a real and meaningful value here - `charge_from(None, ...)` logs a $0 row
         with `billed=False`, which is how "what fraction of play reaches the model at all"
-        gets answered - so this cannot be left to a stale read.
+        gets answered - so this cannot be left to a stale read either way.
         """
         return self.full.last_usage if self._went_to_model else None
 
