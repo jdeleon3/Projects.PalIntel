@@ -4,9 +4,10 @@
 any line.** This file is the two-minute orientation; the roadmap is the record of how each
 number was arrived at.
 
-*Last updated 2026-08-12. **Phase 4 landed today and none of it has been played.**
-`main` was current as of PR #3 on 2026-08-11; this session's work is not promoted, so
-`git log origin/main..HEAD` is the check worth running rather than trusting this line.*
+*Last updated 2026-08-12, after the second play session. **Phase 4 has now been played,
+and it produced the first card that got the player killed.** `main` was current as of
+PR #3 on 2026-08-11; this session's work is not promoted, so `git log origin/main..HEAD`
+is the check worth running rather than trusting this line.*
 
 ---
 
@@ -22,8 +23,9 @@ number was arrived at.
 | **3B — Q3 breeding** | **Unscheduled, and the block moved back inside the repo's reach 2026-08-12.** The save says the Breeding Farm is unlockable **right now** — level 19 met, ForestBoss beaten, 2 of 40 ancient points — and the Egg Incubator is already unlocked. Not a dependency on another player's playthrough; two clicks plus cake production. See below |
 | Pal search by attribute | **Shipped, unplayed.** The first new query class since the roadmap. Work-suitability ingest, three-axis filter, card, fast path and model path |
 | Mount search | **Shipped and PLAYED 2026-08-11.** Landed 19:13, exercised four minutes later — *"which dragons can I ride at level 60"*, *"which swimming mounts are available"*, *"the fastest ground mount at level 60"*, three of the four on the fast path. **Speed ordering confirmed correct by the player.** The unowned set-difference is still unexercised |
+| **Party voice (Discord receive)** | **Restored and PLAYED 2026-08-13**, after months recorded as blocked. 13 spoken questions answered end to end from a voice channel, attributed to the speaking member rather than a configured name — [ADR-0012](Docs/adr/0012-dual-input-channels.md) restored, not replaced. **The blockage was never DAVE**: it decrypts 99.8% of packets, and py-cord 2.8's receive package was the fault. 13 defects fixed in [`PyDiscordDave`](../PyDiscordDave/README.md), two of them this repo's. `mic.py` stays the default and the fallback. Recall still unmeasured — see the backlog entry |
 | Tower leaders | **Shipped, unplayed.** *"How do I beat Victor"* resolves to the tower, not the field alpha |
-| 4 — Q6 tech + Q4 base siting + Q7 corpus | **Built end to end 2026-08-12, entirely unplayed.** All three classes, three new datasets, every branch swept for theft. Q4 was built **differently from the design** and Q7 without embeddings or synthesis — both deliberate, both recorded in the roadmap. Exit criteria met by construction, not by observation. **Three more classes were added the same day** — base rating (with a resource-narrowed variant), base criteria, and the named technology lookup, taking `PRODUCTION_CLASSES` to 13 — plus per-query spend logging and the session analyser. **650 tests green** |
+| 4 — Q6 tech + Q4 base siting + Q7 corpus | **Built 2026-08-12 and played the same day** — see the session block below. All three classes answered real questions; the session found three defects in older code and two in Phase 4's own. The original note, still true of how it was built: **Built end to end 2026-08-12, entirely unplayed.** All three classes, three new datasets, every branch swept for theft. Q4 was built **differently from the design** and Q7 without embeddings or synthesis — both deliberate, both recorded in the roadmap. Exit criteria met by construction, not by observation. **Three more classes were added the same day** — base rating (with a resource-narrowed variant), base criteria, and the named technology lookup, taking `PRODUCTION_CLASSES` to 13 — plus per-query spend logging and the session analyser. **650 tests green** |
 
 ## What answers a question today
 
@@ -120,6 +122,106 @@ prompts — swallowing *"what's the nearest memorist"*, four breeding questions 
 *"what's strong against Lyleen"*. **A question opener is not an intent.** Reverted to
 phrases that name what is being asked for.
 
+### The second play session — 2026-08-12, and the first one with a consequence
+
+**52 utterances, 57 minutes, 6 human labels, 32 of 49 answers on the fast path.** The first
+play of Phase 4. Full detail in [the roadmap](Docs/04-roadmap.md#the-second-play-session--the-first-one-that-could-kill-you-2026-08-12);
+the short version is that it corrected what this project believed about **its own
+measurements**, and that the two most important findings came from the player and not from
+the logs.
+
+| Found in the logs alone | Found only because the player said so |
+|---|---|
+| The spend ledger was wrong by 3.8× | *"I walked to those coordinates and died"* |
+| No spoken coordinate could be parsed | *"three locations in the same place"* |
+| A stated Q6 filter was silently dropped | *"I was standing in base 3 and got bases 1 and 2"* |
+| | *"there are nodes you put a crude oil extractor on"* |
+
+**Fixed this session:**
+
+- **Spend was reported as $0.3344 over 56 queries, 55/56 reaching the model. It was
+  $0.0880 and 16/56.** `FastPathRouter` forwarded `last_usage` to the model backend, which
+  never clears it, so every fast-path answer after the first model call was charged the
+  previous call's cost. Both figures the ledger exists to produce, wrong in the direction
+  that drains a prepaid balance early — and this landed the day after `balance_usd` was put
+  in front of you as a decision. **Set it now; it is safe to.**
+- **A second bug underneath it**: the bot decided fast-vs-model by testing whether the word
+  `cue` appeared in a branch's rationale prose. `_tech_named_call` does not write it, so all
+  five technology lookups were answered by the stub in milliseconds and logged as model
+  calls in both the capture log and the ledger. Path now comes from whether a call happened.
+- **A spawn card sent the player to a level 68–72 area they could not survive.** The level
+  55 field alpha was 831 units away, in the dataset, and was **nearest of all 26 Anubis
+  areas and densest of all 26** — `find_pal_spawns` falls through to the first kind with any
+  rows, so 25 ordinary areas hid it before the sort ran. The card now carries a
+  `Field alpha:` row; nothing was reordered.
+- **A `Nearest:` row**, for the complaint that three markers were "in the same place". They
+  were: density is spatially clustered, so the top three by density sat in one habitat 818
+  units away — while the player was **standing in** a Lovander area 8 units away. Distance
+  entered the sort only as a tiebreak. The Phase 2 finding that distance-first ranking is
+  wrong still stands and is untouched; the card gains a row and a footer that says
+  *"numbered by likelihood, not by distance"*.
+- **No spoken negative coordinate could be parsed** — Whisper writes a spoken minus as the
+  *word* — so the feature was unreachable by voice on a map that is negative nearly
+  everywhere, and a failed parse fell through to rating **the player's own position** under
+  the title "Where you're standing". The off-map refusal shipped four commits earlier could
+  never fire, because refusing a coordinate needs reading one. An announced pair that will
+  not parse now defers instead of substituting. 0 of the 271 A5 transcripts are claimed by
+  the new decline.
+- **"Rate my base" now starts with the base you are standing in.** `MAX_CARDS` is 2 and
+  the order was the save's, so a player **0.5 units inside base 3** was shown bases 1 and
+  2 — 1,046 and 1,113 units away — and told "1 more base not shown". Every number needed
+  to choose correctly was already on that card.
+- **Crude oil has 185 locations, and the card said it had none.** It published *"crude oil
+  isn't a mineable node — it comes from oil rigs, so there are no map locations to give
+  you"*. `BP_LevelObject_OilField_C` is placed across the island, its blueprint states
+  `ProvidableStaticItemId: CrudeOil`, and the game's own item text — in a table this
+  project already ingests — says *"Obtained by installing a Crude Oil Extractor in an oil
+  field."* The extraction that "found no spawner class" reads `BP_PalMapObjectSpawner*`.
+  **An absence in a filtered search became a claim about the world**, then propagated into
+  two design documents, the node dataset's `known_gaps`, a card and four tests. Fourth
+  instance of that pattern here, and the first published to the player as prose. Fixed by
+  widening the search — all 30 `BP_LevelObject_*` blueprints are now asked whether they
+  provide an item, and *which ones do is a fact about the pak rather than a list somebody
+  typed*. **This also makes *"where should I build my base for crude oil"* work**, which
+  was asked in this session and answered with a bare node card.
+- **The feedback channel now asks instead of diagnosing.** A fourth button, first in the
+  row — `📝 Not what I expected` — opens a modal with one free-text field, and
+  **`/palintel wrong` as a reply to any card** covers the case the buttons cannot: a card
+  that only turns out to be wrong after you travel. Two of the six labels pressed this
+  session were `wrong_class` for things that were not a wrong class, because the taxonomy is
+  a router's vocabulary. Notes are printed **above** every inference the analyser makes.
+
+**Found and deliberately not fixed** — each wants its own sweep rather than a ride-along:
+
+- **Q6 drops a narrowing it cannot map.** *"What tech should I research for my mining pals"*
+  returned the unnarrowed list led by Advanced Arrow; *"what weapon"* narrows correctly. The
+  general rule it wants is *a narrowing we cannot map means defer* — the rule `_base_call`'s
+  `weak` flag already implements one class over.
+- **`item_source` claims more than it holds.** *"Where can I find cakes"* → *"Cake comes
+  from — Lovander | 1 | 1%"*, true and useless: cake is crafted, and the player needed it
+  for breeding. High Quality Pal Oil returned 41 correct sources. The class is a **drop
+  table** and the card title says "comes from". A title and a footer, not a dataset.
+- **Q7 retrieval picks near-duplicate chunks.** *"How do I assign a pal to the breeding
+  farm"* returned the Breeding Farm help guide (0.90) and, as its second quote, the Breeding
+  Farm *structure* text — two chunks restating the goal, when the corpus's `Base` chunk
+  holds the actual mechanism ("interacting with the Palbox allows you to summon Pals to your
+  base"). **The card already renders a second quote**, so this is diversity in retrieval and
+  not the synthesis question below.
+- **`data/all_boss_landmarks.csv` is ingested by nothing.** 159 boss placements with world
+  coordinates **and stated levels**, in `data/`, while `bosses.json` carries `"level": null`
+  on every entry. Fourth instance of this project's recurring pattern: the data was there
+  and nothing asked.
+
+**One thing the session lost.** `activity.py` keeps latency in a one-hour in-memory window
+and writes nothing, so the **voice p95 of 6.2s against the 2.5s budget** exists only in a
+status line pasted into a chat log. Costs persist; latency does not. Worth fixing before
+the next session.
+
+**What did not move:** `score_fast_path.py` unchanged at 14/18 Q1, 43/49 Q2, zero wrong;
+`score_branches.py` 16/16 written; **671 tests green**. The session yielded **zero aliases**
+— both rephrase proposals came back `NO SURFACE FORM`, and one (`'grappling' → Anubis`) was
+a false pair between two unrelated questions.
+
 ### Phase 4, measured 2026-08-12 — all of it deterministic, none of it played
 
 | | |
@@ -194,9 +296,9 @@ deterministic sweep over the 271 A5 transcripts is all it has today.
 |---|---|
 | ~~`art_post` p95~~ | **Measured**: 531ms p50, 1,157ms p95 over 70 attachments. Edit-in delivery holds. |
 | ~~**Do markers land on the actual rock?**~~ | **Closed 2026-08-11.** Ore, stone, wood, paldium walked against the regenerated table — nearest *and* further markers on each card, inside and outside the base — plus quartz at (-53,-960) and (-52,12), ~551 and ~573 units out on different bearings. Near-field and far-field, five resources, separate clusters. |
-| **Does `item_source` work?** | All 240 eval recordings predate the class. Ten queries were *asked* on 2026-08-11 and all routed to the model as designed — but **only Chillet's card was read back**, so routing is confirmed and correctness is not. |
+| ~~**Does `item_source` work?**~~ | **Answered 2026-08-12, and the answer is "for drops".** *"Where do I get a high quality pal oil"* returned 41 sources led by Mammorest at 100%, 5–10 — correct and useful. *"Where can I find cakes"* returned **Lovander at 1%**, which is true and is not the answer: cake is crafted, and the player asked because breeding needs it. `by_item` is a **drop table** and the card says *"Cake comes from"*. Open as a card-wording item above, not as a measurement gap. |
 | **Does the breeding rank model hold?** | The ADR-0008 gate, and the whole of Phase 3B behind it. **Nothing is left to build**: `build_breeding.py` ingests the ranks, [`Docs/breeding-verification.md`](Docs/breeding-verification.md) is generated, `score_breeding.py` waits to consume it. It needs **eggs hatched in game**, on Steam buildid **`24467282`** with auto-updates off. **The "breeding isn't unlocked" precondition was checked against the save on 2026-08-12 and is wrong** — the Breeding Farm's four stated requirements are all satisfied (level 19 ≤ your floor of 57, ForestBoss beaten, no prerequisite, 2 of your 40 ancient points) and the Egg Incubator is already unlocked. So this is **not** blocked on another player's playthrough, as the failed 2026-08-11 delegation suggested; it is two clicks in the technology menu, then cake production (Ranch + Mill + wheat, eggs, milk, honey) to hatch anything. Note ADR-0008 requires **100% agreement** outside the exception table and refuses partial agreement as a tunable, so one refuted Block 1 row is a decision (the `TableBasedBreedingModel` fallback), not a data point. |
-| ~~**Is the owned-Pal roster reaching the cards?**~~ | **No, and it never had. Fixed 2026-08-12.** `owned_species` was built and tested in Phase 3 and never passed into the bot's `PlayerState`, so every counter card in the 2026-08-11 session said *"I haven't read your Pals"* — including the ones the player pressed feedback buttons on. Now polled on the watcher's own five-minute cadence and shown on `/palintel status`; the reference save reads **194 owned characters**. **Every Q5 reading from that session was taken with the roster filter off.** |
+| ~~**Is the owned-Pal roster reaching the cards?**~~ | **Confirmed in play 2026-08-12** — every counter card in the session printed *"checked 143 of your Pals"*, and the tower/alpha split read correctly on all three asked (Grizzbolt → Zoe's tower, Victor → Victor's tower, Anubis → field alpha). **One thing that count hides:** you own 195 species and 50 of them are `BOSS_`-prefixed, which `counters.py` excludes. 35 duplicate a base species you also own, but **14 are species you hold ONLY as an alpha** — `boss_suzaku`, `boss_volcanicmonster`, `boss_winggolem` among them, all typed — and they can never appear in a shortlist. Whether a caught alpha should count as a party member is a judgement; *"checked 143 of your Pals"* reading as your whole roster is not. The original note: **No, and it never had. Fixed 2026-08-12.** `owned_species` was built and tested in Phase 3 and never passed into the bot's `PlayerState`, so every counter card in the 2026-08-11 session said *"I haven't read your Pals"* — including the ones the player pressed feedback buttons on. Now polled on the watcher's own five-minute cadence and shown on `/palintel status`; the reference save reads **194 owned characters**. **Every Q5 reading from that session was taken with the roster filter off.** |
 | **Is a Q4 base site somewhere you can actually build?** | **Half-closed 2026-08-12, and by the game rather than by play.** Flatness is now measured — the height spread of every placed actor inside the radius, with the bar calibrated as the 75th percentile of the 32 spots the game itself marks `BP_BaseCampPopularArea_C`. What remains unmeasurable is **no-build zones**, and that is now the whole caveat rather than half of it. **Still walk to a suggested coordinate**: the roughness proxy measures the ground where things were *placed*, not the ground everywhere. |
 | ~~The Phase 1 latency criterion~~ | **Measured 2026-08-10 and FAILED**: voice p95 4.2s / 2.5s, text 2.0s / 1.5s. Not a tuning problem — p95 sits in the model population whenever a shipped class has no fast path. See the roadmap. |
 
@@ -218,7 +320,10 @@ markers on each card were walked too, outside the base, with deposits standing t
 ### Known-uncalibrated
 
 - `min_player_level` / `danger` shipped **uncalibrated** — the rule asks for ~20 nodes of
-  known difficulty read in-game and has had none.
+  known difficulty read in-game and has had none. **It has one now, from 2026-08-12, and
+  it was expensive**: a level 68–72 spawn area is lethal at this player's level, and the
+  card that named it said nothing about that. One reading is not a calibration, but it is
+  the first evidence this rule has ever had, and it arrived as a death rather than a note.
 - Tree-region coordinates go through a transform fitted only on MainMap landmarks.
 - **The Q7 relevance floor is a starting point, not a measurement.** 0.80, chosen at n=33
   on questions written by the person who built the class, against the 50-question in/out
@@ -251,34 +356,80 @@ markers on each card were walked too, outside the base, with deposits standing t
 
 ## Next
 
-**0. Play Phase 4, with capture on. Nothing in it has answered a real question.** Three
-classes, three datasets, every exit criterion met by construction. The first session paid
-for itself in an hour and reversed two written decisions; this is a larger surface than
-that one was.
+**0. Play again, with the five fixes in.** Every one of them changes what a card says and
+**none has been seen in play** — the `Field alpha:` and `Nearest:` rows, the spoken
+coordinate, the restatement decline, and the feedback modal. The fixes are exactly as
+unplayed as Phase 4 was this morning, and this project's own record is that built-and-
+verified is not the same as observed. Specifically worth asking:
+
+- *"Where can I find Anubis"* again, and any Pal with a field alpha. Does the extra row
+  read as helpful or as clutter? It is one more line on a card whose density is already an
+  open decision below.
+- Any Pal you are near. Does `Nearest:` fire when you want it and stay quiet when you do
+  not? The half-distance bar is a **chosen** number and play is the only thing that can
+  argue with it.
+- *"Rate the spot at 185, negative 475"*, off the in-game map. And one deliberately
+  unreadable — *"rate the location at 321-500"* — which should now ask rather than answer.
+- **Press the new button.** It is the one change here that cannot be verified without you,
+  and the case it was built for is the one where the card looked fine at the time.
+
+**0b. Discord voice receive is live and completely unplayed** (2026-08-13). It is now the
+configured source. What to watch, in order:
+
+- **Does the wake word fire at all?** The whole path is new below `SpeakerStream`, and its
+  failure mode is silence. If nothing responds, set `voice.source = "mic"` and say so —
+  that is one word and it is why the flag exists.
+- **`/palintel status` carries receive counters** on this source: `rx ok / failed / opus
+  err`. `opus err` climbing *while* `ok` also climbs is the signature of partial
+  corruption, which is the failure that sounds fine. All three should be visible after the
+  first person speaks; none at all means no packets are arriving.
+- **Latency.** There is a network hop before the wake word now. The p95 is already failing
+  at 6.2s against 2.5s and this can only add to it — measure before deciding anything.
+- **Attribution.** Ask by voice, then follow up in text, and check the follow-up resolves.
+  On this source it should work for *anyone* in the channel, without `voice.speaker`.
+- **Two people at once**, which no version of this has ever done. `SpeakerStream` keys by
+  speaker and nothing mixes, but that has been an assumption since Phase 0.
+
+Turn **off** Discord's Noise Suppression, Echo Cancellation and Automatic Gain Control if
+anything sounds wrong — Krisp is aggressive and the DAVE work found it suppressing pure
+tones outright.
+
+**1. Then the three found-and-not-fixed items**, in the roadmap and repeated under the
+session block above: the Q6 narrowing that defers, the `item_source` card title, and Q7
+retrieval diversity. Each is small; each wants its own sweep rather than a ride-along.
+
+**2. Persist latency.** `activity.py` writes nothing, so this session's p95 exists only in
+a pasted status line. Costs persist, latency does not, and the p95 is a Phase 1 exit
+criterion still recorded as failing.
 
 **[`Docs/test-plan.md`](Docs/test-plan.md) is the full inventory** — every untested class
 and every reading that needs retaking, with the exact wording to say, what each item is
 testing, and what to expect, all of it produced against your live save. The summary below
-is the same list at a glance:
+is the same list at a glance, with what the 2026-08-12 session actually did to each:
 
-- **Q6.** *"What should I research next"*, *"what can I unlock at level 30"*, *"what
-  should I spend my ancient points on"*, *"what should I research for my base"*. Watch for
-  the **level floor**: the card says "assuming you're at least level 57". If you are
-  higher, it is hiding things you can already research, and how much that matters is a
-  question only you can answer.
-- **Q4.** *"Where should I put a base for ore and coal"* — and then **walk to the
-  coordinate**. Buildability is the one thing this class cannot check and the one thing
-  that decides whether it is any use.
-- **Q7.** *"How does sanity work"*, *"what is item rot"*, *"explain pal effigies"*. The
-  interesting result is not the hits, it is **what it declines** — every decline in your
-  own phrasing is evidence about whether lexical retrieval is enough or embeddings are
-  needed.
-- **Q5, for the first time with a roster.** Every counter card you saw on 2026-08-11 was
-  unfiltered, because `owned_species` never reached the pipeline. Ask the same counter
-  questions again and see whether the shortlist is now Pals you actually own.
+- ~~**Q6.**~~ **Asked, six times, all fast-pathed.** The level floor held. What it found
+  instead is that a narrowing it cannot map is **dropped rather than deferred** — see above.
+- ~~**Q4.**~~ **Asked. Not walked to.** Siting and rating both answered; the coordinate
+  parser defect was found here. Buildability is still unchecked, and *"walk to the
+  coordinate"* is still the item — this session walked to a **spawn** coordinate instead,
+  and that is what found the lethal card.
+- **Q7.** *"How does sanity work"*, *"what is item rot"*, *"explain pal effigies"* — all
+  asked and all answered. **Zero declines in ten corpus questions**, which is weak evidence
+  rather than strong: the interesting result was supposed to be what it declines, and it
+  declined nothing while producing one false hit at match **1.00** (*"how do I be Victor"*,
+  a mangled counter question, answered with a lore diary from the fast path). Ask it things
+  it should refuse.
+- ~~**Q5, for the first time with a roster.**~~ **Confirmed** — *"checked 143 of your
+  Pals"*, tower/alpha split correct on all three. See the roster row above for the 14
+  species that count silently excludes.
 - **One in-game glance:** unlock the Breeding Farm. It costs 2 of your 40 ancient
   technology points and every other requirement is already met. That opens the ADR-0008
-  gate, which is the largest single gap in this project.
+  gate, which is the largest single gap in this project. **The 2026-08-12 session was
+  largely about this** — five of the 52 utterances asked how to unlock it, what breeding
+  needs, how to get the Egg Incubator and where to find cake — so the block is now
+  *"working out the in-game steps"* rather than *"deciding to"*. Two of those questions
+  are the ones the product answered least well: cake resolved to a 1% Lovander drop
+  instead of a recipe, and *"how do I assign a pal"* got the goal restated back.
 
 1. ~~Play session~~ — **the parts that needed playing are done.** The 2026-08-10 session
    graded latency (87 answered, 30 of each kind) and measured `art_post`; the 2026-08-11
@@ -361,10 +512,10 @@ is the same list at a glance:
 | **Q7: does a robots.txt naming ClaudeBot settle it?** | [`Docs/corpus-sources.md`](Docs/corpus-sources.md) registers 16 community sources for the strategy/consensus layer the pak cannot supply. **Two of the three best carry a CC licence that permits reuse and a robots.txt that names ClaudeBot and forbids it** — `palworld.wiki.gg` (CC BY-SA 4.0) and `palworldgame.wiki`, with Game8 blocking GPTBot. Licence and stated wishes point opposite ways and only you can pick. Answering this once removes or restores the three highest-coverage sources; nothing else about a community corpus can be sequenced first. Nothing has been ingested. |
 | **Q7: embeddings, or leave it lexical?** | The lexical baseline answers questions asked in the game's own words and cannot answer paraphrases — measured, and the two bands overlap so no threshold separates them. Embeddings would fix that and cost a new local dependency (sentence-transformers, ~2GB, but the GPU is already there for STT) or a network call per query, which ADR-0003 argues against. **Play first**: the misses in your phrasing are the evidence, and the baseline exists so the comparison is a measurement rather than an assumption. |
 | **Q7: should a decline fall through to the corpus?** | Not built, deliberately. `general_knowledge` is a class the router may *choose*, not a catch-all. The roadmap calls the fallback "the change that makes the system a chatbot", and it is the largest change to this project's risk posture available — worth your explicit yes rather than my inference. |
-| **Q7: synthesis, or keep quoting?** | Today a Tier 3 card quotes the game verbatim, so no model touches the text and ADR-0011's drift failure cannot occur. Synthesis earns its place only when an answer needs two chunks combined; nothing has shown that yet. |
+| **Q7: synthesis, or keep quoting?** — *and play showed the cheaper answer first* | Today a Tier 3 card quotes the game verbatim, so no model touches the text and ADR-0011's drift failure cannot occur. **2026-08-12 produced the first question that needs two chunks** — *"how do I assign a pal to the breeding farm"*, where the Breeding Farm guide restates the goal and the `Base` chunk holds the mechanism. But the card **already renders a second quote**, and it spent that slot on a near-duplicate. So the measured need is **retrieval diversity**, which costs no model at all, and synthesis remains unshown. Try diversity first; if it still cannot answer, that is the evidence for synthesis. |
 | **Q4: is the computed version enough?** | The roadmap's Q4 was twenty curated sites with prose rationale; what shipped is "what falls inside a base's radius", because the curated version needed invented flatness scores and community prose. If you want the curated half, it needs a source you trust and a way to verify it. |
-| **Should `pal_info` answer questions it cannot answer?** | Measured 2026-08-12: it absorbs *"how much stamina does Rinjishi have"* and *"is loopmoon worth levelling up"* — questions with no class, where a summary is arguably better than a decline and arguably the wrong-class failure the first play session named. The decline policy was rebalanced on 2026-08-11 toward answering, on the finding that declining an answerable query is also a failure; this is the same trade seen from the other side. **Your call, and the first play session is where it will feel wrong or fine.** |
-| **Set `cost.balance_usd`** | Spend is now logged per query and totalled, but the balance is 0 so nothing is deducted. Put what you actually loaded onto the key in `config.local.toml` and `/palintel status` will warn before a depleted balance turns into a wall of declines. |
+| **Should `pal_info` answer questions it cannot answer?** | Measured 2026-08-12: it absorbs *"how much stamina does Rinjishi have"* and *"is loopmoon worth levelling up"* — questions with no class, where a summary is arguably better than a decline and arguably the wrong-class failure the first play session named. The decline policy was rebalanced on 2026-08-11 toward answering, on the finding that declining an answerable query is also a failure; this is the same trade seen from the other side. **Your call, and the first play session is where it will feel wrong or fine.** *2026-08-12 produced one instance and it is a mild one*: **"how do I unlock Anubis"** routed to `get_pal_info` — an unlock question about a Pal, absorbed because it names one. No feedback button was pressed on it. One data point, pointing the same way the measurement did. |
+| **Set `cost.balance_usd`** — *now safe to* | Spend is logged per query and totalled, but the balance is 0 so nothing is deducted. **Do not set this from a reading taken before 2026-08-12**: the ledger over-reported by 3.8× and would have warned you empty with two thirds of the money left. Fixed and regression-tested; a real session costs about **$0.09**, not $0.33. Put what you actually loaded onto the key in `config.local.toml`. |
 | **Coal coverage** | 552 → 308 clusters. Cave coal is most of Palworld's coal and can no longer be asked for. Accept, or promote the dungeon feature? |
 | `maps` and `icons` | One flag pair, two features with very different risk. Separable. |
 | Card density | Resource cards gained "Also drops from", Pal cards gained "Ranch:". Editorial. |
@@ -686,7 +837,70 @@ is the same list at a glance:
   ([ADR-0015](Docs/adr/0015-local-gpu-stt.md) removed the per-second billing that argued
   against it), and speaker-specific tuning. **Measure against the 236 recorded utterances
   before and after** — this is exactly the kind of change that feels better and is not.
-- **Discord voice receive** — upstream-blocked on DAVE; party members cannot ask by voice
+- ~~**Discord voice receive** — upstream-blocked on DAVE; party members cannot ask by voice~~
+  — **wired up 2026-08-13, and the blockage was never DAVE.** DAVE decrypts **99.8%** of
+  packets. py-cord 2.8 shipped a new `voice/receive/` package against the old
+  `sinks/core.py`, so `start_recording()` raised before a single packet was read, for
+  every sink including py-cord's own. **Thirteen** defects below that, fixed in
+  [`PyDiscordDave`](../PyDiscordDave/README.md); no Python MLS work was needed and this
+  project does none of the cryptography.
+
+  **Played 2026-08-13.** Thirteen spoken questions answered end to end from a voice
+  channel — resources, spawns, counters, tech, base rating — at 360-547ms STT and
+  47-3188ms routing, attributed to the speaking member rather than to a configured name.
+  Receive is measurably clean: every packet delivered, no discards, ~180ms added latency.
+
+  Two of the thirteen were **this repo's**, and both were invisible until Discord audio
+  arrived:
+
+  - **`UtteranceBuffer` had no clock.** It counted *quiet frames*, which assumes silence
+    still produces frames. A microphone always does; **Discord stops transmitting
+    entirely** when a speaker stops. `push` was never called, the counter froze, and an
+    utterance stayed open until that person spoke again — two questions 30s apart arrived
+    as one, and the delay read as a transport fault for most of a session. `tick()` now
+    closes on wall-clock silence, driven from the listener's event loop.
+  - **The detector carried audio across the gap.** `_tail` plus openWakeWord's rolling
+    context spliced pre-silence audio onto the front of the next "hey pal", exactly where
+    the model is most sensitive. `WakeWord.reset` existed for this boundary — *"call
+    between utterances, not between frames"* — and nothing called it.
+
+  **What remains. None of it is transport:**
+
+  - **Wake-word recall has no number.** Fires scattered 0.10-0.95, and misses never reach
+    the log at all, which is why it *feels* worse than the log looks. The one improvement
+    measured (floor 0.11 → 0.34) is **confounded**: the microphone changed from desk to
+    headset in the same session and input level roughly doubled. A clean A/B needs the
+    same mic on both arms. **Do not retrain anything before that number exists.**
+  - **Wake score does not predict transcription quality.** 0.95 produced *"PayPal…
+    Forks"*; 0.20 and 0.24 produced flawless transcriptions. It is not a proxy for audio
+    quality, and treating it as one sent a session down a wrong path.
+  - **Mistranscriptions are almost entirely proper nouns** — `Forks`/`Forts` → Foxparks,
+    `Jitra` → Jetragon, `PayPal` → Hey pal — while ordinary English is near-perfect. That
+    is the lexicon-alias entry above, not an audio problem, and the candidates should come
+    from a real play session rather than from test utterances.
+  - **`artwork.py:52` map render crash**, surfaced 2026-08-13; the card ships without its
+    map. Unrelated to voice.
+  - **`mic.py` stays the default and the fallback.** Nothing here should be the only way
+    in ([ADR-0004](Docs/adr/0004-wake-word-activation.md)).
+
+  One habit this earned: after these fixes **a silent failure no longer raises**, so a
+  counter moving is the only evidence there is — hence `discord_voice.stats()` and the
+  per-minute health line. A fix shipped mid-session was fabricating 1.2s of synthesised
+  audio into live speech while every health counter read green; what caught it was tagging
+  packets with the decision that produced them, not reasoning about the symptom.
+
+  **This entry was written from py-cord's warning message, not from a measurement.** That
+  warning says reception is "currently broken due to Discord's DAVE protocol", which is
+  true about the symptom and silent about the cause — and the cause got recorded here, in
+  two ADRs, in `mic.py`'s docstring, and in a config validator that *rejected*
+  `voice.channel_id` outright. Same shape as the crude oil card the day before: a
+  plausible cause inferred from an absence and then published as a fact.
+
+  `voice.source = "mic" | "discord"`, mic still the default. **Untested in play** — see
+  Next. The one thing it restores beyond the original design is that attribution stops
+  being configuration: every packet carries its member, so `voice.speaker` is not
+  consulted and per-user memory (ADR-0013) holds for everyone in the channel rather than
+  for one person by declaration.
 - **Authoritative ranch source** — currently the only community-sourced dataset in the
   project ([ADR-0014](Docs/adr/0014-game-files-as-source.md) amendment)
 - Node appearance art — needs an offline mesh render; the item icon was tried and dropped
@@ -711,6 +925,26 @@ Kept because each is a class of error worth recognising again, not a list of sca
 
 The pattern in all four: the data was *well-formed and wrong*, and the guard that would
 have caught it was either absent or logging at `debug`.
+
+**A fifth, from 2026-08-12, and it is the purest form of the pattern this file keeps
+naming.** `PakExtract`'s resource derivation filters on `BP_PalMapObjectSpawner*`. Crude
+oil has none, so `_resources.py` recorded that it "has no overworld spawner class — it
+comes from oil rigs", `cards.NOT_PLACED` turned that into a sentence for the player,
+`02-data-model.md` recorded it as *a correction the data forced*, and four tests asserted
+it. There are 185 oil fields; they are `BP_LevelObject`s. **An absence in a filtered search
+became a claim about the world and then propagated into two documents, a dataset, a card
+and a test suite** — every step locally sound, and found only because a player had stood on
+one. *"I searched for it" is only as strong as the term searched for*, for the fourth time,
+and this is the first time the conclusion was published as prose rather than left in data.
+
+**And a sixth, which is the one this file itself is most exposed to: the project measuring
+itself wrong.** The spend ledger over-reported by 3.8× and claimed 55 of
+56 queries reached the model when 16 did, because a router wrapper forwarded a sticky
+attribute. Nothing looked broken — the ledger was well-formed, the totals added up, and the
+line on `/palintel status` was confident. It was caught by reading the raw `costs.jsonl`
+against the capture log and noticing that "32 fast" and "55 reached the model" cannot both
+be true of 56 queries. **The two files disagreeing is what found it**, which is an argument
+for keeping both rather than deriving one from the other.
 
 **And a fifth, from the same day, which is the same lesson in a third file.** The cell
 scan filters to three actor prefixes, so `placement_class_counts.json` is a census of what
