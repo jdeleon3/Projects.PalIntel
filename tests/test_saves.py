@@ -159,10 +159,98 @@ def test_the_newest_player_save_wins(tmp_path):
     assert newest_player_save(tmp_path) == new
 
 
-def _snapshot(coords):
+def _snapshot(coords, written_at=None):
     from palintel.saves import PlayerSnapshot
     return PlayerSnapshot(uid="u", map_coords=coords, world=(0.0, 0.0, 0.0),
-                          technologies=frozenset(), transform_id="test", read_at=0.0)
+                          technologies=frozenset(), transform_id="test", read_at=0.0,
+                          written_at=time.time() if written_at is None else written_at)
+
+
+# --- the staleness gate -------------------------------------------------------
+#
+# Nothing checked how old a save was until 2026-08-13. With the game closed the bot
+# answered "where's the nearest coal" against a position from whenever the file was last
+# written, and the status card said "read 3s ago" - the wrong clock, reading as
+# reassurance. A coordinate card built from a stale position is byte-for-byte identical
+# to one built from a live position, in the one class that sends the player somewhere.
+
+def _watcher(tmp_path, **kw):
+    from palintel.saves import SaveWatcher
+    (tmp_path / "Players").mkdir(exist_ok=True)
+    return SaveWatcher(tmp_path, **kw)
+
+
+def test_a_fresh_position_is_offered(tmp_path):
+    w = _watcher(tmp_path, max_position_age=900)
+    w.snapshot = _snapshot((10.0, 20.0), written_at=time.time() - 60)
+    assert w.player_coords() == (10.0, 20.0)
+
+
+def test_a_stale_position_is_withheld_rather_than_offered(tmp_path):
+    """The whole point. Every card already knows how to answer without a position -
+    resource lookup ranks by cluster size and says so - and none of them could tell that
+    the position they were given was a fortnight old."""
+    w = _watcher(tmp_path, max_position_age=900)
+    w.snapshot = _snapshot((10.0, 20.0), written_at=time.time() - 14 * 86400)
+    assert w.player_coords() is None
+    assert w.position_age() > 900
+
+
+def test_the_boundary_is_generous_enough_for_an_autosave_gap(tmp_path):
+    """A player sitting still between autosaves must not lose 'nearest'.
+
+    MAX_POSITION_AGE is a bound rather than a calibration - nobody has recorded
+    Palworld's write cadence - so it is deliberately far longer than any plausible
+    interval. This pins the direction of the error: the gate exists to catch a save that
+    stopped updating, not to second-guess a normal gap between writes.
+    """
+    w = _watcher(tmp_path, max_position_age=900)
+    w.snapshot = _snapshot((10.0, 20.0), written_at=time.time() - 890)
+    assert w.player_coords() == (10.0, 20.0)
+
+
+def test_an_unknown_write_time_does_not_read_as_ancient(tmp_path):
+    """No mtime means we do not KNOW the age, which is different from knowing it is old.
+
+    Treating a missing mtime as stale would withhold a position over a failed `stat`;
+    treating it as zero would be the confident lie the field exists to prevent. `age()`
+    returns None and the position is still offered, with the status line saying so.
+    """
+    w = _watcher(tmp_path, max_position_age=900)
+    w.snapshot = _snapshot((10.0, 20.0), written_at=0.0)
+    assert w.snapshot.age() is None
+    assert w.player_coords() == (10.0, 20.0)
+    assert "save age unknown" in w.describe()
+
+
+def test_status_reports_the_save_clock_not_the_read_clock(tmp_path):
+    """`read_at` was 3 seconds on a save written a fortnight ago. True, useless, and
+    reassuring in exactly the situation where someone is checking because it looks
+    broken."""
+    w = _watcher(tmp_path, max_position_age=900)
+    w.snapshot = _snapshot((10.0, 20.0), written_at=time.time() - 14 * 86400)
+    line = w.describe()
+    assert "14d" in line
+    assert "too old to use" in line
+    # The read clock would have said "0s ago" here, which is what made this invisible.
+    assert "read 0s ago" not in line
+
+
+def test_the_roster_is_not_gated_on_position_age(tmp_path):
+    """Slow-moving state stays usable when the position does not.
+
+    You catch a Pal every few minutes at best and move a base almost never, so an
+    hour-old roster is still worth filtering a counter card by. Gating it on the position
+    bound would throw away good answers to prevent an error it cannot make - and it is
+    exactly what makes a synced or shared save still worth reading.
+    """
+    w = _watcher(tmp_path, max_position_age=900)
+    w.snapshot = _snapshot((10.0, 20.0), written_at=time.time() - 14 * 86400)
+    w.roster = frozenset({"lamball"})
+    w.base_camps = [(1.0, 2.0)]
+    assert w.player_coords() is None
+    assert w.roster == frozenset({"lamball"})
+    assert w.base_camps == [(1.0, 2.0)]
 
 
 # --- owned Pal roster ---------------------------------------------------------
