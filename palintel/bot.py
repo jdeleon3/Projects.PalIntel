@@ -25,13 +25,14 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+import re
 import sys
 import time
 import wave
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from . import activation
+from . import activation, identity
 from .activity import ActivityLog
 from .capture import (FEEDBACK_KINDS, NOTE_LIMIT, UNEXPECTED, SessionCapture,
                       Utterance)
@@ -76,6 +77,96 @@ def art_files(cards_: list[Card]) -> list["discord.File"]:
         if card.thumbnail is not None:
             files.append(discord.File(str(card.thumbnail), filename=names["thumbnail"]))
     return files
+
+
+# `/palintel iam <name>`, with or without the slash. Anchored so it cannot swallow a
+# question that merely contains the phrase.
+_IAM = re.compile(r"^/?palintel\s+i\s*am\s+(.+)$", re.I)
+
+
+def identity_card(players: dict[str, str], bindings, asker: str | None = None) -> Card:
+    """Who the save knows, and who has claimed whom. `/palintel who`.
+
+    Exists because the alternative is asking people to type a Guid. The save names its
+    players - `Rui`, `OutofLuck` on the measured co-op world - so binding can be done
+    against a name the player recognises and can verify.
+    """
+    if not players:
+        return Card(
+            title="I don't know who's in this world",
+            lines=["I haven't read `Level.sav` yet, or it holds no player entries.",
+                   "", "_Without it I can't tell two players apart, so everyone gets "
+                   "world-scoped answers._"],
+            colour=TIER_DECLINE)
+
+    lines = []
+    for uid, name in sorted(players.items(), key=lambda kv: kv[1] or kv[0]):
+        bound = bindings.user_for(uid) if bindings else None
+        label = f"**{name or '(unnamed)'}**"
+        if bound is None:
+            lines.append(f"{label} — _nobody has claimed this player_")
+        elif asker is not None and bound.user_id == asker:
+            lines.append(f"{label} — **you**")
+        else:
+            lines.append(f"{label} — {bound.display_name or bound.user_id}")
+
+    if len(players) == 1:
+        # The unambiguous case. Say so plainly, because otherwise the absence of a
+        # binding reads as something being wrong.
+        lines += ["", "_One player in this world, so there's nothing to be ambiguous "
+                  "about — everyone gets this player's state without binding._"]
+    else:
+        lines += ["", "_Say `/palintel iam <name>` so I answer **you** about **your** "
+                  "game. Until you do, I'll answer about the world and say so._"]
+    return Card(title="Players in this world", lines=lines, colour=TIER_DECLINE)
+
+
+def _bind(bindings, watcher, user_id: str, display_name: str, wanted: str) -> Card:
+    """Claim an in-game player for a Discord user. `/palintel iam <name>`.
+
+    Matched case-insensitively against the game's own nicknames, and **a name that is not
+    in the save is refused rather than stored**: a binding to a player who does not exist
+    resolves to None on every query afterwards, which presents as the bot silently
+    forgetting you.
+    """
+    players = watcher.players if watcher else {}
+    if not players:
+        return Card(title="I haven't read the save yet",
+                    lines=["I don't know who's in this world, so I can't match a name.",
+                           "", "_Try `/palintel who` in a minute._"],
+                    colour=TIER_DECLINE)
+    hit = [(u, n) for u, n in players.items() if n.lower() == wanted.lower()]
+    if not hit:
+        known = ", ".join(f"`{n}`" for n in sorted(players.values()) if n) or "(unnamed)"
+        return Card(
+            title=f"No player called {wanted!r}",
+            lines=[f"This world has: {known}.",
+                   "", "_Names come from the game, not from Discord._"],
+            colour=TIER_DECLINE)
+    if len(hit) > 1:
+        # Two players with the same in-game name. Refuse rather than pick: binding the
+        # wrong one is silent and produces confidently-wrong cards forever after.
+        return Card(title=f"Two players are called {wanted!r}",
+                    lines=["I can't tell which one you are, and guessing would attach "
+                           "you to someone else's game."],
+                    colour=TIER_DECLINE)
+    uid, name = hit[0]
+    if bindings is None:
+        return Card(title="Identity isn't available",
+                    lines=["The binding store didn't load — check the startup log."],
+                    colour=TIER_DECLINE)
+    taken = bindings.user_for(uid)
+    if taken is not None and taken.user_id != user_id:
+        return Card(title=f"{name} is already claimed",
+                    lines=[f"{taken.display_name or taken.user_id} is bound to {name}.",
+                           "", "_If that's wrong, they can rebind and free it._"],
+                    colour=TIER_DECLINE)
+    bindings.bind(user_id, uid, display_name=display_name, nickname=name)
+    return Card(title=f"You're {name}",
+                lines=[f"I'll answer **{display_name}** about **{name}**'s game — "
+                       f"position, technologies and points.",
+                       "", "_Say `/palintel who` to see everyone._"],
+                colour=TIER_DECLINE)
 
 
 def _build_watcher(cfg: Config):
@@ -247,7 +338,9 @@ async def _answer(channel, pipe: Pipeline, text: str, who: str,
                   started: float | None = None, channel_kind: str = "text",
                   capture: SessionCapture | None = None, uid: str | None = None,
                   feedback: bool = False,
-                  spend: "spend_mod.SpendLog | None" = None) -> None:
+                  spend: "spend_mod.SpendLog | None" = None,
+                  user_id: str | None = None,
+                  bindings: "identity.Bindings | None" = None) -> None:
     """Route `text` and post the cards. Shared by the text and voice paths.
 
     Routing is a network call and transcription is GPU work, so both run in the default
@@ -275,12 +368,23 @@ async def _answer(channel, pipe: Pipeline, text: str, who: str,
     # `saves.owned_species` sat working and unreferenced. The roster was built, tested
     # and never connected - the same failure shape as the counter fast path being dark
     # for a day, and worth naming here rather than only in STATUS.
-    state = PlayerState(
-        player_coords=watcher.player_coords() if watcher else None,
-        owned_species=watcher.roster if watcher else None,
-        tech=watcher.player_tech() if watcher else None,
-        base_camps=watcher.base_camps if watcher else None,
-    )
+    #
+    # **Whose state, decided per speaker.** Until 2026-08-13 this built one `PlayerState`
+    # from whichever save the game wrote last, so in a co-op world every question was
+    # answered as whoever had most recently autosaved. On the measured two-player world
+    # that is a 35-technology tree against a 61-technology one, and a card with nothing
+    # about it that looks wrong. `identity.resolve` returns None rather than guessing, and
+    # `state_for(None)` is an empty state that every card already knows how to answer from.
+    if watcher is None:
+        state, why = PlayerState(), "no save configured"
+    else:
+        player_uid, why = identity.resolve(bindings, user_id, watcher.players)
+        state = watcher.state_for(player_uid)
+    if state.tech is None and watcher is not None:
+        # Worth a line in the log: an unbound speaker in a co-op world gets noticeably
+        # weaker answers, and "why did it stop knowing where I am" should be answerable
+        # without a debugger.
+        log.info("no player state for %s (%s)", who, why)
 
     loop = asyncio.get_running_loop()
     t_route = time.monotonic()
@@ -454,6 +558,9 @@ def run() -> None:
     pipe = build_pipeline(cfg)
     activity = ActivityLog()
     watcher = _build_watcher(cfg)
+    # Who each Discord user is in the game. Loaded once and written on every bind; see
+    # identity.py for why this is persisted when PlayerState never is.
+    bindings = identity.Bindings()
     summary = pipe.kb.summary()
     log.info("config: %s", cfg.redacted())
     log.info("loaded: %s", summary)
@@ -510,6 +617,22 @@ def run() -> None:
             return
         if text.lower() in ("/palintel recent", "palintel recent"):
             await message.channel.send(embed=to_embed(recent_card(activity)))
+            return
+
+        # --- identity, the multi-user join -------------------------------------------
+        #
+        # Before the listen-mode gate for the same reason status is: someone typing these
+        # is trying to work out why their answers are thin, and gating them behind the
+        # rules that might be the problem makes them useless exactly when they are needed.
+        if text.lower() in ("/palintel who", "palintel who"):
+            await message.channel.send(embed=to_embed(identity_card(
+                watcher.players if watcher else {}, bindings,
+                asker=str(message.author.id))))
+            return
+        if low_iam := _IAM.match(text):
+            await message.channel.send(embed=to_embed(_bind(
+                bindings, watcher, str(message.author.id),
+                message.author.display_name, low_iam.group(1).strip())))
             return
         if text.lower() in ("/palintel reset", "palintel reset"):
             # ADR-0013's manual clear. Scoped to the asker: one person's conversation
@@ -576,9 +699,14 @@ def run() -> None:
         # The clock starts here rather than at Discord's own timestamp: gateway delivery
         # is not something this process can affect, and charging it to the pipeline would
         # make the number unactionable.
+        # `who` stays the display name because that is what conversation memory and the
+        # spend ledger key on. `user_id` is passed separately and is what IDENTITY uses:
+        # display names change mid-session and collide across servers, and either one
+        # would silently split or merge a person's binding.
         await _answer(message.channel, pipe, text, message.author.display_name,
                       activity, watcher, started=time.monotonic(),
-                      channel_kind="text", spend=spend)
+                      channel_kind="text", spend=spend,
+                      user_id=str(message.author.id), bindings=bindings)
 
     async def watch_saves() -> None:
         """Re-read the save on a timer for as long as the bot runs.
@@ -732,11 +860,19 @@ def run() -> None:
             # by declaration. `display_name` because that is the key the text path uses.
             who = (getattr(speaker, "display_name", None) or str(speaker)
                    if speaker is not None else cfg.voice.speaker or "voice")
+            # On the Discord source the packet names its member, so a spoken question can
+            # be attributed to a bound player exactly like a typed one - which is what
+            # makes party voice and per-player state the same feature rather than two.
+            # The microphone cannot say who spoke, so it passes no id and its speaker
+            # falls to the unbound path unless the world has only one player.
+            speaker_id = getattr(speaker, "id", None)
             await _answer(text_channel, pipe, text, who,
                           activity, watcher, spend=spend,
                           started=utt.ended_at, channel_kind="voice",
                           capture=capture, uid=uid,
-                          feedback=cfg.capture.feedback)
+                          feedback=cfg.capture.feedback,
+                          user_id=str(speaker_id) if speaker_id is not None else None,
+                          bindings=bindings)
 
         def _report(fut) -> None:
             """Surface anything on_speech raised.

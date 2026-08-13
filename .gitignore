@@ -46,3 +46,5 @@ obj/
 # pytest
 .pytest_cache/
 Notes/
+# Who each Discord user is in the game. Holds Discord user ids - never committed.
+data/players.json

@@ -244,12 +244,89 @@ def read_player(path: Path, transform: Transform | None = None) -> PlayerSnapsho
 def newest_player_save(save_dir: Path) -> Path | None:
     """The most recently written player save in a world.
 
-    A world directory can hold several - anyone who has joined a co-op session leaves
-    one - and the local player is the one the game is currently writing.
+    **Not a way to identify a player.** In a co-op world this is a different person every
+    few minutes - whoever the game wrote last - so using it to answer an unattributed
+    question is cross-attribution, not a fallback. Measured on the two-player world on
+    2026-08-13: `Rui` has 35 technologies and `OutofLuck` 61, and "what should I research
+    next" answered from this would pick between them by save timing.
+
+    Kept because it is still the right answer to "which file changed most recently", which
+    is what `poll` uses it for when deciding whether anything needs re-reading.
     """
     saves = sorted((save_dir / "Players").glob("*.sav"),
                    key=lambda p: p.stat().st_mtime, reverse=True)
     return saves[0] if saves else None
+
+
+def player_saves(save_dir: Path) -> list[Path]:
+    """Every player save in a world, oldest path order made stable by sorting on name.
+
+    A co-op world holds one per person who has joined - `00000000...0001.sav` for the
+    host and a Steam-derived id for everyone else. Each carries that player's own
+    position, unlocked technologies, both point pools and tower flags, already parsed by
+    `read_player`: the per-player half of multi-user needs no new parsing at all, only
+    reading all of these instead of one.
+    """
+    return sorted((save_dir / "Players").glob("*.sav"), key=lambda p: p.name)
+
+
+def _str_property(blob: bytes, name: bytes) -> str | None:
+    """Read a StrProperty out of an undecoded blob, UTF-8 or UTF-16.
+
+    Same parse-don't-pattern-match discipline as `_character_id`, and the same reason: the
+    obvious regex returns the type tag. A negative length prefix means UTF-16, which is
+    how the game stores any nickname with a non-ASCII character in it.
+    """
+    i = blob.find(name + b"\x00")
+    if i < 0:
+        return None
+    j = blob.find(b"StrProperty\x00", i)
+    if j < 0 or j - i > 32:
+        return None
+    p = j + len(b"StrProperty\x00") + 8 + 1
+    try:
+        (n,) = struct.unpack_from("<i", blob, p)
+    except struct.error:
+        return None
+    if n > 0:
+        if not 0 < n < 256:
+            return None
+        return blob[p + 4:p + 4 + n - 1].decode("utf-8", "replace") or None
+    n = -n
+    if not 0 < n < 256:
+        return None
+    return blob[p + 4:p + 4 + (n - 1) * 2].decode("utf-16-le", "replace") or None
+
+
+def player_names(level_save: Path) -> dict[str, str]:
+    """PlayerUId -> the name that player chose in game, for every player in the world.
+
+    This is what lets identity binding be `/palintel iam Rui` rather than a Guid nobody
+    can type or verify. Read from the same no-custom-decoders `Level.sav` parse the roster
+    uses, so a caller wanting both pays for one walk.
+
+    A human player's entry is the one carrying `IsPlayer`; its map key holds the same
+    `PlayerUId` that names their file in `Players/`, which is what makes the join exact
+    rather than inferred. Measured on the 2026-08-13 co-op world: `Rui` and `OutofLuck`,
+    both joining their save files.
+    """
+    entries = _world_save_data(level_save) \
+        .get("CharacterSaveParameterMap", {}).get("value", [])
+
+    out: dict[str, str] = {}
+    for entry in entries:
+        blob = _blob(entry.get("value", {}).get("RawData", {}).get("value"))
+        if not blob or b"IsPlayer\x00" not in blob:
+            continue
+        uid = str(entry.get("key", {}).get("PlayerUId", {}).get("value") or "")
+        if not uid:
+            continue
+        # A player with no readable nickname still counts as a player - they can be bound
+        # by uid - so the entry is kept with an empty name rather than dropped.
+        out[uid] = _str_property(blob, b"NickName") or ""
+    log.info("players in this world: %s",
+             ", ".join(f"{n or '?'} ({u[:8]})" for u, n in out.items()) or "none found")
+    return out
 
 
 def _blob(raw) -> bytes | None:
@@ -481,6 +558,16 @@ class SaveWatcher:
                                 else roster_interval)
         self.max_position_age = (self.MAX_POSITION_AGE if max_position_age is None
                                  else max_position_age)
+        # Every player in the world, by PlayerUId. A co-op save holds one entry per
+        # person; a single-player save holds exactly one. Filled by `poll`.
+        self.snapshots: dict[str, PlayerSnapshot] = {}
+        # uid -> the name that player chose in game, from Level.sav on the roster cadence.
+        # What `/palintel who` shows and what `/palintel iam <name>` matches against.
+        self.players: dict[str, str] = {}
+        # The one unambiguous snapshot: set only when the world holds exactly ONE player,
+        # where there is nothing to be ambiguous about. None with two or more, which is
+        # what forces every speaker to say who they are rather than being answered from
+        # whichever save the game happened to write last.
         self.snapshot: PlayerSnapshot | None = None
         self.error: str | None = None
         # None means NOT READ, all the way to the card. See PlayerState.owned_species.
@@ -500,37 +587,66 @@ class SaveWatcher:
         the bot: an exception here would kill the polling task silently and leave
         "nearest" quietly degraded for the rest of the session.
         """
-        path = newest_player_save(self.save_dir)
-        if path is None:
+        paths = player_saves(self.save_dir)
+        if not paths:
             self.error = f"no player save under {self.save_dir / 'Players'}"
             return False
 
+        # The newest mtime across ALL of them, so one player moving is enough to trigger
+        # a re-read. Watching only the newest FILE would work by accident here; watching
+        # the newest TIME is what the change check actually means.
         try:
-            mtime = path.stat().st_mtime
+            mtime = max(p.stat().st_mtime for p in paths)
         except OSError as e:
             self.error = str(e)
             return False
         if mtime == self._mtime:
             return False
 
-        try:
-            self.snapshot = read_player(path, self._transform)
-        except SaveError as e:
-            # Very likely a read that raced the game's write. Leaving _mtime alone means
-            # the next poll retries the same file rather than waiting for another save.
-            log.warning("save read failed (%s); keeping previous state", e)
-            self.error = str(e)
-            return False
-        except Exception as e:
-            log.exception("unexpected error reading %s", path)
-            self.error = f"{type(e).__name__}: {e}"
+        # **Every player, not the newest one.** Each file is a few kilobytes and holds its
+        # own position, technologies and both point pools, so reading all of them costs
+        # almost nothing and is the whole of the per-player half of multi-user. Reading
+        # only the newest is what made a co-op world answer everybody as whoever the game
+        # wrote last.
+        found: dict[str, PlayerSnapshot] = {}
+        failures: list[str] = []
+        for path in paths:
+            try:
+                snap = read_player(path, self._transform)
+            except SaveError as e:
+                # Very likely a read that raced the game's write. One player's torn save
+                # must not cost the others theirs, so this is per-file rather than fatal.
+                failures.append(f"{path.name}: {e}")
+                continue
+            except Exception as e:
+                log.exception("unexpected error reading %s", path)
+                failures.append(f"{path.name}: {type(e).__name__}: {e}")
+                continue
+            found[snap.uid] = snap
+
+        if not found:
+            # Nothing readable. Leaving _mtime alone means the next poll retries rather
+            # than waiting for another autosave.
+            log.warning("no player save could be read (%s); keeping previous state",
+                        "; ".join(failures))
+            self.error = "; ".join(failures)
             return False
 
+        # A player whose file failed this time keeps their previous snapshot, for the same
+        # reason the roster does: stale is a far smaller error than absent, which would
+        # make their cards say we never looked.
+        self.snapshots.update(found)
         self._mtime = mtime
-        self.error = None
-        x, y = self.snapshot.map_coords
-        log.info("save: player at (%.0f, %.0f), %d technologies",
-                 x, y, len(self.snapshot.technologies))
+        self.error = "; ".join(failures) if failures else None
+        # Unambiguous only when the world holds exactly one player. See `identity.resolve`:
+        # this is a rule about ambiguity, not a special case about counts.
+        self.snapshot = (next(iter(self.snapshots.values()))
+                         if len(self.snapshots) == 1 else None)
+        for uid, snap in sorted(found.items()):
+            x, y = snap.map_coords
+            log.info("save: %s at (%.0f, %.0f), %d technologies, %s/%s points",
+                     self.players.get(uid) or uid[:8], x, y, len(snap.technologies),
+                     snap.points, snap.ancient_points)
         return True
 
     def poll_roster(self, now: float | None = None) -> bool:
@@ -553,6 +669,14 @@ class SaveWatcher:
             # Stamped even on failure, so a missing file is not re-checked every tick.
             self.roster_read_at = now
             return False
+        try:
+            # Who is in this world, by name. Same file, same cadence, same walk as the
+            # roster - and it changes even less often, since a player joins once.
+            # Read first so a roster failure still leaves the names available for
+            # `/palintel who`, which is what someone reaches for when binding fails.
+            self.players = player_names(level)
+        except Exception as e:
+            log.warning("player names read failed (%s: %s)", type(e).__name__, e)
         try:
             self.roster = owned_species(level)
             # Same file, same cadence, and a base camp moves even less often than the
@@ -587,37 +711,87 @@ class SaveWatcher:
         and "rate this spot" declines and asks for a coordinate. The honest path existed
         the whole time; nothing was wired to it.
         """
-        if self.snapshot is None:
+        return self.coords_for(None)
+
+    def coords_for(self, uid: str | None) -> tuple[float, float] | None:
+        """`player_coords` for one named player, or the unambiguous one when uid is None.
+
+        An unknown uid returns None rather than falling back. A speaker we cannot place is
+        answered about the world, never about somebody else - see `identity.resolve`.
+        """
+        snap = self.snapshot_for(uid)
+        if snap is None:
             return None
-        age = self.snapshot.age()
+        age = snap.age()
         if age is not None and age > self.max_position_age:
             # Logged rather than silent: "nearest stopped working" needs to be answerable
             # without a debugger, and the answer here is usually "the game is not running".
             log.info("save is %.0fs old (> %.0fs): not offering a position",
                      age, self.max_position_age)
             return None
-        return self.snapshot.map_coords
+        return snap.map_coords
 
-    def position_age(self) -> float | None:
+    def snapshot_for(self, uid: str | None) -> "PlayerSnapshot | None":
+        """One player's snapshot. `None` uid means the unambiguous single player."""
+        if uid is None:
+            return self.snapshot
+        return self.snapshots.get(uid)
+
+    def position_age(self, uid: str | None = None) -> float | None:
         """Seconds since the game wrote the position, or None if unknown or unread."""
-        return self.snapshot.age() if self.snapshot else None
+        snap = self.snapshot_for(uid)
+        return snap.age() if snap else None
 
-    def player_tech(self):
+    def state_for(self, uid: str | None):
+        """The `PlayerState` for one speaker. **The whole point of M1.**
+
+        A `uid` of None is not an error and not a fallback: it is a speaker we could not
+        place, and they get a state with every field absent. Every card already handles
+        that - resource lookup ranks by cluster size and says so, counters say they have
+        not read your Pals, Q6 declines outright rather than recommending tier-1 research
+        to a level-57 player. What must never happen is answering them from another
+        player's save, which is the confidently-wrong card multi-user introduces.
+
+        The roster and base camps are still world-scoped here. Making them per-player is
+        M2 and M3, and both need the container join rather than the player files - see
+        Docs/multi-user-design.md section 4.4. Until then they are shared, which is the
+        pre-existing behaviour rather than a new claim.
+        """
+        from .pipeline import PlayerState
+
+        if uid is None:
+            return PlayerState()
+        return PlayerState(
+            player_coords=self.coords_for(uid),
+            owned_species=self.roster,
+            tech=self.player_tech(uid),
+            base_camps=self.base_camps,
+        )
+
+    def player_tech(self, uid: str | None = None):
         """The Q6 half of the save state, or an empty reading when nothing was read.
 
         Returns a `progression.PlayerTech`. Imported inside the method because saves.py
         is imported by the config path and progression.py loads a dataset - the same
         reason `counters` is imported inside the dispatcher rather than at module scope.
+
+        **Per player, and this is where multi-user bites hardest.** Technology is the most
+        divergent thing in a co-op save: on the 2026-08-13 world `Rui` has 35 unlocked and
+        83/7 points against `OutofLuck`'s 61 and 59/8. `PlayerTech()` with `unlocked=None`
+        means never read, and `progression_card` declines on it rather than recommending
+        from an empty set - so an unplaceable speaker gets an honest card, not a shopping
+        list built from somebody else's tree.
         """
         from .progression import PlayerTech
 
-        if self.snapshot is None:
+        snap = self.snapshot_for(uid)
+        if snap is None:
             return PlayerTech()
         return PlayerTech(
-            unlocked=self.snapshot.technologies,
-            points=self.snapshot.points,
-            ancient_points=self.snapshot.ancient_points,
-            towers_defeated=self.snapshot.towers_defeated,
+            unlocked=snap.technologies,
+            points=snap.points,
+            ancient_points=snap.ancient_points,
+            towers_defeated=snap.towers_defeated,
         )
 
     def describe_roster(self) -> str:
@@ -641,6 +815,14 @@ class SaveWatcher:
         useless, and actively reassuring in the one situation where the status card is
         being consulted because something looks wrong.
         """
+        if len(self.snapshots) > 1:
+            # A co-op world. There is no single "the player", so naming one would be the
+            # cross-attribution this release exists to stop - the line lists them instead.
+            who = ", ".join(
+                f"{self.players.get(u) or u[:8]} ({_ago(s.age())} ago)"
+                if s.age() is not None else (self.players.get(u) or u[:8])
+                for u, s in sorted(self.snapshots.items()))
+            return f"{len(self.snapshots)} players: {who}"
         if self.snapshot is None:
             return f"unavailable - {self.error}" if self.error else "not read yet"
         x, y = self.snapshot.map_coords

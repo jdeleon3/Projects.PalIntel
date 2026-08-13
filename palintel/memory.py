@@ -11,6 +11,7 @@ memory.
 """
 from __future__ import annotations
 
+import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
@@ -54,24 +55,35 @@ class Memory:
     be followed up by text.
     """
 
+    # **Reentrant, because `last` and `had_expired` both call `recent`.** A plain Lock
+    # would deadlock the first time somebody asked a follow-up. `ActivityLog` uses a plain
+    # Lock and can, because nothing there nests.
+    #
+    # Guarded at all because `recent` MUTATES - it pops expired turns off the left of the
+    # deque it is iterating - while `Pipeline.handle` runs in an executor with several
+    # workers. Two people asking at once is incidental today and routine under multi-user,
+    # which is when this stops being theoretical (Docs/multi-user-design.md section 7).
     def __init__(self, max_turns: int = MAX_TURNS, ttl: float = TTL_SECONDS):
         self.max_turns = max_turns
         self.ttl = ttl
         self._by_user: dict[str, deque[Turn]] = {}
+        self._lock = threading.RLock()
 
     def remember(self, turn: Turn) -> None:
-        buf = self._by_user.setdefault(turn.who, deque(maxlen=self.max_turns))
-        buf.append(turn)
+        with self._lock:
+            buf = self._by_user.setdefault(turn.who, deque(maxlen=self.max_turns))
+            buf.append(turn)
 
     def recent(self, who: str, now: float | None = None) -> list[Turn]:
         """Live turns for `who`, oldest first. Expired ones are dropped, not returned."""
-        buf = self._by_user.get(who)
-        if not buf:
-            return []
-        now = now if now is not None else time.monotonic()
-        while buf and buf[0].age(now) > self.ttl:
-            buf.popleft()
-        return list(buf)
+        with self._lock:
+            buf = self._by_user.get(who)
+            if not buf:
+                return []
+            now = now if now is not None else time.monotonic()
+            while buf and buf[0].age(now) > self.ttl:
+                buf.popleft()
+            return list(buf)
 
     def last(self, who: str, now: float | None = None) -> Turn | None:
         live = self.recent(who, now)
@@ -85,16 +97,17 @@ class Memory:
         answering it against nothing is how "what about the next one" becomes a confident
         card about whatever the router happened to guess.
         """
-        buf = self._by_user.get(who)
-        if not buf:
-            return False
-        return not self.recent(who, now)
+        with self._lock:
+            if not self._by_user.get(who):
+                return False
+            return not self.recent(who, now)
 
     def forget(self, who: str | None = None) -> None:
-        if who is None:
-            self._by_user.clear()
-        else:
-            self._by_user.pop(who, None)
+        with self._lock:
+            if who is None:
+                self._by_user.clear()
+            else:
+                self._by_user.pop(who, None)
 
     def describe(self, who: str) -> str:
         live = self.recent(who)
