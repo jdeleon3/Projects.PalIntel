@@ -111,8 +111,18 @@ through the guild).
 *Caveat, stated because I got it wrong once already in this session:* my first probe
 printed "this save has no Guild group", which was false — the group type counter found one.
 And my guess at the raw layout mis-read the handle list as a base-id list. **The guild blob
-needs a real structural decoder, not the offsets in this document.** What is established is
-that the data is there and readable; the exact field boundaries are not yet established.
+needs a real structural decoder, not the offsets in this document.**
+
+> **Established 2026-08-13, during M3a.** A second hypothesised layout was also falsified —
+> a forward walk blew past the end of an 18 KB blob. Locating known values instead (the camp
+> ids and player names are known from elsewhere, so where they sit *tells* you the layout)
+> gives: `group_id(16)`, `group_name(str)`, `n_handles(i32)`, `handles(n×32)`,
+> `org_type(u8)`, **one unexplained `i32`**, `n_bases(i32)`, `base_ids(n×16)`. That stray
+> field is zero on both worlds and is why the forward walk read the count four bytes early.
+> The **member list is still not established** — a predicted offset for `Rui` in the co-op
+> tail was 30 bytes off — which is why M3b is deferred rather than merely unbuilt.
+> `guild_base_ids` is fail-closed: that field non-zero, an implausible count, or any camp id
+> the save does not hold discards the parse, since its only purpose is checking another one.
 
 ### 2.6 The two-player world — what the co-op save actually said
 
@@ -444,6 +454,17 @@ with that `InstanceId`. `CharacterContainerSaveData` carries `Slots` and `SlotNu
 readable properties, so this needs no new blob archaeology — but it is a different path
 from the one this document originally proposed, and it is why M3 is its own phase.
 
+> **Built in M2, and simpler than this predicted.** Each player's own save names their
+> Palbox and party containers outright (`PalStorageContainerId`,
+> `OtomoCharacterContainerId`), so "which containers are mine" is stated rather than
+> derived, and a container no player claims is a base camp's. **`OwnerPlayerUId` ends up
+> unused** — the container join subsumes it. One correction to the sentence above: `Slots`
+> is decoded structured data but each slot's own `RawData` is *not*, and it is where the
+> `InstanceId` lives — `PlayerUId(16) + InstanceId(16) + 6`, read off real slots.
+>
+> **The guild scoping in this formula is still an assumption.** "Shared" means *every*
+> container no player claims, which is right with one guild and wrong with two. See M3b.
+
 `base_camps` gets the same treatment: guild-scoped, so "rate my base" in a co-op world
 rates a base you actually have access to.
 
@@ -550,7 +571,16 @@ Each phase is independently useful and independently shippable.
 **All of M1–M3 assume a reachable save (§4.1).** On a friend-hosted world they change
 nothing, because there is nothing to read. M0 and M4 apply either way.
 
+> **Built 2026-08-13.** M0, M1, M2, M3a and M4 shipped; **M3b deferred**. Every exit
+> criterion below was met against the real saves rather than fixtures. What construction
+> changed is recorded inline under each phase — and **none of it has been played**, which
+> is the distinction this project's own record keeps punishing.
+
 **Phase M0 — the concurrency fixes.** §7. Prerequisite, not part of the feature.
+
+> ✅ **Shipped** `0a527e2`, `8b2e2f0`. Usage moved onto the returned `ToolCall`/`Decline`;
+> the staleness gate (§4.1.4); `Memory` took an RLock. The staleness gate was not in the
+> original plan — it was found while fixing the first item.
 
 **Phase M1 — per-player position and technology.** `SaveWatcher` reads all of `Players/*.sav`;
 identity binding via `/palintel who` and `/palintel iam`; unbound speakers get world-scoped
@@ -563,6 +593,13 @@ against **61** and **59/8** — whichever order they ask in, and whichever save 
 wrote last. An unbound speaker gets a card that says it does not know who they are. This is
 a regression test that can be written today, against a save already on disk.
 
+> ✅ **Shipped** `8ac7d45`, criterion met exactly: `Rui` → 35 and 83/7, `OutofLuck` → 61 and
+> 59/8, unbound → nothing, solo unchanged at 119. Needed no new parsing, as predicted.
+> One rule was added that the design did not have: **attribute when unambiguous** — a world
+> with one player has one possible answer for everybody, so binding is not required there
+> and single-player behaviour is untouched. Stated as a rule about ambiguity rather than a
+> special case about counts, so adding a player makes the bot *more* careful, never less.
+
 **Phase M2 — the roster, per player and per guild.** `OwnerPlayerUId` extraction, guild
 container membership, the union in §4.4.
 
@@ -570,12 +607,47 @@ container membership, the union in §4.4.
 **195** — any other number is the §2 trap having caught us. On the co-op save `Rui` reads
 **32 + shared** and `OutofLuck` **39 + shared**, never 53, and never each other's.
 
+> ✅ **Shipped** `3b892d1`, both criteria met: solo 195, co-op 35 / 41 / None.
+> **`OwnerPlayerUId` is not used at all in the end.** The container join subsumes it — a
+> player's own save names their Palbox and party containers, and everything in them is
+> theirs by definition — so the field that started this investigation turned out to be
+> unnecessary once the better join existed. Slot layout (`PlayerUId(16) + InstanceId(16) +
+> 6`) was read off real slots; the first probe searched container `RawData`, which is 0
+> bytes because `Slots` is decoded. Verified **complete**: 558/558 and 238/238 characters
+> reachable, so nothing is dropped rather than merely appearing not to be.
+
 **Phase M3 — guild-scoped base camps and containers.** Both halves of the correction in
 §2.6: the container join runs through `CharacterContainerSaveData`, not the guild handle
 list, and the guild blob's own field boundaries are still not established.
 
+> ◐ **Split, and only half built.** `c43f8d8`.
+>
+> **M3a shipped** — the guild's own camp list as an *independent check* on the quaternion
+> scan that finds camp positions, which STATUS had listed as uncalibrated with no second
+> source. Compared camp-by-camp rather than by count (a total would pass if the scan found
+> a phantom and missed a real one); they agree on all four camps across both worlds.
+>
+> **M3b deferred** — per-player guild scoping is **not built**. Both worlds hold exactly one
+> guild, so every player is in it and every camp belongs to it: a membership parse that
+> returned garbage, returned nothing, or was never called would produce the identical
+> correct answer. No test available data can support distinguishes working code from broken,
+> and the safe gating ("only scope when there is more than one guild") means the code never
+> executes on any save in existence until it fires in front of a player. **§4.4's shared set
+> carries the same assumption** — with two guilds it would leak another guild's base Pals
+> into your roster. Both wait for a two-guild world, which is the only thing that could
+> validate either.
+
 **Phase M4 — the multi-user costs.** Per-user spend totals, capture attribution and the
 consent announcement, per-user latency.
+
+> ◐ **Shipped** `ea2714c`, **except the consent announcement**. Per-user spend (`Charge.who`
+> was written on every row since the ledger existed and never aggregated), latency persisted
+> per speaker to `data/sessions/<session>/latency.jsonl` — closing the separate STATUS item
+> about the 6.2s p95 existing only in a pasted chat line — and `who` on captured utterances.
+>
+> **The capture consent announcement is not built**, and it is a decision rather than an
+> omission: see §10. Recording party members' voices from their own machines into a local
+> corpus should be their choice, not a config comment.
 
 ---
 
@@ -600,12 +672,19 @@ and two new gaps opened.
   save, so *"where's the nearest coal"* would have returned the same answer for both. The
   Q6 evidence carries the argument; the proximity half of it is still untested, and
   proximity is the class where a wrong answer sends someone somewhere.
-- ❌ **The guild blob's field boundaries** — §2's caveat, unchanged. M3 depends on it.
+- ◐ **The guild blob's field boundaries** — *base ids now established* (§2 caveat), member
+  list still not. M3b depends on the half that is missing.
 - ❌ **Two people asking at once.** Never happened. STATUS lists it as an untested
   assumption for `SpeakerStream`; it is also untested for the spend ledger (§7),
-  conversation memory and the router.
-- ❌ **Whether the container join actually recovers the unowned Pals.** §2.6 refuted the
-  path this document first proposed. The replacement is stated and unbuilt.
+  conversation memory and the router. **Everything M0–M4 built assumes it and none of it
+  has seen it.**
+- ✅ **Whether the container join actually recovers the unowned Pals.** Built in M2 and
+  verified complete: 558/558 and 238/238 characters reachable, solo still 195.
+- ❌ **Whether anyone can use it.** `/palintel who` and `/palintel iam` have never been
+  typed by a person. The feature is unreachable if binding does not read as obvious, and no
+  test can tell us that.
+- ❌ **Two guilds.** Neither world has them, so M3b and §4.4's shared set are both correct
+  on every save that exists and unproven beyond it.
 
 **One thing the two saves disagree about, and it matters.** The naive owner filter loses 11
 species on the single-player world and 1 on the co-op world. The difference is base
