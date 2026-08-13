@@ -36,6 +36,7 @@ import time
 import zlib
 from dataclasses import dataclass
 from pathlib import Path
+from uuid import UUID
 
 log = logging.getLogger("palintel.saves")
 
@@ -434,6 +435,164 @@ def owned_species(level_save: Path) -> frozenset[str]:
     return frozenset(out)
 
 
+def _le_guid(raw: bytes) -> str:
+    """A UE `FGuid` - four little-endian uint32 - as a canonical UUID string.
+
+    The byte order is the whole trick and it is easy to get silently wrong: the player
+    save writes `PlayerUId` as the string `00000000-...-0001` while the same value inside
+    a blob is `00000000 00000000 00000000 01000000`. Reading it as big-endian produces a
+    valid-looking Guid that joins to nothing, which is this project's favourite kind of
+    bug.
+    """
+    a, b, c, d = struct.unpack("<4I", raw[:16])
+    return str(UUID(f"{a:08x}{b:08x}{c:08x}{d:08x}"))
+
+
+NULL_GUID = "00000000-0000-0000-0000-000000000000"
+
+# A container slot's `RawData`: PlayerUId(16) + InstanceId(16) + 6 trailing bytes.
+# Established by reading real slots on 2026-08-13 rather than from documentation - see
+# Docs/multi-user-design.md section 2.6, where the first guess at a layout was wrong.
+_SLOT_MIN = 32
+
+
+def _slot_instance(raw: bytes) -> str | None:
+    """The character an occupied slot holds, or None for an empty slot."""
+    if len(raw) < _SLOT_MIN:
+        return None
+    inst = _le_guid(raw[16:32])
+    return None if inst == NULL_GUID else inst
+
+
+@dataclass(frozen=True)
+class Rosters:
+    """Which Pals belong to whom — the M2 answer, and it is two sets rather than one.
+
+    **The naive filter is wrong and it was measured.** `OwnerPlayerUId` is present on 516
+    of 559 characters in the reference save and joins exactly, so filtering on it looks
+    like the whole answer. It drops the roster from **195 species to 184** on a save with
+    exactly one player in it: the 43 without an owner all carry `SlotIndex`, meaning they
+    sit in a base-camp container, and eleven species exist *only* there - six of them
+    ordinary Pals `counters.py` would shortlist. A perfect, well-formed, silent 5.6% loss.
+
+    So the scope is `carried | shared`, which is what a guild MEANS: base Pals are usable
+    by any member. That has a property worth having - on a single-player world it returns
+    exactly the 195 the union always did, so this change is behaviour-preserving where it
+    can be checked against a number that already exists.
+
+    Measured 2026-08-13: solo 184 carried + 36 shared = 195. Co-op `Rui` 32 carried and
+    `OutofLuck` 39, 19 in common, 8 shared species - never the 53 the union reported to
+    both of them.
+    """
+    # uid -> species that player carries, in their own Palbox and party.
+    carried: dict[str, frozenset[str]]
+    # Species in containers no player save claims: base camps, which the guild shares.
+    shared: frozenset[str]
+    # Every species in the world. What `owned_species` returned to everybody, kept so a
+    # caller with no attribution can still say something true about the world.
+    everyone: frozenset[str]
+
+    def for_player(self, uid: str | None) -> frozenset[str] | None:
+        """What this player can field, or None when we cannot attribute at all.
+
+        None is not "owns nothing" - it stays None all the way to the card, which says it
+        has not looked rather than claiming an empty roster. See `PlayerState.owned_species`.
+        """
+        if uid is None:
+            return None
+        if uid not in self.carried:
+            return None
+        return self.carried[uid] | self.shared
+
+
+def _player_container_ids(player_save: Path) -> list[str]:
+    """The Palbox and party container ids a player's own save names.
+
+    **Stated, not inferred.** `PalStorageContainerId` and `OtomoCharacterContainerId` are
+    plain properties in `Players/<uid>.sav`, so "which containers are mine" needs no
+    guessing - which matters, because the guild's own handle list is keyed by the map-key
+    PlayerUId and splits 239/1 rather than by ownership (design section 2.6).
+    """
+    from palworld_save_tools.gvas import GvasFile
+
+    gvas = GvasFile.read(decompress(player_save.read_bytes()))
+    sd = gvas.properties["SaveData"]["value"]
+    out = []
+    for key in ("PalStorageContainerId", "OtomoCharacterContainerId"):
+        cid = sd.get(key, {}).get("value", {}).get("ID", {}).get("value")
+        if cid:
+            out.append(str(cid))
+    return out
+
+
+def read_rosters(save_dir: Path) -> Rosters:
+    """Who owns which Pals, in one `Level.sav` walk plus the player saves.
+
+    The join, each step of which the save states:
+
+        Players/<uid>.sav  names PalStorageContainerId and OtomoCharacterContainerId
+          -> CharacterContainerSaveData[id].Slots
+            -> slot RawData carries an InstanceId
+              -> CharacterSaveParameterMap keyed by InstanceId -> CharacterID
+
+    A container that no player save claims is a base camp's, and its Pals are the guild's.
+    Verified complete on both reference worlds: every character with a species is reached
+    this way (558 of 558, and 238 of 238), so nothing is silently dropped by the join.
+    """
+    wsd = _world_save_data(save_dir / "Level.sav")
+
+    species_of: dict[str, str] = {}
+    for entry in wsd.get("CharacterSaveParameterMap", {}).get("value", []):
+        inst = str(entry.get("key", {}).get("InstanceId", {}).get("value") or "")
+        blob = _blob(entry.get("value", {}).get("RawData", {}).get("value"))
+        name = _character_id(blob) if blob else None
+        # Lower-cased for the same reason `owned_species` is: the save writes `Sheepball`
+        # and the pak writes `SheepBall`, and a case-sensitive join drops that Pal with no
+        # error at all.
+        if inst and name:
+            species_of[inst] = name.lower()
+
+    contents: dict[str, set[str]] = {}
+    for c in wsd.get("CharacterContainerSaveData", {}).get("value", []):
+        cid = str(c.get("key", {}).get("ID", {}).get("value") or "")
+        if not cid:
+            continue
+        found = set()
+        for slot in c.get("value", {}).get("Slots", {}).get("value", {}).get("values", []):
+            raw = _blob(slot.get("RawData", {}).get("value"))
+            inst = _slot_instance(raw) if raw else None
+            if inst:
+                found.add(inst)
+        contents[cid] = found
+
+    carried: dict[str, frozenset[str]] = {}
+    claimed: set[str] = set()
+    for path in player_saves(save_dir):
+        try:
+            uid = read_player(path).uid
+            ids = _player_container_ids(path)
+        except Exception as e:
+            # One unreadable player save must not cost everyone else their roster.
+            log.warning("could not read containers from %s (%s)", path.name, e)
+            continue
+        claimed.update(ids)
+        insts = set().union(*(contents.get(i, set()) for i in ids)) if ids else set()
+        carried[uid] = frozenset(species_of[i] for i in insts if i in species_of)
+
+    shared_insts: set[str] = set()
+    for cid, insts in contents.items():
+        if cid not in claimed:
+            shared_insts |= insts
+    shared = frozenset(species_of[i] for i in shared_insts if i in species_of)
+
+    everyone = frozenset(species_of.values())
+    log.info("rosters: %d player(s), shared %d species, %d in the world",
+             len(carried), len(shared), len(everyone))
+    for uid, sp in sorted(carried.items()):
+        log.info("  %s carries %d species (+%d shared)", uid[:8], len(sp), len(shared))
+    return Rosters(carried=carried, shared=shared, everyone=everyone)
+
+
 def _transform_in(blob: bytes) -> tuple[float, float, float] | None:
     """Recover a base camp's world position from an undecoded `BaseCampSaveData` blob.
 
@@ -571,7 +730,12 @@ class SaveWatcher:
         self.snapshot: PlayerSnapshot | None = None
         self.error: str | None = None
         # None means NOT READ, all the way to the card. See PlayerState.owned_species.
+        # The WORLD's roster - every species anyone owns. Kept because it is what a
+        # caller with no attribution can still say something true about, and because
+        # `describe_roster` reports on the world rather than on one player.
         self.roster: frozenset[str] | None = None
+        # Per-player rosters and the guild's shared base Pals. None means not read.
+        self.rosters: "Rosters | None" = None
         self.roster_error: str | None = None
         self.roster_read_at: float = 0.0
         # Where the player's base camps are, from the same Level.sav read. None means not
@@ -678,7 +842,11 @@ class SaveWatcher:
         except Exception as e:
             log.warning("player names read failed (%s: %s)", type(e).__name__, e)
         try:
-            self.roster = owned_species(level)
+            # Per player, plus the guild's shared base Pals. `everyone` is what
+            # `owned_species` used to return to all comers, so the world-scoped answer
+            # survives for callers with no attribution.
+            self.rosters = read_rosters(self.save_dir)
+            self.roster = self.rosters.everyone
             # Same file, same cadence, and a base camp moves even less often than the
             # roster does. Read here rather than in its own poll so the multi-megabyte
             # parse happens once.
@@ -752,10 +920,8 @@ class SaveWatcher:
         to a level-57 player. What must never happen is answering them from another
         player's save, which is the confidently-wrong card multi-user introduces.
 
-        The roster and base camps are still world-scoped here. Making them per-player is
-        M2 and M3, and both need the container join rather than the player files - see
-        Docs/multi-user-design.md section 4.4. Until then they are shared, which is the
-        pre-existing behaviour rather than a new claim.
+        The roster is per player as of M2: what they carry, plus what their guild shares
+        in its base camps. Base camps themselves are still world-scoped - that is M3.
         """
         from .pipeline import PlayerState
 
@@ -763,10 +929,31 @@ class SaveWatcher:
             return PlayerState()
         return PlayerState(
             player_coords=self.coords_for(uid),
-            owned_species=self.roster,
+            owned_species=self.roster_for(uid),
             tech=self.player_tech(uid),
             base_camps=self.base_camps,
         )
+
+    def roster_for(self, uid: str | None) -> frozenset[str] | None:
+        """One player's Pals - carried plus their guild's shared base Pals.
+
+        Falls back to the WORLD roster only when the per-player read has not happened yet
+        and there is exactly one player, which is the single-player case where the two are
+        the same set by construction. With two players it returns None rather than the
+        union, because handing `Rui` all 53 species when 21 of them are `OutofLuck`'s is
+        the over-count this phase exists to remove.
+        """
+        if self.rosters is not None:
+            found = self.rosters.for_player(uid)
+            if found is not None:
+                return found
+            # A uid the roster read does not know: a player who joined since the last
+            # roster poll. None rather than the union - "I haven't looked" beats a count
+            # that includes somebody else's Pals.
+            return None
+        if uid is not None and len(self.snapshots) <= 1:
+            return self.roster
+        return None
 
     def player_tech(self, uid: str | None = None):
         """The Q6 half of the save state, or an empty reading when nothing was read.
@@ -800,6 +987,14 @@ class SaveWatcher:
             return f"unavailable - {self.roster_error}" if self.roster_error \
                 else "not read yet"
         age = int(time.time() - self.roster_read_at)
+        if self.rosters is not None and len(self.rosters.carried) > 1:
+            # A co-op world. Reporting one total would be the over-count M2 removes -
+            # every player would read it as theirs.
+            who = ", ".join(
+                f"{self.players.get(u) or u[:8]} {len(sp | self.rosters.shared)}"
+                for u, sp in sorted(self.rosters.carried.items()))
+            return (f"{who} (incl. {len(self.rosters.shared)} shared), "
+                    f"{len(self.roster)} in the world, read {age}s ago")
         out = f"{len(self.roster)} owned characters, read {age}s ago"
         if self.roster_error:
             # A stale roster is kept rather than cleared, so the line has to say both:
