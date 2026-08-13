@@ -80,6 +80,33 @@ This is a genuine reduction and is recorded rather than absorbed. It is also rev
 `SpeakerStream` still keys by speaker id, so multi-speaker voice returns as configuration
 if reception is ever fixed upstream.
 
+## Amendment (2026-08-13) — the reduction is reversed, and the reason for it was wrong
+
+**Party members can ask by voice again.** `voice.source = "discord"` receives from a voice
+channel; `"mic"` is unchanged and remains the default. The reduction above stood for four
+months.
+
+It was reversed exactly as the previous amendment predicted — `SpeakerStream` needed no
+change at all, and multi-speaker did come back as configuration. What the amendment got
+wrong is *why* it was needed. Reception was not blocked by DAVE. Measured against a live
+channel, DAVE decryption succeeds on **99.8%** of packets; py-cord 2.8 shipped a new
+`voice/receive/` package against the old `sinks/core.py`, so `start_recording()` raised
+before a single packet was read — for every sink, including py-cord's own. The blockage
+was in the plumbing around the encryption, not in the encryption.
+
+**The claim was taken from a warning message rather than from a measurement.** py-cord
+emits "Voice reception is currently broken due to Discord's DAVE protocol" on every
+`start_recording` call. That is true about the symptom and says nothing about the cause,
+and this project read a cause into it and wrote it into two ADRs, `STATUS.md`, a config
+validator that rejected `voice.channel_id` outright, and the module docstring of the
+replacement. See [`PyDiscordDave`](../../../PyDiscordDave/README.md).
+
+One thing this restores beyond parity with the original design: **attribution stops being
+configuration.** `voice.speaker` exists only because a microphone cannot say who is
+speaking, and it is a declaration that can be wrong. Every Discord packet arrives tagged
+with its member, so on that source the per-user memory this ADR promises holds for
+everyone in the channel rather than for one person by assertion.
+
 ## Amendment (2026-08-10) — attribution is configuration, not detection
 
 The cross-channel promise above ("a spoken question can be followed up in text") did not

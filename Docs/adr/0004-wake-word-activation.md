@@ -56,6 +56,12 @@ trailing silence (default 700ms) or a hard cap (default 10s).
 
 ## Amendment (2026-08-09) — the audio source is the local microphone
 
+> **Superseded in part, 2026-08-13.** The claim below that Discord voice reception "cannot"
+> work, and is "not fixable from this side", was wrong on both counts. DAVE decrypts 99.8%
+> of packets; py-cord 2.8's receive package was unfinished, and it was fixable from this
+> side — see [ADR-0012's 2026-08-13 amendment](0012-dual-input-channels.md). The mic is
+> still the default and everything else in this amendment stands.
+
 The context above assumed the audio came from a Discord voice channel. It does not, and
 cannot: Discord's DAVE end-to-end encryption broke voice reception in py-cord
 ([pycord#3139](https://github.com/Pycord-Development/pycord/issues/3139)), where the
