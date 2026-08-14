@@ -1,0 +1,89 @@
+# openWakeWord training config for "hey pal" ON THE DISCORD PATH.
+#
+# A SECOND model, not a replacement. `voice.models` is a list, openWakeWord inference is
+# CPU-bound at a realtime factor near 0.015, and the highest score wins - so this runs
+# beside `hey_pal` and covers the path that one was never trained for.
+#
+# Why it exists, measured before it was built. The shipping model was trained on synthetic
+# TTS and validated against 240 recordings from the LOCAL MICROPHONE; since 2026-08-13 the
+# deployment path is Discord receive. Putting the same 236 mic recordings through a 64 kbps
+# Opus round trip and changing nothing else:
+#
+#     mic, untouched          median 0.914   p10 0.141   below 0.1: 20
+#     simulated 64 kbps       median 0.839   p10 0.049   below 0.1: 31
+#
+# **21 of 236 clips that cleared the 0.1 firing threshold no longer do.** About 9% of
+# recall, attributable to the codec alone. See tools/wakeword/discord_path.py.
+#
+# Generate the corpus first:
+#   python tools/wakeword/prepare_discord_corpus.py --background
+#
+# Then, from the pinned piper-sample-generator checkout (see train.py's shim notes):
+#   python tools/wakeword/train.py --training_config tools/wakeword/hey_pal_discord.yaml \
+#       --augment_clips --train_model
+#
+# **NOT --generate_clips.** The clips already exist: they are the shipping model's corpus
+# put through the codec. Regenerating would produce different TTS samples and make the two
+# models incomparable, which is the whole point of reusing them.
+
+model_name: hey_pal_discord
+target_phrase:
+  - hey pal
+
+# Unchanged from hey_pal, deliberately. The phrase is routinely slurred into one word -
+# STT heard "hippel", "hippow", "hapell", "apel" - and the codec does not change which
+# confusions matter, so changing this too would confound the comparison.
+custom_negative_phrases:
+  - hey pale
+  - hey pow
+  - hey powell
+  - hey paul
+  - hey ball
+  - hey gal
+  - a pal
+  - hey
+
+n_samples: 30000
+n_samples_val: 2000
+tts_batch_size: 50
+piper_sample_generator_path: C:/Users/jd02_/tools/piper-sample-generator
+
+augmentation_rounds: 1
+augmentation_batch_size: 16
+background_paths:
+  - C:/Users/jd02_/tools/owwtrain/data/background
+rir_paths:
+  - C:/Users/jd02_/tools/owwtrain/data/rir
+background_paths_duplication_rate:
+  - 1
+
+# **The residual risk, stated where it will be read.** These 2,000 hours are precomputed
+# FEATURES, not audio, so they cannot be put through the codec and stay clean. Positives
+# and adversarial negatives are both codec'd, so the codec cannot separate those two - but
+# it can still separate {this corpus} from {ACAV}, and a model is free to notice.
+#
+# That is why the false-positive gate below is not optional. `prepare_discord_corpus.py
+# --background` writes ESC-50 through the same path to
+# data/background_discord; a model that fires on codec'd noise more than hey_pal fires on
+# clean noise has learned the codec rather than the phrase, whatever its recall says.
+feature_data_files:
+  ACAV100M_sample: C:/Users/jd02_/tools/owwtrain/data/oww_features_ACAV100M_2000hrs.npy
+false_positive_validation_data_path: C:/Users/jd02_/tools/owwtrain/data/validation_set_features.npy
+
+# ADR-0004 names a false negative as the worst failure - the player speaks and nothing
+# happens, with nothing to diagnose. But a wake word firing on party chatter is worse in
+# practice because everyone sees it, and this model is the one most at risk of it: it runs
+# beside hey_pal with the highest score winning, so its false positives become everyone's.
+target_false_positives_per_hour: 0.5
+
+layer_size: 32
+steps: 50000
+max_negative_weight: 1500
+batch_n_per_class:
+  ACAV100M_sample: 1024
+  adversarial_negative: 50
+  positive: 50
+
+output_dir: C:/Users/jd02_/tools/owwtrain/out
+model_type: dnn
+total_length: 16000
