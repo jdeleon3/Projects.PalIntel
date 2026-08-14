@@ -3449,8 +3449,35 @@ and the text path was the one that recorded nothing.
 |---|---|
 | **Anubis has Mining 6 in the game** | Closes the Known-uncalibrated work-suitability item. Lamball's 1/1/1 already matched, but Lamball is 1 on every axis and cannot distinguish the displayed scale from any scale starting at 1. **6 is the discriminating reading**, and it is the exact value the entry named as the one that would be wrong |
 | **The coal base site had *"smaller flat surfaces at different elevations"*** | Re-opens the flatness half of the Q4 question. See below — the metric is not wrong, it is answering a different question |
-| **G4 produced a working counter plan for Prixter** | Q5 holds on a boss nobody had asked it about |
+| **G4 produced a counter plan for Prixter — which is the FAILURE that row tests for** | See below. Block G is the decline block; a confident card there is the finding |
+| **Towers/leaders behaved as the test plan expected** (confirmed 2026-08-14) | A2/A4/A5/A6 hold: a tower species resolves to the **tower**, not the field alpha of the same name. The ledger could not have told us — it records the *tool*, and both paths are `plan_counters` |
 | Overall *"a solid performance for what was tested"* | — |
+
+### G4: the named Pal was read as the target, and the plan was for fighting it
+
+**Block G is the decline block.** Its header states the scoring rule outright: *"a decline
+here is a pass. A confident card is the finding."* G4 says *"is Prixter any good against
+the first tower"*, and the row's expectation is **must not produce a plan for fighting
+Prixter** — because the named entity is the **attacker**, not the target. It produced one.
+
+So the class read the only Pal name in the sentence as the boss, and answered a question
+nobody asked, confidently. **This is a Tier 2 wrong-target failure**, which is the category
+this project says it refuses to ship: not a decline, not a hedge, a well-formed amber card
+about the wrong fight. *"Against the first tower"* is the actual target and it is stated in
+the sentence, unambiguously, in the same clause.
+
+Worth stating why it is more than one bad row: every other counter query in the session
+named the boss directly, so the 16 `plan_counters` calls confirm the class works **when the
+named entity is the target**, and G4 is the single reading that tested the other case. It
+is 1 of 1 on the discriminating input.
+
+**How this entry got written wrong first.** The player reported the outcome neutrally —
+*"G4 did produce a plan for fighting prixter"* — and it was recorded here as a success,
+because the reporter never opened the test plan to check what G4 expected. The sentence
+describes a passing run and a failing run identically; only the plan disambiguates it. A
+result read against memory instead of against the written expectation is not a measurement,
+and this file exists because of measurements that reversed a conclusion. *Score the row
+against the document, every time, including when the outcome sounds like good news.*
 
 ### Flatness measures dispersion, and a base needs contiguity
 
