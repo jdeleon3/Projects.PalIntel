@@ -4,13 +4,20 @@
 any line.** This file is the two-minute orientation; the roadmap is the record of how each
 number was arrived at.
 
-*Last updated 2026-08-13, after the third play session — **the widest test the project has
+*Last updated 2026-08-14, scoring the third play session — **the widest test the project has
 had: 83 queries, all 13 production classes exercised, $0.1631.** It settled the
-work-suitability scale (Anubis really is Mining 6), re-opened base-site flatness for a
-reason the existing caveat did not cover, and **recorded a twentieth of itself**, because
-the text `_answer` call passed neither `capture` nor `feedback`. Both fixed. `main` was
-current as of PR #3 on 2026-08-11; this session's work is not promoted, so
-`git log origin/main..HEAD` is the check worth running rather than trusting this line.*
+work-suitability scale (Anubis really is Mining 6), confirmed the tower/alpha split, and
+**recorded a twentieth of itself**, because the text `_answer` call passed neither
+`capture` nor `feedback`. Both fixed.*
+
+***Two findings came out of it against the project's own invariant, and both were
+mis-scored on the first pass:*** *base-site flatness re-opened for a reason the existing
+caveat did not cover, and **G4 failed** — a counter query naming the attacker produced a
+confident plan for fighting that attacker. G4 was written down as a success first, because
+it was scored from the report rather than against the test plan; the two read identically
+in a sentence. `main` was current as of PR #3 on 2026-08-11; this session's work is not
+promoted, so `git log origin/main..HEAD` is the check worth running rather than trusting
+this line.*
 
 ---
 
@@ -22,12 +29,12 @@ current as of PR #3 on 2026-08-11; this session's work is not promoted, so
 | 1 — Q1 resource lookup | **Closed 2026-08-10.** Latency accepted at measured behaviour, carried forward |
 | 2 — Q2 Pal spawns + memory | **Closed 2026-08-10** |
 | Card artwork + drops | **Shipped.** [ADR-0017](Docs/adr/0017-card-artwork-from-game-assets.md) Accepted |
-| 3 — Q5 counters | **Closed 2026-08-13 — played, and the most-used class in the session.** 16 counter queries, the heaviest of all 13; the player confirms G4 produced a workable plan for **Prixter**, a boss nobody had asked it about. Was "Q3 + Q5"; **split 2026-08-11.** Earlier note, now spent: *built end to end 2026-08-11, unplayed* |
+| 3 — Q5 counters | **Played 2026-08-13 and the most-used class in the session — 16 queries, the heaviest of all 13 — but NOT closed.** It works when the named entity is the target, which is what all 16 tested. **G4 shows it fails when the name is the *attacker***: *"is Prixter any good against the first tower"* produced a plan for **fighting Prixter**, a confident Tier 2 card about the wrong fight, when Block G scores a decline as the pass. 1 of 1 on the discriminating input. Was "Q3 + Q5"; **split 2026-08-11** |
 | **3B — Q3 breeding** | **Unscheduled, and the block moved back inside the repo's reach 2026-08-12.** The save says the Breeding Farm is unlockable **right now** — level 19 met, ForestBoss beaten, 2 of 40 ancient points — and the Egg Incubator is already unlocked. Not a dependency on another player's playthrough; two clicks plus cake production. See below |
 | Pal search by attribute | **Shipped and PLAYED 2026-08-13.** 10 queries. The first new query class since the roadmap: work-suitability ingest, three-axis filter, card, fast path and model path. **Its data is now verified against the game** — Anubis reads Mining 6 in the Paldeck, which is what the ingested number says |
 | Mount search | **Shipped and PLAYED 2026-08-11.** Landed 19:13, exercised four minutes later — *"which dragons can I ride at level 60"*, *"which swimming mounts are available"*, *"the fastest ground mount at level 60"*, three of the four on the fast path. **Speed ordering confirmed correct by the player.** The unowned set-difference is still unexercised |
 | **Party voice (Discord receive)** | **Restored and PLAYED 2026-08-13**, after months recorded as blocked. 13 spoken questions answered end to end from a voice channel, attributed to the speaking member rather than a configured name — [ADR-0012](Docs/adr/0012-dual-input-channels.md) restored, not replaced. **The blockage was never DAVE**: it decrypts 99.8% of packets, and py-cord 2.8's receive package was the fault. 13 defects fixed in [`PyDiscordDave`](../PyDiscordDave/README.md), two of them this repo's. `mic.py` stays the default and the fallback. Recall still unmeasured — see the backlog entry |
-| Tower leaders | **Shipped; still unplayed as far as the data can say.** *"How do I beat Victor"* resolves to the tower, not the field alpha. The 2026-08-13 session ran 16 counter queries, but the ledger records the **tool** and both paths are `plan_counters`, so it cannot distinguish a tower question from a field-alpha one. Now that the text channel captures, `log.jsonl` holds the entity and the next session will answer this without guessing |
+| Tower leaders | **Shipped and PLAYED 2026-08-13 — confirmed by the player 2026-08-14, "results were as expected per the test plan".** *"How do I beat Victor"* resolves to the **tower**, not the field alpha of the same name — the reversal the 2026-08-11 session forced (A2, A4, A5, A6). **The ledger could not have told us this**: it records the *tool*, and a tower question and a field-alpha question are both `plan_counters`. It took a human saying so. Now that the text channel captures, `log.jsonl` holds the entity and the next session shows it without anyone having to remember |
 | 4 — Q6 tech + Q4 base siting + Q7 corpus | **Built 2026-08-12 and played the same day** — see the session block below. All three classes answered real questions; the session found three defects in older code and two in Phase 4's own. The original note, still true of how it was built: **Built end to end 2026-08-12, entirely unplayed.** All three classes, three new datasets, every branch swept for theft. Q4 was built **differently from the design** and Q7 without embeddings or synthesis — both deliberate, both recorded in the roadmap. Exit criteria met by construction, not by observation. **Three more classes were added the same day** — base rating (with a resource-narrowed variant), base criteria, and the named technology lookup, taking `PRODUCTION_CLASSES` to 13 — plus per-query spend logging and the session analyser. **650 tests green** |
 
 ## What answers a question today
@@ -436,6 +443,18 @@ scores any model across four populations with the codec-shortcut gate built in.
 ---
 
 ## Next
+
+**0. G4 — a counter query that names the attacker answers about fighting the attacker.**
+*"Is Prixter any good against the first tower"* produced a plan for fighting Prixter. The
+target is stated in the same sentence, in the same clause. **This is the confidently-wrong
+Tier 2 card the project says it will not ship**, and Block G scores a decline as the pass,
+so there is no reading where this is acceptable behaviour. The class is otherwise sound —
+16 counter queries in the session, all naming the target, all fine — so this is one
+missing distinction rather than a broken class: *which* named entity is the boss. **A
+decline is a perfectly good fix**; nothing requires it to answer the attacker-framing at
+all. Note the shape before fixing it: an allowlist of preposition patterns would be a
+special case wearing a rule's clothes, and the general rule — *the target is the thing the
+question is aimed at, not the first Pal named* — is the one worth finding.
 
 **0a. Cross-check the ledger against the corpus.** The 2026-08-13 session wrote 64 rows to
 `costs.jsonl` and 3 to `log.jsonl` — a factor of 21, on the same session id, in the same
