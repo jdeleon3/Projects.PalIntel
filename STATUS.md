@@ -605,6 +605,28 @@ without a token and a channel id) even though voice input already wasn't -
   length) but were not valid enough for a browser to actually decode - the kind of
   well-formed-and-wrong failure this project is generally careful about. Fixed by
   generating real images with Pillow instead of hand-rolled bytes.
+- **Chat tab cards now match Discord's embed format, not just its colours.** Two gaps,
+  closed the same day they were noticed: card lines were rendered as plain
+  `textContent`, so `cards.py`'s own markdown (`**bold**`, `` `code` ``, `_italic_` -
+  e.g. recent_card's `` `{ms}s` ... _{when}_ ``) showed up as literal asterisks and
+  backticks instead of formatted text. `richText()` (already built for the Settings
+  tab's help text) now parses the same three constructs for card lines too - one
+  parser, two call sites. And artwork now attaches to the SPECIFIC card it belongs to
+  - `data-card-index` on each `.chat-card`, matched against the index
+  `LocalSink.attach_artwork` already encodes in the filename (`<uid>-image-<N>.jpg`) -
+  with a CSS grid replicating Discord's own per-embed layout (thumbnail top-right
+  beside the title, main image full-width below), rather than every image from a
+  multi-card answer piling up under whichever card happened to render last.
+- **Found and fixed while verifying live**: the artwork-attribution selector matched
+  `.chat-msg[data-uid=...]` , which finds the FIRST element with that uid in DOM order
+  - and a query and its answer share one uid across two separate turns, so it was
+  quietly resolving to the player's own message bubble (which has no cards) rather
+  than the bot's reply. All three images from a two-card, two-image, one-thumbnail
+  test answer rendered stacked above both cards instead of attached to either one.
+  Fixed by narrowing to `.chat-bot[data-uid=...]` - only the bot's own turn ever
+  carries a card. A screen-reader-order comment was added at the fix site since the
+  bug was invisible in the DOM tree and only obvious once the images landed in the
+  wrong physical spot on screen.
 
 **Not done.** Nothing - all 6 steps of the local output medium design are built and
 tested, and its two remaining open questions are now closed decisions rather than

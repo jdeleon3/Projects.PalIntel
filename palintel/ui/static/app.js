@@ -422,19 +422,23 @@ function cfgMark(name, value, field) {
     : "";
 }
 
-/* The help text carries `code` and **bold**, because these strings are the same
-   explanations the TOML comments give and they are worth reading. Built as nodes rather
-   than innerHTML so a config value can never become markup. */
+/* `code`, **bold**, _italic_ - the exact three-construct subset `cards.py` writes for
+   Discord's embed renderer (see e.g. recent_card's "`{ms}s` ... _{when}_" lines) and
+   the same subset the config help text uses. One parser for both, so a card reads the
+   same way here as it does in Discord rather than showing its markup literally - which
+   is what a plain `textContent` render was doing until this pass (`**1.**` as three
+   literal asterisks, not a bolded "1."). Built as nodes, never `innerHTML`, so neither a
+   config value nor anything the router puts in a card can become markup. */
 function richText(s) {
   const frag = document.createDocumentFragment();
-  const re = /(`[^`]+`|\*\*[^*]+\*\*)/g;
+  const re = /(`[^`]+`|\*\*[^*]+\*\*|_[^_]+_)/g;
   let last = 0, m;
   while ((m = re.exec(s))) {
     if (m.index > last) frag.append(s.slice(last, m.index));
     const t = m[0];
-    frag.append(t.startsWith("`")
-      ? el("code", "", t.slice(1, -1))
-      : el("strong", "", t.slice(2, -2)));
+    if (t.startsWith("`")) frag.append(el("code", "", t.slice(1, -1)));
+    else if (t.startsWith("**")) frag.append(el("strong", "", t.slice(2, -2)));
+    else frag.append(el("em", "", t.slice(1, -1)));
     last = m.index + t.length;
   }
   if (last < s.length) frag.append(s.slice(last));
@@ -765,25 +769,50 @@ function chatAppendRow(list, row) {
       .forEach((n) => n.remove());
     const li = el("div", "chat-msg chat-bot");
     li.dataset.uid = uid;
-    for (const card of row.cards || []) {
+    (row.cards || []).forEach((card, i) => {
       const b = el("div", "chat-bubble chat-card");
+      // `data-card-index` is what lets a LATER "artwork" event find its way back to
+      // the right card - `LocalSink.attach_artwork` names each file
+      // `<uid>-image-<index>.jpg` after this same position in `row.cards`.
+      b.dataset.cardIndex = String(i);
       b.style.setProperty("--tier", tierColour(card.colour));
       b.append(el("div", "chat-card-title", card.title));
       const lines = el("div", "chat-card-lines");
-      for (const line of card.lines || []) lines.append(el("p", "", line));
+      for (const line of card.lines || []) {
+        const p = el("p");
+        p.append(richText(line));
+        lines.append(p);
+      }
       b.append(lines);
       if (card.footer) b.append(el("div", "chat-card-footer", card.footer));
       li.append(b);
-    }
+    });
     li.append(el("div", "chat-meta", chatTime(row.at)));
     list.append(li);
   } else if (row.kind === "artwork") {
-    // The filenames arrive exactly as `LocalSink.attach_artwork` wrote them - nothing
-    // to reconstruct, just point an <img> at the session-scoped route for each one.
-    const host = list.querySelector(`.chat-msg[data-uid="${CSS.escape(uid)}"]`) || list;
-    for (const name of row.images || []) host.append(chatArtImage(name, "chat-art"));
+    // The filenames arrive exactly as `LocalSink.attach_artwork` wrote them, each
+    // carrying its own card index (`<uid>-image-<N>.jpg`) - parsed back out here so
+    // the thumbnail lands beside ITS card's title and the image below ITS card's
+    // body, matching Discord's own per-embed layout, rather than every image from a
+    // multi-card answer piling up under the last one.
+    //
+    // `.chat-bot`, not just `.chat-msg` - the query and the answer are TWO separate
+    // turns sharing the same `data-uid` (one query, one reply to it), and a bare
+    // `[data-uid]` match finds whichever comes first in the DOM: the player's own
+    // message, which has no cards to attach anything to at all.
+    const turn = list.querySelector(`.chat-bot[data-uid="${CSS.escape(uid)}"]`);
+    const cardFor = (name) => {
+      const m = /-(\d+)\.[a-z]+$/i.exec(name);
+      const card = m && turn && turn.querySelector(`.chat-card[data-card-index="${m[1]}"]`);
+      return card || turn || list;   // falls back rather than dropping the image
+    };
+    // Appended regardless of type - CSS grid placement puts the thumbnail top-right
+    // and the main image full-width below, independent of DOM order (kept here as
+    // title -> lines -> footer -> art, the same reading order a screen reader gets).
+    for (const name of row.images || [])
+      cardFor(name).append(chatArtImage(name, "chat-art"));
     for (const name of row.thumbnails || [])
-      host.append(chatArtImage(name, "chat-art chat-art-thumb"));
+      cardFor(name).append(chatArtImage(name, "chat-art chat-art-thumb"));
   }
 
   if (atBottom) chatScrollBottom(list);

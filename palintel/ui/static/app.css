@@ -717,21 +717,39 @@ input[readonly] { color: var(--muted); background: #0a0806; }
 
 /* A card, not a plain bubble - the same object the bot renders as an embed, given a
    left rail in its OWN tier colour rather than the accent, because in this project a
-   colour is a claim about how much the number can be trusted (see cards.py). */
+   colour is a claim about how much the number can be trusted (see cards.py).
+   Two grid columns, matching Discord's own embed layout: title/lines/footer run down
+   the first, a thumbnail (when there is one) sits top-right spanning the title+lines
+   rows in the second, and the main image - added later, once artwork actually exists,
+   see chatAppendRow's "artwork" branch - spans both columns below everything. */
 .chat-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  column-gap: 12px;
   border-left: 3px solid var(--tier, var(--line-bright));
   padding-left: 11px;
 }
 .chat-card + .chat-card { margin-top: 8px; }
 .chat-card-title {
+  grid-column: 1;
   font-weight: 600;
   color: var(--ink);
   margin-bottom: 3px;
 }
+.chat-card-lines { grid-column: 1; }
 .chat-card-lines p { margin: 3px 0; color: var(--ink-dim); }
 .chat-card-lines p:first-child { margin-top: 0; }
 .chat-card-lines p:last-child { margin-bottom: 0; }
+.chat-card-lines code {
+  padding: 1px 4px;
+  background: #0c0a07;
+  border: 1px solid var(--line-bright);
+  border-radius: 2px;
+  font-size: 12px;
+}
+.chat-card-lines em { color: var(--ink-dim); font-style: italic; }
 .chat-card-footer {
+  grid-column: 1 / -1;
   margin-top: 6px;
   font-family: var(--mono);
   font-size: 11px;
@@ -773,8 +791,15 @@ input[readonly] { color: var(--muted); background: #0a0806; }
 }
 
 /* Step 6 (§3.3). Square corners, matching every other surface in this instrument - a
-   rounded photo would be the one soft shape on the page. */
+   rounded photo would be the one soft shape on the page.
+
+   Placement matches Discord's own embed layout, not just the pixels: the main image
+   spans both of `.chat-card`'s grid columns below the body (Discord puts it at the
+   bottom of the embed), and the thumbnail lives in the second column, sized to sit
+   beside the title the way Discord's own top-right thumbnail does - independent of
+   where `chatAppendRow` happened to insert it in the DOM. */
 .chat-art {
+  grid-column: 1 / -1;
   display: block;
   margin-top: 8px;
   max-width: 100%;
@@ -782,7 +807,16 @@ input[readonly] { color: var(--muted); background: #0a0806; }
   border: 1px solid var(--line-bright);
   border-radius: var(--r);
 }
-.chat-art-thumb { max-height: 96px; }
+.chat-art-thumb {
+  grid-column: 2;
+  grid-row: 1 / 3;
+  align-self: start;
+  width: 64px;
+  height: 64px;
+  max-height: none;
+  object-fit: cover;
+  margin-top: 0;
+}
 
 .chat-form {
   display: flex;
