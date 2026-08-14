@@ -245,6 +245,198 @@ def _bind(bindings, watcher, user_id: str, display_name: str, wanted: str,
                 colour=TIER_DECLINE)
 
 
+# `/palintel iam <name>`, with or without the slash. Anchored so it cannot swallow a
+# question that merely contains the phrase.
+_IAM = re.compile(r"^/?palintel\s+i\s*am\s+(.+)$", re.I)
+
+
+def _speaker_name(speaker) -> str:
+    """A name for whoever spoke, and never a Python repr.
+
+    `who` is not a log line - it keys conversation memory, the spend ledger and the
+    capture corpus, all of which are read back later by a human or by the alias harvester.
+    A `<Object id=...>` in any of them is noise that outlives the session that made it.
+    """
+    name = getattr(speaker, "display_name", None) or getattr(speaker, "name", None)
+    if name:
+        return str(name)
+    uid = getattr(speaker, "id", None)
+    return f"speaker {uid}" if uid is not None else "voice"
+
+
+async def resolve_speaker(client, speaker, cache: dict) -> str:
+    """`_speaker_name`, with a REST lookup behind it. Call this from the event loop.
+
+    `DiscordListener._resolve` runs on py-cord's decoder thread and so can only read the
+    member CACHE - which is empty without the privileged members intent, and stays empty.
+    That is why 10 queries on 2026-08-13 were attributed to `speaker 366300806208552972`:
+    the fallback worked exactly as designed, and the lookup it was protecting could never
+    have succeeded.
+
+    **`fetch_member`/`fetch_user` are plain REST calls and need no privileged intent.**
+    Enabling `intents.members` would have fixed the cache instead, at the cost of a bot
+    that refuses to LOG IN until someone flips a matching switch in the developer portal -
+    trading a cosmetic failure for a total one, to populate a field in a ledger.
+
+    Cached per process because the answer does not change within a session and this is on
+    the path of every utterance. Misses are cached too: a uid that will not resolve is a
+    left guild or a deleted account, and retrying it once per sentence is a stall on the
+    voice path in exchange for the same answer.
+    """
+    name = getattr(speaker, "display_name", None) or getattr(speaker, "name", None)
+    if name:
+        return str(name)
+    uid = getattr(speaker, "id", None)
+    if uid is None:
+        return "voice"
+    if uid in cache:
+        return cache[uid]
+
+    # The guild's nickname first, because that is the name the text path uses and the two
+    # have to agree or one person becomes two in the corpus. `fetch_user` is the fallback:
+    # it always resolves for a live account but returns the global name, which may differ
+    # from the nickname shown in the server.
+    for source in (_guild_of(client, speaker), client):
+        if source is None:
+            continue
+        get = getattr(source, "fetch_member", None) or getattr(source, "fetch_user", None)
+        if get is None:
+            continue
+        try:
+            found = await get(uid)
+        except Exception as e:
+            # Not exceptional: a member who left the guild 404s here, and the next source
+            # is expected to answer. Debug so a persistent miss is still diagnosable.
+            log.debug("could not fetch %s from %r: %s", uid, source, e)
+            continue
+        name = getattr(found, "display_name", None) or getattr(found, "name", None)
+        if name:
+            cache[uid] = str(name)
+            log.info("resolved speaker %s to %r over REST", uid, cache[uid])
+            return cache[uid]
+
+    cache[uid] = _speaker_name(speaker)
+    return cache[uid]
+
+
+def _guild_of(client, speaker):
+    """The guild to look `speaker` up in, or None.
+
+    Off the speaker when py-cord gave a real member, otherwise the guild of the voice
+    channel the bot is sitting in - which is the only one it can be hearing from.
+    """
+    guild = getattr(speaker, "guild", None)
+    if guild is not None:
+        return guild
+    for vc in getattr(client, "voice_clients", ()) or ():
+        found = getattr(getattr(vc, "channel", None), "guild", None)
+        if found is not None:
+            return found
+    return None
+
+
+def _world_id(watcher) -> str:
+    """Which world bindings are scoped to. Empty when no save is being read.
+
+    A configured `save_dir` still gets an id - the directory name - so a bot pinned to one
+    world and a bot following the active one scope their bindings the same way. The
+    collision this prevents is real and not hypothetical: `PlayerUId`
+    `00000000-…-0001` is the host in *every* world on this machine.
+    """
+    if watcher is None:
+        return ""
+    if getattr(watcher, "world", None) is not None:
+        return watcher.world.world_id
+    return watcher.save_dir.name if watcher.save_dir else ""
+
+
+def identity_card(players: dict[str, str], bindings, asker: str | None = None,
+                  world: str = "") -> Card:
+    """Who the save knows, and who has claimed whom. `/palintel who`.
+
+    Exists because the alternative is asking people to type a Guid. The save names its
+    players - `Rui`, `OutofLuck` on the measured co-op world - so binding can be done
+    against a name the player recognises and can verify.
+    """
+    if not players:
+        return Card(
+            title="I don't know who's in this world",
+            lines=["I haven't read `Level.sav` yet, or it holds no player entries.",
+                   "", "_Without it I can't tell two players apart, so everyone gets "
+                   "world-scoped answers._"],
+            colour=TIER_DECLINE)
+
+    lines = []
+    for uid, name in sorted(players.items(), key=lambda kv: kv[1] or kv[0]):
+        bound = bindings.user_for(uid, world) if bindings else None
+        label = f"**{name or '(unnamed)'}**"
+        if bound is None:
+            lines.append(f"{label} — _nobody has claimed this player_")
+        elif asker is not None and bound.user_id == asker:
+            lines.append(f"{label} — **you**")
+        else:
+            lines.append(f"{label} — {bound.display_name or bound.user_id}")
+
+    if len(players) == 1:
+        # The unambiguous case. Say so plainly, because otherwise the absence of a
+        # binding reads as something being wrong.
+        lines += ["", "_One player in this world, so there's nothing to be ambiguous "
+                  "about — everyone gets this player's state without binding._"]
+    else:
+        lines += ["", "_Say `/palintel iam <name>` so I answer **you** about **your** "
+                  "game. Until you do, I'll answer about the world and say so._"]
+    return Card(title="Players in this world", lines=lines, colour=TIER_DECLINE)
+
+
+def _bind(bindings, watcher, user_id: str, display_name: str, wanted: str,
+          world: str) -> Card:
+    """Claim an in-game player for a Discord user. `/palintel iam <name>`.
+
+    Matched case-insensitively against the game's own nicknames, and **a name that is not
+    in the save is refused rather than stored**: a binding to a player who does not exist
+    resolves to None on every query afterwards, which presents as the bot silently
+    forgetting you.
+    """
+    players = watcher.players if watcher else {}
+    if not players:
+        return Card(title="I haven't read the save yet",
+                    lines=["I don't know who's in this world, so I can't match a name.",
+                           "", "_Try `/palintel who` in a minute._"],
+                    colour=TIER_DECLINE)
+    hit = [(u, n) for u, n in players.items() if n.lower() == wanted.lower()]
+    if not hit:
+        known = ", ".join(f"`{n}`" for n in sorted(players.values()) if n) or "(unnamed)"
+        return Card(
+            title=f"No player called {wanted!r}",
+            lines=[f"This world has: {known}.",
+                   "", "_Names come from the game, not from Discord._"],
+            colour=TIER_DECLINE)
+    if len(hit) > 1:
+        # Two players with the same in-game name. Refuse rather than pick: binding the
+        # wrong one is silent and produces confidently-wrong cards forever after.
+        return Card(title=f"Two players are called {wanted!r}",
+                    lines=["I can't tell which one you are, and guessing would attach "
+                           "you to someone else's game."],
+                    colour=TIER_DECLINE)
+    uid, name = hit[0]
+    if bindings is None:
+        return Card(title="Identity isn't available",
+                    lines=["The binding store didn't load — check the startup log."],
+                    colour=TIER_DECLINE)
+    taken = bindings.user_for(uid, world)
+    if taken is not None and taken.user_id != user_id:
+        return Card(title=f"{name} is already claimed",
+                    lines=[f"{taken.display_name or taken.user_id} is bound to {name}.",
+                           "", "_If that's wrong, they can rebind and free it._"],
+                    colour=TIER_DECLINE)
+    bindings.bind(user_id, uid, world, display_name=display_name, nickname=name)
+    return Card(title=f"You're {name}",
+                lines=[f"I'll answer **{display_name}** about **{name}**'s game — "
+                       f"position, technologies and points.",
+                       "", "_Say `/palintel who` to see everyone._"],
+                colour=TIER_DECLINE)
+
+
 def _build_watcher(cfg: Config):
     """The save watcher, or None if there is nothing to watch.
 
