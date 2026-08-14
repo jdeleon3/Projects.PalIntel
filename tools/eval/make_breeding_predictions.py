@@ -61,6 +61,79 @@ def pak_names() -> dict[str, str]:
     return out
 
 
+def pak_paldeck_numbers() -> dict[str, str]:
+    """CharacterID -> Paldeck number, for Pals `breeding.json` does not carry.
+
+    The same second tier `pak_names` provides for names, and it exists for the same
+    reason. Not every Pal on this sheet is a breeding *tribe*: Shadowbeak reaches it from
+    the exception table as `BlackGriffon`, which has no tribe row and so no
+    `zukan_index` - but the pak knows it is `#189`. Resolving names from two sources and
+    numbers from one produced exactly one row reading `| Shadowbeak | Shadowbeak |`
+    between eight numbered ones, which looks like missing data about that Pal rather than
+    a difference in where the row came from.
+    """
+    raw = json.loads((REPO / "data" / "raw" / "pal_monster_parameter.json").read_text(
+        encoding="utf-8"))
+    out = {}
+    for cid, row in (raw.get("Rows") or {}).items():
+        if not isinstance(row, dict):
+            continue
+        out[cid] = paldeck_number({"zukan_index": row.get("ZukanIndex"),
+                                   "zukan_suffix": row.get("ZukanIndexSuffix")})
+    return {k: v for k, v in out.items() if v}
+
+
+def paldeck_number(tribe: dict) -> str:
+    """The Paldeck number as the game prints it, e.g. `#171B`, or `""`.
+
+    **A lookup key for a human standing in front of the game**, which is the only reason
+    it is here: the sheet asks a tester to find specific Pals, and it is unusually full of
+    variants - Ignis, Noct, Cryst, Terra, Primo - whose names differ by one word.
+
+    `zukan_suffix` is what makes this worth printing rather than dangerous. A variant does
+    **not** get its own number; it gets the base Pal's number plus a letter, so Eidrolon
+    is `#171` and Eidrolon Ignis is `#171B`. The index alone would label both `#171` and
+    quietly send the tester to the wrong Pal - and a breeding row is exactly where that
+    costs an egg and produces a confidently wrong result.
+
+    Empty rather than invented when the index is missing or -1 (anything outside the
+    Paldeck). A row whose name resolved stays on the sheet without a number.
+    """
+    idx = tribe.get("zukan_index")
+    if idx is None or idx < 0:
+        return ""
+    return f"#{idx:03d}{(tribe.get('zukan_suffix') or '').strip()}"
+
+
+def catch_levels(version: str) -> dict[str, int]:
+    """Display name -> the lowest level this Pal spawns at in the wild.
+
+    **The number that decides whether a tester can run a row at all**, and its absence is
+    why the sheet's own priority guidance was wrong: Block 1 opens with three Pals that
+    spawn only at level 80, under a heading that says to do it first and stop if it fails.
+
+    Alpha areas are excluded. An alpha is a single fixed high-level encounter, not how a
+    breeding parent is obtained, and including it would raise the floor for Pals that are
+    ordinarily catchable much earlier.
+
+    A Pal with no ordinary spawn at all is absent rather than zero - Celesdir Noct and
+    Moldron Cryst are breed-only, which is a real thing to know about a row and not a
+    missing measurement.
+    """
+    spawns = json.loads(
+        (REPO / "data" / version / "pal_spawns.json").read_text(encoding="utf-8"))
+    low: dict[str, int] = {}
+    for area in spawns["areas"]:
+        if area.get("kind") == "alpha":
+            continue
+        lv = area.get("level_min")
+        if lv is None:
+            continue
+        pal = area["pal"]
+        low[pal] = min(low.get(pal, lv), lv)
+    return low
+
+
 def build(version: str) -> str:
     data = json.loads(
         (REPO / "data" / version / "breeding.json").read_text(encoding="utf-8"))
@@ -78,6 +151,38 @@ def build(version: str) -> str:
             name[t["tribe"]] = resolved
     for cid, display in from_pak.items():
         name.setdefault(cid, display)
+    # Paldeck numbers, keyed the same way names are, so `label()` can look either up with
+    # one id. Read from `breeding.json` rather than the raw table: it already carries the
+    # index and suffix for all 260 tribes, and taking it from the ingested dataset keeps
+    # the sheet consistent with what the model was computed from.
+    number = {t["tribe"]: paldeck_number(t) for t in tribes}
+    for cid, num in pak_paldeck_numbers().items():
+        if not number.get(cid):
+            number[cid] = num
+
+    # Lowest wild spawn level, keyed by display name (which is how pal_spawns names Pals).
+    level = catch_levels(version)
+
+    def label(cid: str) -> str:
+        """`#171B Eidrolon Ignis (lv 75)` - the three things a tester needs to find one.
+
+        Number first because it is what the Paldeck is scanned by; level last because it
+        is what decides whether the row is attemptable at all.
+
+        Every part degrades independently: a missing number must not remove a name that
+        did resolve, and a missing level means *no ordinary wild spawn* - `(bred only)`,
+        which is a fact about the Pal rather than a gap in the data.
+        """
+        shown = name.get(cid, cid)
+        num = number.get(cid)
+        head = f"{num} {shown}" if num else shown
+        lv = level.get(shown)
+        if lv is not None:
+            return f"{head} (lv {lv})"
+        # Only claim "bred only" for Pals we actually resolved a name for; an unresolved
+        # id says nothing about spawns.
+        return f"{head} (bred only)" if shown in name.values() else head
+
     rank = {t["tribe"]: t["rank"] for t in tribes}
     # Eligible children: the derived rule under test - no Zukan suffix. Check B in the
     # scorer says this rule is imperfect, so the sheet tests it rather than trusting it.
@@ -185,7 +290,7 @@ def build(version: str) -> str:
             overriding.append(e)
 
     def row(a: str, b: str, child: str) -> str:
-        return f"| {name.get(a, a)} | {name.get(b, b)} | **{name.get(child, child)}** |  |"
+        return f"| {label(a)} | {label(b)} | **{label(child)}** |  |"
 
     L: list[str] = []
     add = L.append
@@ -213,6 +318,15 @@ def build(version: str) -> str:
         "there; or read `buildid` in `steamapps/appmanifest_1623730.acf`. Turn off "
         "automatic updates for the duration, or a patch mid-session silently splits the "
         "results into two datasets.\n")
+    add("**3. The tester has to be able to catch the parents.** Added 2026-08-14, after "
+        "the first tester with breeding unlocked reported catching nothing above ~60. "
+        "Every Pal below carries its Paldeck number and its **lowest wild spawn level** — "
+        "`#171B Eidrolon Ignis (lv 75)` — so this is now checkable per row instead of "
+        "discovered halfway down the sheet. The letter matters: a variant shares the base "
+        "Pal's number, so `#171` Eidrolon and `#171B` Eidrolon Ignis are different Pals in "
+        "one Paldeck slot. `(bred only)` marks a Pal with no wild spawn at all. Alpha "
+        "encounters are excluded from the level, since an alpha is not how you obtain a "
+        "breeding parent.\n")
     add("Nothing else is needed: no save file, no bot, no Discord. Breeding mechanics are "
         "global, so any player on the right build can run this — the results are about "
         "the game, not about a save.\n")
@@ -237,8 +351,8 @@ def build(version: str) -> str:
         add("| Parent A | Parent B | If round-down | If round-half-up | Actual |")
         add("|---|---|---|---|---|")
         for a, b, f, h in discriminators[:12]:
-            add(f"| {name.get(a, a)} | {name.get(b, b)} | {name.get(f, f)} | "
-                f"{name.get(h, h)} |  |")
+            add(f"| {label(a)} | {label(b)} | {label(f)} | "
+                f"{label(h)} |  |")
     else:
         add("**No pair can separate the two conventions, and the reason is arithmetic "
             "rather than luck.** All 260 ranks are multiples of 10, so every sum is even, "
@@ -261,8 +375,8 @@ def build(version: str) -> str:
     add("| Parent A | Parent B | Nearest by rank (skipped) | Predicted child | Actual |")
     add("|---|---|---|---|---|")
     for a, b, skipped, pred in skip_rows[:10]:
-        add(f"| {name.get(a, a)} | {name.get(b, b)} | _{name.get(skipped, skipped)}_ | "
-            f"**{name.get(pred, pred)}** |  |")
+        add(f"| {label(a)} | {label(b)} | _{label(skipped)}_ | "
+            f"**{label(pred)}** |  |")
     add("")
     add("## Block 4 — the exception table\n")
     add(f"{len(exceptions)} rows override the rank rule, and **{len(overriding)}** of them "
@@ -298,9 +412,15 @@ def build(version: str) -> str:
     add("Fill the **Actual** column with what hatched. A wrong prediction is worth more "
         "than a right one and should be recorded verbatim rather than corrected — if a "
         "pattern is going to show up, it will show up in the misses.\n")
-    add("Priority if there is not time for all of it: **Block 1, then Block 2.** Block 1 "
-        "decides whether the model works at all and Block 2 settles a question nothing "
-        "else can. Blocks 3 and 4 refine it.\n")
+    add("Priority **if you can catch the parents**: Block 1, then Block 2. Block 1 decides "
+        "whether the model works at all and Block 2 settles a question nothing else can.\n")
+    add("**If your highest catch is around level 60, start with Block 4 instead.** That is "
+        "not a preference, it is what the levels above say: 14 of Block 1's 19 Pals spawn "
+        "only above level 60 and three of them (Eidrolon, Renjishi, Ophydia) are level 80, "
+        "while Block 4 runs from level 3 and has just 4 Pals above 60. **Block 1 asks an "
+        "endgame roster for the block it calls the cheapest.** A refuted exception row is "
+        "worth less than a refuted baseline row, and it is worth infinitely more than a "
+        "baseline row nobody can attempt.\n")
     add(f"Then run `python tools/eval/score_breeding.py --version {version}` with the "
         "results to close the ADR-0008 gate, and move the ADR from Provisional to "
         "Accepted — or to the `TableBasedBreedingModel` fallback it already names.\n")
