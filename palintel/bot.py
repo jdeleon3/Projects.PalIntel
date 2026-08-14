@@ -98,6 +98,77 @@ def _speaker_name(speaker) -> str:
     return f"speaker {uid}" if uid is not None else "voice"
 
 
+async def resolve_speaker(client, speaker, cache: dict) -> str:
+    """`_speaker_name`, with a REST lookup behind it. Call this from the event loop.
+
+    `DiscordListener._resolve` runs on py-cord's decoder thread and so can only read the
+    member CACHE - which is empty without the privileged members intent, and stays empty.
+    That is why 10 queries on 2026-08-13 were attributed to `speaker 366300806208552972`:
+    the fallback worked exactly as designed, and the lookup it was protecting could never
+    have succeeded.
+
+    **`fetch_member`/`fetch_user` are plain REST calls and need no privileged intent.**
+    Enabling `intents.members` would have fixed the cache instead, at the cost of a bot
+    that refuses to LOG IN until someone flips a matching switch in the developer portal -
+    trading a cosmetic failure for a total one, to populate a field in a ledger.
+
+    Cached per process because the answer does not change within a session and this is on
+    the path of every utterance. Misses are cached too: a uid that will not resolve is a
+    left guild or a deleted account, and retrying it once per sentence is a stall on the
+    voice path in exchange for the same answer.
+    """
+    name = getattr(speaker, "display_name", None) or getattr(speaker, "name", None)
+    if name:
+        return str(name)
+    uid = getattr(speaker, "id", None)
+    if uid is None:
+        return "voice"
+    if uid in cache:
+        return cache[uid]
+
+    # The guild's nickname first, because that is the name the text path uses and the two
+    # have to agree or one person becomes two in the corpus. `fetch_user` is the fallback:
+    # it always resolves for a live account but returns the global name, which may differ
+    # from the nickname shown in the server.
+    for source in (_guild_of(client, speaker), client):
+        if source is None:
+            continue
+        get = getattr(source, "fetch_member", None) or getattr(source, "fetch_user", None)
+        if get is None:
+            continue
+        try:
+            found = await get(uid)
+        except Exception as e:
+            # Not exceptional: a member who left the guild 404s here, and the next source
+            # is expected to answer. Debug so a persistent miss is still diagnosable.
+            log.debug("could not fetch %s from %r: %s", uid, source, e)
+            continue
+        name = getattr(found, "display_name", None) or getattr(found, "name", None)
+        if name:
+            cache[uid] = str(name)
+            log.info("resolved speaker %s to %r over REST", uid, cache[uid])
+            return cache[uid]
+
+    cache[uid] = _speaker_name(speaker)
+    return cache[uid]
+
+
+def _guild_of(client, speaker):
+    """The guild to look `speaker` up in, or None.
+
+    Off the speaker when py-cord gave a real member, otherwise the guild of the voice
+    channel the bot is sitting in - which is the only one it can be hearing from.
+    """
+    guild = getattr(speaker, "guild", None)
+    if guild is not None:
+        return guild
+    for vc in getattr(client, "voice_clients", ()) or ():
+        found = getattr(getattr(vc, "channel", None), "guild", None)
+        if found is not None:
+            return found
+    return None
+
+
 def _world_id(watcher) -> str:
     """Which world bindings are scoped to. Empty when no save is being read.
 
@@ -478,7 +549,14 @@ async def _answer(channel, pipe: Pipeline, text: str, who: str,
         top = outcome.candidates[0] if outcome.candidates else None
         args = {} if declined else outcome.call.args
         capture.record(Utterance(
-            uid=uid, wav=f"{uid}.wav", seconds=0.0, heard=text,
+            # **Empty on the text channel, because there is no clip.** Naming a .wav that
+            # was never written would put a file reference in the corpus that resolves to
+            # nothing, and the STT scorers take their file list from the directory rather
+            # than this field - so the lie would sit there unread until something trusted
+            # it. `heard` is exact on this path: it is what the player typed, not what a
+            # recogniser guessed, which is the whole reason to type the test plan.
+            uid=uid, wav="" if channel_kind == "text" else f"{uid}.wav",
+            seconds=0.0, heard=text,
             path="decline" if declined else answered_by,
             tool=None if declined else outcome.call.name,
             entity=(args.get("pal") or args.get("boss") or args.get("resource")
@@ -632,6 +710,11 @@ def run() -> None:
     # Docs/discord-setup.md step 3.
     intents = discord.Intents.default()
     intents.message_content = True
+    # **`intents.members` is deliberately NOT set here.** It would populate the member
+    # cache that `guild.get_member` reads, but it is privileged the same way
+    # message_content is, and py-cord raises PrivilegedIntentsRequired at LOGIN when the
+    # portal toggle is off - taking the whole bot down to fix names in a log field. The
+    # names are fetched over REST instead; see `_speaker_name`.
     client = discord.Client(intents=intents)
 
     # Boxed, because a reconnect re-fires on_ready and a second polling task would double
@@ -772,9 +855,20 @@ def run() -> None:
         # spend ledger key on. `user_id` is passed separately and is what IDENTITY uses:
         # display names change mid-session and collide across servers, and either one
         # would silently split or merge a person's binding.
+        # **`capture` and `feedback` belong here too, and their absence cost a session.**
+        # On 2026-08-13 the test plan was deliberately run over TEXT, to take routing
+        # readings without STT errors in them - and neither argument was passed, so there
+        # were no feedback buttons to press and not one of those 61 queries reached
+        # `log.jsonl`. The analyser saw 3 utterances in a 64-query session.
+        #
+        # `capture` was hoisted to bot scope precisely so the text channel could use it,
+        # and then this call site was never given it. Same mistake the hoist was made to
+        # fix, one level further out.
         await _answer(message.channel, pipe, text, message.author.display_name,
                       activity, watcher, started=time.monotonic(),
                       channel_kind="text", spend=spend,
+                      capture=capture, uid=f"t{int(time.time() * 1000):x}",
+                      feedback=cfg.capture.feedback,
                       user_id=str(message.author.id), bindings=bindings)
 
     async def beat() -> None:
@@ -886,6 +980,9 @@ def run() -> None:
 
         loop = asyncio.get_running_loop()
         tmp = TemporaryDirectory(prefix="palintel-voice-")
+        # uid -> name, filled by `resolve_speaker` over REST. Lives for the session: the
+        # answer does not change within one, and this is on every utterance's path.
+        names: dict[int, str] = {}
 
         async def on_speech(utt, speaker=None) -> None:
             # `speaker` is None from the microphone, which cannot say who spoke, and a
@@ -917,8 +1014,8 @@ def run() -> None:
             # `DiscordListener._resolve` now looks the member up first; this is the
             # fallback for when it genuinely cannot, and it says "speaker <id>" rather
             # than leaking a Python repr into data meant to be read later.
-            who = _speaker_name(speaker) if speaker is not None else (
-                cfg.voice.speaker or "voice")
+            who = (await resolve_speaker(client, speaker, names)
+                   if speaker is not None else (cfg.voice.speaker or "voice"))
             # Captured or not, the WAV is written either way - faster-whisper reads a
             # file, not a buffer. Capture only changes WHERE, and whether it survives.
             path = (str(capture.write_wav(uid, utt.pcm) or f"{tmp.name}/{uid}.wav")

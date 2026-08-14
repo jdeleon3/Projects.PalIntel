@@ -268,6 +268,40 @@ def rephrases(turns: list[Turn]) -> list[Proposal]:
     return out
 
 
+def coverage(session_dir: Path, captured: int) -> None:
+    """How much of the session the corpus actually holds.
+
+    **The cheapest check this file could have had, and it did not have it.** On 2026-08-13
+    the bot logged 64 rows to `costs.jsonl` and 3 to `log.jsonl` — same session id, same
+    directory, a factor of 21 between them — because the text `_answer` call passed no
+    `capture`. Nothing compared the two files, so both were internally consistent and the
+    corpus was silently missing the entire typed half of the widest test the project had
+    run. It was found by the player noticing a missing button.
+
+    Every query is costed, including fast-path ones at $0, which is exactly what makes the
+    ledger the denominator: it is the only record that sees a query it did not pay for.
+
+    No threshold. A ratio is worth printing whatever it is — a bar invites tuning the bar,
+    and the useful signal here was a number so far off that no threshold was needed to see
+    it.
+    """
+    ledger = session_dir / "costs.jsonl"
+    if not ledger.exists():
+        # Ordinary for an eval corpus or a session recorded before spend tracking.
+        print("  coverage      no costs.jsonl - nothing to compare against")
+        return
+    billed = sum(1 for line in ledger.read_text(encoding="utf-8").splitlines() if line.strip())
+    if not billed:
+        return
+    pct = 100.0 * captured / billed
+    print(f"  coverage      {captured}/{billed} queries captured ({pct:.0f}%)")
+    if captured < billed:
+        print(f"                ** {billed - captured} queries were answered and billed "
+              f"but never reached the corpus **")
+        print("                a channel that answers without capturing is the 2026-08-13 "
+              "defect; check every _answer call site passes capture= and uid=")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--session", default="",
@@ -289,6 +323,7 @@ def main() -> None:
 
     print(f"session {chosen.parent.name}   {len(turns)} utterances, "
           f"{len(list(chosen.parent.glob('*.wav')))} clips")
+    coverage(chosen.parent, len(turns))
     print(f"  answered      {len(answered)}   "
           f"({sum(1 for t in answered if t.path == 'fast')} fast, "
           f"{sum(1 for t in answered if t.path == 'model')} model)")
