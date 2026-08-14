@@ -3431,6 +3431,111 @@ and how it would otherwise have shipped indefinitely reading green.
 
 ---
 
+## The third play session — the widest test yet, and it recorded a twentieth of itself (2026-08-13)
+
+The longest session the project has had: **83 queries across six bot runs, $0.1631, and
+every one of the 13 production classes exercised** — the first session where that is true.
+28 queries (34%) reached the model. It also produced the project's first persisted latency
+data, because M4 landed hours earlier.
+
+**It was also the session where the instrumentation was most wrong**, and the two facts are
+connected: the reason it was so wide is that the second half was typed rather than spoken,
+deliberately, *"to remove voice to text errors and get a good sense for expected results"* —
+and the text path was the one that recorded nothing.
+
+### What the player found, which is the part that matters
+
+| Finding | What it settles |
+|---|---|
+| **Anubis has Mining 6 in the game** | Closes the Known-uncalibrated work-suitability item. Lamball's 1/1/1 already matched, but Lamball is 1 on every axis and cannot distinguish the displayed scale from any scale starting at 1. **6 is the discriminating reading**, and it is the exact value the entry named as the one that would be wrong |
+| **The coal base site had *"smaller flat surfaces at different elevations"*** | Re-opens the flatness half of the Q4 question. See below — the metric is not wrong, it is answering a different question |
+| **G4 produced a working counter plan for Prixter** | Q5 holds on a boss nobody had asked it about |
+| Overall *"a solid performance for what was tested"* | — |
+
+### Flatness measures dispersion, and a base needs contiguity
+
+The metric is the height spread of every placed actor inside the base radius, calibrated to
+the 75th percentile of the 32 spots the game itself marks `BP_BaseCampPopularArea_C`. It
+passed this site. The site is terraced.
+
+**Spread has no notion of shape.** Two flat terraces 3 units apart score identically to one
+gentle uniform ramp with the same total relief — and they are not remotely equivalent to
+build on, because a base needs *one contiguous patch* large enough for the structures, not a
+low variance across the radius. A statistic that summarises a distribution to a single
+number cannot tell a bimodal one from a unimodal one, and terracing is exactly bimodality.
+
+This is not the caveat that was already written down. That one said the proxy measures
+ground where things were *placed*, not ground everywhere — a sampling limitation. This is a
+**statistic-choice** error, and it would survive perfect sampling. The fix is a largest-
+connected-component-within-an-elevation-band measure rather than a spread; not attempted
+yet, and it is worth knowing how many of the 32 calibration spots are themselves terraced
+before assuming the current bar is even calibrated to what it claims.
+
+### The instrumentation defect: capability built for two channels, wired into one
+
+The session ran 64 costed queries. `analyse_session.py` reported **3 utterances**.
+
+`_answer` takes `capture` and `feedback`; the voice call site passes both, the text call
+site passed neither. So the typed half produced no feedback buttons — which the player
+noticed and reported, *"the feedback buttons did not show up"* — and, invisibly, wrote
+nothing to `log.jsonl`. **61 queries, including every one of the deliberately-clean typed
+readings, left no corpus row.**
+
+`capture` was hoisted to bot scope specifically so the text channel could use it. The
+comment there says so. The call site was never given it.
+
+**Why nothing caught it:** 3 is a plausible number of utterances. There is no ratio anywhere
+between the cost ledger (which recorded all 64) and the capture corpus (which recorded 3),
+so the two disagreed by a factor of 21 in the same directory, on the same session id, with
+nothing comparing them. *A cross-check between two files that count the same events is
+worth more here than another test of either one.*
+
+The second defect is smaller and has the same shape. `DiscordListener._resolve` runs on
+py-cord's decoder thread, so it can only read the member **cache** — which the privileged
+members intent fills, and that intent is off, so it is empty and stays empty. 10 queries
+were attributed to `speaker 366300806208552972`. The fallback behaved exactly as designed;
+the lookup it was protecting could never have succeeded. Fixed with `fetch_member` /
+`fetch_user` over REST, which need no privileged intent — **enabling `intents.members`
+would have fixed the cache at the cost of a bot that refuses to log in until someone flips
+a matching switch in the developer portal**, trading a cosmetic failure for a total one to
+populate a field in a ledger.
+
+### First persisted latency, and all three budgets are over
+
+| Population | n | p50 | p95 | Budget | |
+|---|---:|---:|---:|---:|---|
+| `stt` | 22 | 547ms | 765ms | 300ms | **over** |
+| `text` | 57 | 453ms | 4266ms | 1500ms | **over** |
+| `voice` | 20 | 1966ms | 7903ms | 2500ms | **over** |
+| `route` | 83 | 187ms | 4859ms | — | |
+| `text_decline` | 4 | 3157ms | 8406ms | — | |
+
+Consistent with the Phase 1 finding rather than a regression: p95 sits in the model
+population whenever a shipped class has no fast path, and this session exercised **all 13
+classes**, which is the widest spread of fast and model paths yet recorded. The p50s are
+the more interesting half — `text` at 453ms against a 1500ms budget says the fast path is
+doing its job on the median query, and the p95 is a different population, not a slow
+version of the same one. **Nothing should be tuned off this table until the two populations
+are separated**; the roadmap has already made the mistake of reading a bimodal p95 as one
+number.
+
+### A correction to the wake-word entry above
+
+The urgency for a Discord-path wake-word model came partly from the mic model *"not working
+with discord"* in live use. The player has since identified the cause: **Discord was using
+the webcam microphone rather than the headset.** That is a hardware misconfiguration, and it
+was not what the second model was fixing.
+
+The model still ships, on its own merits and not that one: measured against 236 clips
+through a 64 kbps Opus round trip, `hey_pal` alone recovers 86.9% and the ensemble reaches
+**89.4% at a false-positive rate identical to `hey_pal` by itself**, since the higher score
+wins and a second model can only make the gate more sensitive. What is corrected is the
+*premise*, and it is the same failure the DAVE entry above is about — **a blockage named
+from a symptom rather than from a measurement**, for the fifth time in this project. The
+symptom was real. Its cause was one layer further out than anyone looked.
+
+---
+
 ## Sequencing rationale
 
 | Decision | Why |

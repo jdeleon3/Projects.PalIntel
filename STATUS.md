@@ -4,10 +4,13 @@
 any line.** This file is the two-minute orientation; the roadmap is the record of how each
 number was arrived at.
 
-*Last updated 2026-08-12, after the second play session. **Phase 4 has now been played,
-and it produced the first card that got the player killed.** `main` was current as of
-PR #3 on 2026-08-11; this session's work is not promoted, so `git log origin/main..HEAD`
-is the check worth running rather than trusting this line.*
+*Last updated 2026-08-13, after the third play session — **the widest test the project has
+had: 83 queries, all 13 production classes exercised, $0.1631.** It settled the
+work-suitability scale (Anubis really is Mining 6), re-opened base-site flatness for a
+reason the existing caveat did not cover, and **recorded a twentieth of itself**, because
+the text `_answer` call passed neither `capture` nor `feedback`. Both fixed. `main` was
+current as of PR #3 on 2026-08-11; this session's work is not promoted, so
+`git log origin/main..HEAD` is the check worth running rather than trusting this line.*
 
 ---
 
@@ -299,7 +302,7 @@ deterministic sweep over the 271 A5 transcripts is all it has today.
 | ~~**Does `item_source` work?**~~ | **Answered 2026-08-12, and the answer is "for drops".** *"Where do I get a high quality pal oil"* returned 41 sources led by Mammorest at 100%, 5–10 — correct and useful. *"Where can I find cakes"* returned **Lovander at 1%**, which is true and is not the answer: cake is crafted, and the player asked because breeding needs it. `by_item` is a **drop table** and the card says *"Cake comes from"*. Open as a card-wording item above, not as a measurement gap. |
 | **Does the breeding rank model hold?** | The ADR-0008 gate, and the whole of Phase 3B behind it. **Nothing is left to build**: `build_breeding.py` ingests the ranks, [`Docs/breeding-verification.md`](Docs/breeding-verification.md) is generated, `score_breeding.py` waits to consume it. It needs **eggs hatched in game**, on Steam buildid **`24467282`** with auto-updates off. **The "breeding isn't unlocked" precondition was checked against the save on 2026-08-12 and is wrong** — the Breeding Farm's four stated requirements are all satisfied (level 19 ≤ your floor of 57, ForestBoss beaten, no prerequisite, 2 of your 40 ancient points) and the Egg Incubator is already unlocked. So this is **not** blocked on another player's playthrough, as the failed 2026-08-11 delegation suggested; it is two clicks in the technology menu, then cake production (Ranch + Mill + wheat, eggs, milk, honey) to hatch anything. Note ADR-0008 requires **100% agreement** outside the exception table and refuses partial agreement as a tunable, so one refuted Block 1 row is a decision (the `TableBasedBreedingModel` fallback), not a data point. |
 | ~~**Is the owned-Pal roster reaching the cards?**~~ | **Confirmed in play 2026-08-12** — every counter card in the session printed *"checked 143 of your Pals"*, and the tower/alpha split read correctly on all three asked (Grizzbolt → Zoe's tower, Victor → Victor's tower, Anubis → field alpha). **One thing that count hides:** you own 195 species and 50 of them are `BOSS_`-prefixed, which `counters.py` excludes. 35 duplicate a base species you also own, but **14 are species you hold ONLY as an alpha** — `boss_suzaku`, `boss_volcanicmonster`, `boss_winggolem` among them, all typed — and they can never appear in a shortlist. Whether a caught alpha should count as a party member is a judgement; *"checked 143 of your Pals"* reading as your whole roster is not. The original note: **No, and it never had. Fixed 2026-08-12.** `owned_species` was built and tested in Phase 3 and never passed into the bot's `PlayerState`, so every counter card in the 2026-08-11 session said *"I haven't read your Pals"* — including the ones the player pressed feedback buttons on. Now polled on the watcher's own five-minute cadence and shown on `/palintel status`; the reference save reads **194 owned characters**. **Every Q5 reading from that session was taken with the roster filter off.** |
-| **Is a Q4 base site somewhere you can actually build?** | **Half-closed 2026-08-12, and by the game rather than by play.** Flatness is now measured — the height spread of every placed actor inside the radius, with the bar calibrated as the 75th percentile of the 32 spots the game itself marks `BP_BaseCampPopularArea_C`. What remains unmeasurable is **no-build zones**, and that is now the whole caveat rather than half of it. **Still walk to a suggested coordinate**: the roughness proxy measures the ground where things were *placed*, not the ground everywhere. |
+| **Is a Q4 base site somewhere you can actually build?** | **Half-closed 2026-08-12 by the game; the flatness half re-opened by play 2026-08-13.** Flatness is measured as the height spread of every placed actor inside the radius, calibrated to the 75th percentile of the 32 spots the game marks `BP_BaseCampPopularArea_C`. **Walked to a suggested coal site on 2026-08-13, and it was flat in the way the metric measures and not in the way a base needs**: *"flat surfaces, but smaller flat surfaces at different elevations."* Terraced, not sloped. **Spread is a dispersion statistic and has no notion of shape** — two terraces 3 units apart score the same as one gentle uniform ramp of the same total relief, and the terrace is far worse to build on, because a base needs one *contiguous* patch large enough for the structures, not a low variance. The metric is not wrong, it is answering a different question than the one asked. What it would take: largest connected component within an elevation band, rather than the spread of the whole set. No-build zones remain unmeasurable and are still the other half. |
 | ~~The Phase 1 latency criterion~~ | **Measured 2026-08-10 and FAILED**: voice p95 4.2s / 2.5s, text 2.0s / 1.5s. Not a tuning problem — p95 sits in the model population whenever a shipped class has no fast path. See the roadmap. |
 
 The first four are in [`Docs/play-session-protocol.md`](Docs/play-session-protocol.md);
@@ -420,16 +423,28 @@ scores any model across four populations with the codec-shortcut gate built in.
   that did not. The guild parse is **fail-closed** — an unexplained field non-zero, an
   implausible count, or any camp id the save does not hold discards the check rather than
   guessing, since a check that can be wrong is worse than no check.
-- **Work-suitability levels are unverified against the UI.** `WorkSuitability_*` runs
-  1–8 with one Pal at the top of each job. Lamball's 1/1/1 matches the game exactly, so
-  the scale is probably the displayed one — but nobody has opened the Paldeck and counted
-  the icons on a high-level Pal, and *"Anubis, Mining 6"* is wrong on a card if the game
-  shows 4. **A one-glance check settles it**, and until it happens the cards print the
-  number and never call it a star count.
+- ~~**Work-suitability levels are unverified against the UI.**~~ **Settled in play
+  2026-08-13: the game shows Anubis at Mining 6.** `WorkSuitability_*` runs 1–8 with one
+  Pal at the top of each job; Lamball's 1/1/1 already matched, but Lamball is 1 on every
+  axis and so could not distinguish "the displayed scale" from "any scale that starts at
+  1". Anubis at 6 is the discriminating reading — the exact value this entry named as the
+  one that would be wrong on a card if the scale were different, checked at the top of the
+  range rather than the bottom. **The ingested number is the displayed number.** The cards
+  may now say so; they still print the figure rather than calling it a star count, because
+  8 levels against 5 displayed icons is a separate question nobody has asked.
 
 ---
 
 ## Next
+
+**0a. Cross-check the ledger against the corpus.** The 2026-08-13 session wrote 64 rows to
+`costs.jsonl` and 3 to `log.jsonl` — a factor of 21, on the same session id, in the same
+directory, with nothing anywhere comparing the two. The capture defect that caused it was
+found by the player noticing a missing button, not by any check the project runs. **Two
+files that count the same events and never get divided by each other is the cheapest
+possible instrumentation gap**, and this is the second time a bug hid in the space between
+two records that agreed with themselves. `analyse_session.py` should read both and say so
+loudly when they disagree; a ratio does not need a threshold to be worth printing.
 
 **0. Play again, with the five fixes in.** Every one of them changes what a card says and
 **none has been seen in play** — the `Field alpha:` and `Nearest:` rows, the spoken

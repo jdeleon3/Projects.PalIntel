@@ -189,3 +189,48 @@ def test_a_misheard_with_no_rephrase_stays_unresolved():
     explained = {p.failed.uid for p in an.rephrases(turns)}
     unresolved = [t for t in turns if t.misheard and t.uid not in explained]
     assert len(unresolved) == 1
+
+
+# --- coverage: the ledger against the corpus -----------------------------------
+#
+# Added after 2026-08-13, where the two files disagreed by a factor of 21 in the same
+# directory and nothing anywhere divided one by the other. The defect was found by a
+# player noticing a missing button, which is not a detection strategy.
+
+def _with_ledger(tmp_path, captured: int, billed: int) -> Path:
+    d = write_log(tmp_path, [utt(f"u{i}", float(i), "q") for i in range(captured)])
+    (d / "costs.jsonl").write_text(
+        "\n".join(json.dumps({"at": float(i), "usd": 0.0}) for i in range(billed)),
+        encoding="utf-8")
+    return d
+
+
+def test_a_channel_that_answers_without_capturing_is_reported(tmp_path, capsys):
+    """The 2026-08-13 shape exactly: 64 billed, 3 captured."""
+    an.coverage(_with_ledger(tmp_path, 3, 64), 3)
+    out = capsys.readouterr().out
+    assert "3/64" in out
+    assert "61 queries were answered and billed but never reached the corpus" in out
+
+
+def test_full_coverage_says_so_without_raising_an_alarm(tmp_path, capsys):
+    an.coverage(_with_ledger(tmp_path, 9, 9), 9)
+    out = capsys.readouterr().out
+    assert "9/9" in out and "100%" in out
+    assert "never reached the corpus" not in out
+
+
+def test_a_session_with_no_ledger_is_not_an_error(tmp_path, capsys):
+    """Eval corpora and pre-spend-tracking sessions have no costs.jsonl, and neither is a
+    fault. Reporting one as a capture defect would train the reader to ignore the line."""
+    d = write_log(tmp_path, [utt("u0", 0.0, "q")])
+    an.coverage(d, 1)
+    assert "nothing to compare against" in capsys.readouterr().out
+
+
+def test_the_ratio_is_printed_whatever_it_is(tmp_path, capsys):
+    """No threshold, deliberately. A bar invites tuning the bar, and the signal that
+    mattered was so far off that no bar was needed to see it."""
+    for captured, billed in ((62, 64), (1, 2), (64, 64)):
+        an.coverage(_with_ledger(tmp_path, captured, billed), captured)
+        assert f"{captured}/{billed}" in capsys.readouterr().out
