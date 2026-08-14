@@ -20,6 +20,35 @@ class ConfigError(RuntimeError):
     pass
 
 
+# Which wake-word model each audio source gets when `voice.models` is not set.
+#
+# **One model per path, not both at once.** The two are trained for different signals:
+# `hey_pal` on microphone audio, `hey_pal_discord` on the same corpus put through a 64 kbps
+# Opus round trip. Running both everywhere was the other option and is worse in one
+# specific way - the highest score wins, so a model tuned for a codec it is not hearing
+# can only add false positives on the path it was not trained for, and a wake word firing
+# on party chatter is the failure the whole channel sees.
+#
+# Measured, which is why there are two at all: the codec costs the mic-trained model 21 of
+# 236 clips below the firing threshold, about 9% of recall, with nothing else varying.
+#
+# Setting `voice.models` overrides this entirely, including to run both.
+SOURCE_MODELS = {
+    "mic": ("hey_pal",),
+    "discord": ("hey_pal_discord",),
+}
+
+
+def default_models(source: str) -> tuple[str, ...]:
+    """The wake-word models for an audio source.
+
+    Falls back to the microphone model for an unknown source rather than to nothing: the
+    source is validated at load, so this is only reachable by a caller passing something
+    else, and returning an empty set there would make the bot silently deaf.
+    """
+    return SOURCE_MODELS.get(source, SOURCE_MODELS["mic"])
+
+
 def _toml_help(path: Path, err: Exception) -> str:
     """Turn a TOML parse error into something actionable.
 
@@ -75,9 +104,16 @@ class VoiceConfig:
     the worst kind, because it is indistinguishable from nobody speaking. A regression
     should cost the party-voice feature, not all voice input.
 
-    `models` is a list because a pretrained model can run alongside a custom one during
-    a transition - inference is CPU-bound at a realtime factor near 0.015, so the second
-    model is close to free, and the highest score wins.
+    **`models` defaults from `source`, and that is the point of there being two.**
+    `hey_pal` is trained on microphone audio; `hey_pal_discord` on the same corpus put
+    through the Opus round trip the Discord path actually applies. Leave it unset and each
+    source gets the model trained for it - see `SOURCE_MODELS`.
+
+    It stays a *list* because running several at once is still useful and is still
+    supported: inference is CPU-bound at a realtime factor near 0.015, so a second model
+    is close to free, and the highest score wins. Setting it explicitly overrides the
+    per-source default, which is how a pretrained model can be kept alongside a custom one
+    during a transition.
 
     `speaker` is who the microphone belongs to, and it exists because **the mic cannot
     say**. Conversation memory is per person (ADR-0013) and text keys on the Discord
@@ -233,7 +269,8 @@ class Config:
                 "voice.source = 'discord' needs voice.channel_id - the id of a VOICE "
                 "channel, not the text one. A text id here connects to nothing and the "
                 "bot simply never hears anything.")
-        models = tuple(v.get("models") or ("hey_pal",))
+        # Explicit wins. Unset, the default follows the SOURCE - see `default_models`.
+        models = tuple(v.get("models") or default_models(source))
         device = v.get("device")
 
         r = raw.get("router", {}) or {}

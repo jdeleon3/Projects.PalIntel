@@ -72,7 +72,41 @@ import runpy
 import sys
 from pathlib import Path
 
-CONFIG = Path(__file__).with_name("hey_pal.yaml")
+DEFAULT_CONFIG = Path(__file__).with_name("hey_pal.yaml")
+
+
+def _config_from_argv() -> Path:
+    """Which training config to run, taken off this script's own command line.
+
+    **This used to be a hardcoded constant, and `main` overwrites `sys.argv` before
+    handing control to openWakeWord** - so a `--training_config` passed here was silently
+    discarded and the original model was retrained instead. That failure has no symptom
+    until an hour later, when the run finishes and writes a model with the wrong name over
+    the wrong corpus.
+
+    Accepted as `--config` rather than `--training_config` so the two cannot be confused:
+    everything not consumed here is forwarded to openWakeWord untouched.
+    """
+    argv = sys.argv[1:]
+    for flag in ("--config", "-c"):
+        if flag in argv:
+            i = argv.index(flag)
+            if i + 1 >= len(argv):
+                raise SystemExit(f"{flag} needs a path")
+            path = Path(argv[i + 1])
+            if not path.is_absolute():
+                # Resolved against the CALLER's cwd, because `main` chdirs into the piper
+                # checkout before running and a relative path would then miss.
+                path = (Path.cwd() / path).resolve()
+            if not path.exists():
+                raise SystemExit(f"no training config at {path}")
+            del argv[i:i + 2]
+            sys.argv = [sys.argv[0], *argv]
+            return path
+    return DEFAULT_CONFIG
+
+
+CONFIG = DEFAULT_CONFIG
 
 
 def _shim_scipy() -> None:
@@ -286,6 +320,11 @@ def _shim_console() -> None:
 
 
 def main() -> None:
+    global CONFIG
+
+    # Before the shims, so a bad path fails in a second rather than after model loading.
+    CONFIG = _config_from_argv()
+    print(f"training config: {CONFIG}")
     _shim_console()
     _shim_scipy()
     _shim_torchaudio()

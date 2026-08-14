@@ -23,6 +23,19 @@ import numpy as np
 log = logging.getLogger("palintel.wakeword")
 
 MODEL = "hey_pal"
+# The model trained on Discord-path audio. A SECOND model rather than a replacement: the
+# codec costs the mic-trained model about 9% of its recall (21 of 236 clips fall below the
+# firing threshold after a 64 kbps round trip - see tools/wakeword/discord_path.py), and
+# the mic path is not improved by a model trained through a codec it never goes through.
+# Which one loads follows `voice.source`; see `config.default_models`.
+DISCORD_MODEL = "hey_pal_discord"
+# openWakeWord's own names, which it resolves without a file on disk. Listed so a bare
+# name that is NEITHER ours nor one of these can be reported as missing rather than
+# handed to the library to fail on later.
+PRETRAINED = frozenset({
+    "alexa", "hey_mycroft", "hey_jarvis", "hey_rhasspy",
+    "timer", "weather",
+})
 # Where trained models land. `hey_pal` is not one of openWakeWord's pretrained names, so
 # a bare name has to be resolved here or the library raises "could not find pretrained
 # model" at startup.
@@ -71,10 +84,34 @@ class WakeWord:
         # the models directory is ours; anything else is left for openWakeWord, so
         # `hey_jarvis` still resolves the way it always did.
         root = models_dir or MODELS_DIR
-        specs = []
+        specs, resolved = [], []
         for n in names:
             local = root / f"{n}.onnx"
-            specs.append(str(local) if not n.endswith(".onnx") and local.exists() else n)
+            if n.endswith(".onnx") or local.exists():
+                specs.append(str(local) if not n.endswith(".onnx") else n)
+                resolved.append(n)
+                continue
+            if n in PRETRAINED:
+                specs.append(n)                 # openWakeWord resolves it itself
+                resolved.append(n)
+                continue
+            # A trained model that is not on disk. **Loud, and survivable.** This is
+            # reachable the moment `voice.source` picks a model that has not been copied
+            # into data/wakeword/ yet, and openWakeWord's own error for it is "could not
+            # find pretrained model", which sends the reader looking in the wrong place.
+            # Falling back keeps the voice path alive; failing here would make the bot
+            # deaf, which ADR-0004 names as the worst failure because it presents as
+            # nothing happening.
+            log.error("wake-word model %r not found in %s - falling back to %r. "
+                      "Train it, or copy the .onnx (and any .onnx.data) there.",
+                      n, root, MODEL)
+            if MODEL not in resolved and (root / f"{MODEL}.onnx").exists():
+                specs.append(str(root / f"{MODEL}.onnx"))
+                resolved.append(MODEL)
+        if not specs:
+            raise RuntimeError(
+                f"no usable wake-word model. Looked for {names} in {root}")
+        names = resolved
         self.model = Model(wakeword_models=specs, inference_framework="onnx")
         self.threshold = threshold
         self.names = names
