@@ -102,9 +102,15 @@ class WakeWord:
             # Falling back keeps the voice path alive; failing here would make the bot
             # deaf, which ADR-0004 names as the worst failure because it presents as
             # nothing happening.
-            log.error("wake-word model %r not found in %s - falling back to %r. "
-                      "Train it, or copy the .onnx (and any .onnx.data) there.",
-                      n, root, MODEL)
+            # Warning rather than error when something else already resolved: models are
+            # gitignored build artefacts, so "trained one but not the other" is an
+            # ordinary state for a fresh checkout, not a fault. It becomes an error only
+            # when it is about to cost the voice path entirely.
+            (log.warning if resolved else log.error)(
+                "wake-word model %r not found in %s%s. Train it with "
+                "tools/wakeword/train.py, or copy the .onnx (and any .onnx.data) there.",
+                n, root,
+                f" - continuing with {resolved}" if resolved else f" - falling back to {MODEL!r}")
             if MODEL not in resolved and (root / f"{MODEL}.onnx").exists():
                 specs.append(str(root / f"{MODEL}.onnx"))
                 resolved.append(MODEL)

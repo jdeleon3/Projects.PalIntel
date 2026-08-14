@@ -22,20 +22,60 @@ class ConfigError(RuntimeError):
 
 # Which wake-word model each audio source gets when `voice.models` is not set.
 #
-# **One model per path, not both at once.** The two are trained for different signals:
-# `hey_pal` on microphone audio, `hey_pal_discord` on the same corpus put through a 64 kbps
-# Opus round trip. Running both everywhere was the other option and is worse in one
-# specific way - the highest score wins, so a model tuned for a codec it is not hearing
-# can only add false positives on the path it was not trained for, and a wake word firing
-# on party chatter is the failure the whole channel sees.
+# The problem this solves is measured: putting the 236 mic recordings through a 64 kbps
+# Opus round trip and changing nothing else drops recall from 92.4% to 86.9%, because 21
+# clips fall below the 0.1 firing threshold. The codec costs about 6 points of recall.
 #
-# Measured, which is why there are two at all: the codec costs the mic-trained model 21 of
-# 236 clips below the firing threshold, about 9% of recall, with nothing else varying.
+# `hey_pal_discord` is trained on that exact path. **Head to head it does not beat
+# `hey_pal`** - 84.3% against 86.9% on codec'd audio, McNemar p = 0.24 - and it was very
+# nearly discarded on that reading. That was the wrong comparison: they are not
+# alternatives, they are an ensemble, which is what `voice.models` being a list has always
+# been for. The highest score wins, so a second model can only make the gate MORE
+# sensitive and can never suppress a firing the first would have made.
 #
-# Setting `voice.models` overrides this entirely, including to run both.
+# Read that way they are complementary, because they fail on different clips:
+#
+#     population   hey_pal   hey_pal_discord   BOTH
+#     mic           92.4%     91.5%            94.5%
+#     mic->opus     86.9%     84.3%            89.4%
+#     false pos    0.027%    0.016%            0.027%
+#
+# Six codec-path clips are recovered that neither catches alone, and the false-positive
+# rate is IDENTICAL to `hey_pal` by itself - the new model's rare firings land on frames
+# the old one already fires on, so the extra sensitivity costs nothing. Inference is
+# CPU-bound at a realtime factor near 0.015, so the second model is close to free.
+#
+# The microphone keeps `hey_pal` alone: that path does not go through a codec, and adding
+# a model trained for one it never encounters would buy sensitivity on a path that is not
+# short of it.
+#
+# `WakeWord` records which model won each firing, so the log attributes them rather than
+# leaving it inferred. **What is still unmeasured is the one that matters**: nobody has
+# read a script through a live Discord client with the misses recorded. Every number above
+# is simulated or selection-biased - captured clips exist only because the wake word
+# fired. Setting `voice.models` overrides this entirely.
+# **The Discord source runs BOTH, pending a live test.** Reported from real use on
+# 2026-08-13: `hey_pal` is not firing reliably over Discord. That is the unconditional
+# recall the offline work above could not measure and said so - the captured clips exist
+# only because the wake word fired, so "92.9% of clips that fired, fired" is circular, and
+# a field report is the evidence that population cannot supply.
+#
+# Running both is the safe way to find out, for three reasons that happen to line up:
+# the highest score wins, so adding a model can only make the gate MORE sensitive and can
+# never suppress a detection `hey_pal` would have made; the new model fired on codec'd
+# noise *less* than the old one (0.016% against 0.027%), so the usual cost of extra
+# sensitivity is not being paid here; and `WakeWord` already records which model won, so
+# the log attributes each firing rather than leaving it inferred.
+#
+# Inference is CPU-bound at a realtime factor near 0.015, so the second model is close to
+# free.
+#
+# **This is an experiment with an exit condition.** If the log shows `hey_pal_discord`
+# winning firings that `hey_pal` was missing, it earned its place; if the two fire
+# together throughout, drop back to `("hey_pal",)` and the offline verdict stands.
 SOURCE_MODELS = {
     "mic": ("hey_pal",),
-    "discord": ("hey_pal_discord",),
+    "discord": ("hey_pal", "hey_pal_discord"),
 }
 
 
