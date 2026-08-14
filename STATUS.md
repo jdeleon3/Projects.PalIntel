@@ -29,8 +29,8 @@ this line.*
 | 1 — Q1 resource lookup | **Closed 2026-08-10.** Latency accepted at measured behaviour, carried forward |
 | 2 — Q2 Pal spawns + memory | **Closed 2026-08-10** |
 | Card artwork + drops | **Shipped.** [ADR-0017](Docs/adr/0017-card-artwork-from-game-assets.md) Accepted |
-| 3 — Q5 counters | **Played 2026-08-13 and the most-used class in the session — 16 queries, the heaviest of all 13 — but NOT closed.** It works when the named entity is the target, which is what all 16 tested. **G4 shows it fails when the name is the *attacker***: *"is Prixter any good against the first tower"* produced a plan for **fighting Prixter**, a confident Tier 2 card about the wrong fight, when Block G scores a decline as the pass. 1 of 1 on the discriminating input. Was "Q3 + Q5"; **split 2026-08-11** |
-| **3B — Q3 breeding** | **Unblocked and in progress 2026-08-14: breeding is unlocked and the Breeding Farm is BUILT.** What remains is in-game, not in-repo — cake materials, and assigning a Pal to the farm. **Both of those are the two questions this bot answers worst**, and both are already-recorded defects: *"where can I find cakes"* returns a 1% Lovander drop because `item_source` is a drop table and **no crafting recipe is ingested**, and *"how do I assign a pal to the breeding farm"* returns two near-duplicate chunks. `score_breeding.py` still waits on hatched eggs, on Steam buildid **`24467282`** with auto-updates off |
+| 3 — Q5 counters | **Played 2026-08-13, the most-used class in the session — 16 queries, the heaviest of all 13 — still NOT closed pending replay.** It works when the named entity is the target, which is what all 16 tested. **G4 showed it failed when the name is the *attacker*** — *"is Prixter any good against the first tower"* produced a plan for **fighting Prixter** instead of the correct decline — and that is **fixed 2026-08-14** in `routing_unified.py`'s `unpack()` (see Next). Corrected against the recorded transcript, not yet reconfirmed in play. Was "Q3 + Q5"; **split 2026-08-11** |
+| **3B — Q3 breeding** | **Unblocked and in progress 2026-08-14: breeding is unlocked and the Breeding Farm is BUILT.** What remains is in-game, not in-repo — cake materials, and assigning a Pal to the farm. **The cake half is FIXED 2026-08-14**: `item_source` now leads with a recipe when one exists, instead of the 1% Lovander drop it used to publish alone — see `build_recipes.py` and Next. *"how do I assign a pal to the breeding farm"* still returns two near-duplicate chunks; re-measured 2026-08-14 and NOT a diversity fix, see the Q7 entry below. `score_breeding.py` still waits on hatched eggs, on Steam buildid **`24467282`** with auto-updates off |
 | Pal search by attribute | **Shipped and PLAYED 2026-08-13.** 10 queries. The first new query class since the roadmap: work-suitability ingest, three-axis filter, card, fast path and model path. **Its data is now verified against the game** — Anubis reads Mining 6 in the Paldeck, which is what the ingested number says |
 | Mount search | **Shipped and PLAYED 2026-08-11.** Landed 19:13, exercised four minutes later — *"which dragons can I ride at level 60"*, *"which swimming mounts are available"*, *"the fastest ground mount at level 60"*, three of the four on the fast path. **Speed ordering confirmed correct by the player.** The unowned set-difference is still unexercised |
 | **Party voice (Discord receive)** | **Restored and PLAYED 2026-08-13**, after months recorded as blocked. 13 spoken questions answered end to end from a voice channel, attributed to the speaking member rather than a configured name — [ADR-0012](Docs/adr/0012-dual-input-channels.md) restored, not replaced. **The blockage was never DAVE**: it decrypts 99.8% of packets, and py-cord 2.8's receive package was the fault. 13 defects fixed in [`PyDiscordDave`](../PyDiscordDave/README.md), two of them this repo's. `mic.py` stays the default and the fallback. Recall still unmeasured — see the backlog entry |
@@ -44,7 +44,7 @@ this line.*
 | Resource location | *"where's the nearest coal"* | + map crop, + "Also drops from" |
 | Pal location | *"where can I find Chillet"* | + map crop, + icon, + "Ranch:" |
 | Pal drops | *"what does Vanwyrm drop"* | split ordinary / alpha-only / level-banded |
-| Item source | *"who drops Flame Organ"* | 151 items, enum-only (not in the lexicon) |
+| Item source | *"who drops Flame Organ"*, *"what do I need for a Cake"* | 151 items, enum-only on the model path (not in the main lexicon). **Leads with a recipe when one is known** (930 items, `build_recipes.py`, 2026-08-14) rather than the drop table alone — a craftable item outside the 151-item enum is not yet reachable this way, see Next. **Has a fast path now** (2026-08-14): a SECOND lexicon over 1,031 item names, ranked only when a drop/craft cue fires, never merged into the main Pal/resource ranking — 0 stolen over 1,067 A5 prompts, 10/11 of the written batch-1 item prompts claimed |
 | Boss counters | *"how do I beat Anubis"*, *"how do I beat Victor"* | **Tier 2 — computed advice, amber card.** Filtered to Pals you own when the roster has been read; says so plainly when it has not. A tower leader resolves to the **tower**, not the field alpha of the same species |
 | Pal search by attribute | *"I need a mining pal"*, *"an electric pal at level 60"* | **Tier 1.** Element × job × wild level, all optional. The only class that takes a description instead of a name |
 | Pal info | *"tell me about Shroomer"*, *"what level is Penking"*, *"can I ride Azurobe"* | **Tier 1.** A summary gathered from the datasets already loaded, pointing at the cards that answer each part properly. The rideable line is unconditional, including when the answer is no — silence must not carry it |
@@ -203,14 +203,34 @@ the logs.
 
 **Found and deliberately not fixed** — each wants its own sweep rather than a ride-along:
 
-- **Q6 drops a narrowing it cannot map.** *"What tech should I research for my mining pals"*
-  returned the unnarrowed list led by Advanced Arrow; *"what weapon"* narrows correctly. The
-  general rule it wants is *a narrowing we cannot map means defer* — the rule `_base_call`'s
-  `weak` flag already implements one class over.
-- **`item_source` claims more than it holds.** *"Where can I find cakes"* → *"Cake comes
-  from — Lovander | 1 | 1%"*, true and useless: cake is crafted, and the player needed it
-  for breeding. High Quality Pal Oil returned 41 correct sources. The class is a **drop
-  table** and the card title says "comes from". A title and a footer, not a dataset.
+~~**Q6 drops a narrowing it cannot map.**~~ **FIXED 2026-08-14, and the first fix
+reopened a worse bug before it shipped.** *"What tech should I research for my mining
+pals"* used to return the unnarrowed list led by Advanced Arrow; *"what weapon"* narrows
+correctly because `_TECH_GOAL_WORDS` maps category words to the pak's `tech_goal` enum,
+but a job or element word ("mining", "electric") has no field to go in at all, and was
+silently dropped rather than declined. A plain `return None` — `_base_call`'s `weak` flag,
+one class over, as this entry originally proposed — is NOT safe here: `_attribute_call`
+runs later in `route()` and is built to claim exactly "mining" + "pal", so falling
+through answered the technology question with a roster of mining Pals instead. Caught by
+running the fix and reading the output before shipping, the same discipline that caught
+G4 and the item-branch bugs. Fixed with an explicit `Decline` from `_tech_call` itself,
+which stops `route()` before `_attribute_call` gets a turn. Reuses `_WORK_WORDS` and
+`_ELEMENT_WORDS` wholesale (`_UNMAPPABLE_TECH_NARROWING`) rather than a new list.
+**Confirmed against real logged play**: `replay_sessions.py --stub` finds two real
+historical utterances now correctly declining (*"what tech should I research for my
+mining pals?"*, *"what should I research next for mining?"*) that used to silently
+answer around the filter. 4 new tests, 877 total green at the time.
+~~**`item_source` claims more than it holds.**~~ **FIXED 2026-08-14**, together with the
+recipe ingest below — the two were one fix, not two. *"Where can I find cakes"* used to
+answer *"Cake comes from — Lovander | 1 | 1%"*, true and useless: cake is crafted, and the
+player needed it for breeding. High Quality Pal Oil still returns 41 correct sources
+unchanged — that half of the class was never wrong. `item_source_card` now checks
+`kb.recipes` first: when a recipe exists it titles the card *"X is crafted from"* and
+lists materials (with a ranch cross-reference per ingredient, marked unverified where the
+roster does not corroborate it), and the drop sources move to a secondary "Also drops
+from" line rather than disappearing. **Not yet reachable for every craftable item** — see
+Next for the enum-cost tradeoff that limits this to the 151 items already in
+`item_source`'s schema, of which Cake is one.
 - ~~**Q7 retrieval picks near-duplicate chunks — fix it with diversity.**~~ **Re-measured
   2026-08-14, and the prescription does not survive it.** The observation was right: *"how
   do I assign a pal to the breeding farm"* returns the Breeding Farm help guide and the
@@ -238,21 +258,25 @@ the logs.
   coordinates **and stated levels**, in `data/`, while `bosses.json` carries `"level": null`
   on every entry. Fourth instance of this project's recurring pattern: the data was there
   and nothing asked.
-- **`DT_ItemRecipeDataTable` is ingested by nothing — 1,414 typed crafting recipes.**
-  *Fifth* instance of the same pattern, found 2026-08-14 while checking why the bot cannot
-  say what a Cake costs. It is extracted into `data/raw/tables/` and no `build_*.py` reads
-  it, so **the project cannot answer "how do I make X" for any of 1,414 items**, and
-  `item_source` answers those questions from the drop table instead — which is why
-  *"where can I find cakes"* returns Lovander at 1%. The table is complete and typed:
-  `Cake` = Flour ×5, Red Berries ×8, Milk ×7, Egg ×8, Honey ×2, and `Flour` = Wheat ×3, so
-  one cake is 15 wheat. **The recipes also resolve to Pals the project already knows**:
-  joined against `ranch_drops.json`, Honey ← Beegarde, Red Berries ← Caprity, Egg ←
-  Chikipi, Milk ← Mozzarina, all four `roster_verified`. A `find_recipe` class is a
-  straight ingest-plus-card with no model in it, and it would have answered the
-  highest-value question of the last two sessions. **Note the provenance split before
-  publishing**: the recipe half is from the pak and Tier 1; the ranch half is
-  community-wiki by that file's own `source_note`, and a card must not present the two as
-  equally sourced.
+~~**`DT_ItemRecipeDataTable` is ingested by nothing — 1,414 typed crafting recipes.**~~
+**INGESTED 2026-08-14** by `tools/ingest/build_recipes.py` → `data/<version>/recipes.json`.
+*Fifth* instance of this project's recurring pattern (the data was there and nothing
+asked), found while checking why the bot cannot say what a Cake costs. 506 of the 1,414
+rows are weapon/armour upgrade tiers with no display name of their own
+(`Sword_2`..`Sword_5`) and are excluded rather than guessed at; the remaining 930 products
+are published, several with **more than one recipe** (13 different ways to end up with a
+Paldium Fragment), cheapest first. `Cake` = Flour ×5, Red Berries ×8, Milk ×7, Egg ×8,
+Honey ×2, and `Flour` = Wheat ×3, so one cake is 15 wheat — confirmed against the table,
+matching this entry's original reading exactly. **The recipes also resolve to Pals the
+project already knows**: joined against `ranch_drops.json` at query time, Honey ←
+Beegarde, Red Berries ← Caprity, Egg ← Chikipi, Milk ← Mozzarina, all four
+`roster_verified`, and shown on the card as a `(unverified)`-flagged hint rather than with
+the recipe's own confidence — the provenance split this entry asked for, kept: the recipe
+half is pak-extracted Tier 1, the ranch half is community-wiki per `Ranch`'s own
+docstring, and the card does not present them as equally sourced. No separate `find_recipe`
+class was built; the recipe surfaces through `item_source` instead, which is the class
+that already owned "how do I get X" — see Next for why a new class was not needed and
+what is still out of reach.
 
 **One thing the session lost.** `activity.py` keeps latency in a one-hour in-memory window
 and writes nothing, so the **voice p95 of 6.2s against the 2.5s budget** exists only in a
@@ -338,7 +362,7 @@ deterministic sweep over the 271 A5 transcripts is all it has today.
 |---|---|
 | ~~`art_post` p95~~ | **Measured**: 531ms p50, 1,157ms p95 over 70 attachments. Edit-in delivery holds. |
 | ~~**Do markers land on the actual rock?**~~ | **Closed 2026-08-11.** Ore, stone, wood, paldium walked against the regenerated table — nearest *and* further markers on each card, inside and outside the base — plus quartz at (-53,-960) and (-52,12), ~551 and ~573 units out on different bearings. Near-field and far-field, five resources, separate clusters. |
-| ~~**Does `item_source` work?**~~ | **Answered 2026-08-12, and the answer is "for drops".** *"Where do I get a high quality pal oil"* returned 41 sources led by Mammorest at 100%, 5–10 — correct and useful. *"Where can I find cakes"* returned **Lovander at 1%**, which is true and is not the answer: cake is crafted, and the player asked because breeding needs it. `by_item` is a **drop table** and the card says *"Cake comes from"*. Open as a card-wording item above, not as a measurement gap. |
+| ~~**Does `item_source` work?**~~ | **Answered 2026-08-12 "for drops"; the crafted half FIXED 2026-08-14.** *"Where do I get a high quality pal oil"* returned 41 sources led by Mammorest at 100%, 5–10 — correct and useful, unchanged. *"Where can I find cakes"* used to return **Lovander at 1%**, true and not the answer players needed for breeding; it now leads with the recipe (Flour, Red Berries, Milk, Egg, Honey) and keeps the drop as a secondary line. Corrected against the recorded transcript, not yet reconfirmed in play — the card-wording fix promised here is done, the play-session confirmation is not. |
 | **Does the breeding rank model hold?** | The ADR-0008 gate, and the whole of Phase 3B behind it. **Nothing is left to build**: `build_breeding.py` ingests the ranks, [`Docs/breeding-verification.md`](Docs/breeding-verification.md) is generated, `score_breeding.py` waits to consume it. It needs **eggs hatched in game**, on Steam buildid **`24467282`** with auto-updates off. **The "breeding isn't unlocked" precondition was checked against the save on 2026-08-12 and is wrong** — the Breeding Farm's four stated requirements are all satisfied (level 19 ≤ your floor of 57, ForestBoss beaten, no prerequisite, 2 of your 40 ancient points) and the Egg Incubator is already unlocked. So this is **not** blocked on another player's playthrough, as the failed 2026-08-11 delegation suggested; it is two clicks in the technology menu, then cake production (Ranch + Mill + wheat, eggs, milk, honey) to hatch anything. Note ADR-0008 requires **100% agreement** outside the exception table and refuses partial agreement as a tunable, so one refuted Block 1 row is a decision (the `TableBasedBreedingModel` fallback), not a data point. |
 | ~~**Is the owned-Pal roster reaching the cards?**~~ | **Confirmed in play 2026-08-12** — every counter card in the session printed *"checked 143 of your Pals"*, and the tower/alpha split read correctly on all three asked (Grizzbolt → Zoe's tower, Victor → Victor's tower, Anubis → field alpha). **One thing that count hides:** you own 195 species and 50 of them are `BOSS_`-prefixed, which `counters.py` excludes. 35 duplicate a base species you also own, but **14 are species you hold ONLY as an alpha** — `boss_suzaku`, `boss_volcanicmonster`, `boss_winggolem` among them, all typed — and they can never appear in a shortlist. Whether a caught alpha should count as a party member is a judgement; *"checked 143 of your Pals"* reading as your whole roster is not. The original note: **No, and it never had. Fixed 2026-08-12.** `owned_species` was built and tested in Phase 3 and never passed into the bot's `PlayerState`, so every counter card in the 2026-08-11 session said *"I haven't read your Pals"* — including the ones the player pressed feedback buttons on. Now polled on the watcher's own five-minute cadence and shown on `/palintel status`; the reference save reads **194 owned characters**. **Every Q5 reading from that session was taken with the roster filter off.** |
 | **Is a Q4 base site somewhere you can actually build?** | **Half-closed 2026-08-12 by the game; the flatness half re-opened by play 2026-08-13.** Flatness is measured as the height spread of every placed actor inside the radius, calibrated to the 75th percentile of the 32 spots the game marks `BP_BaseCampPopularArea_C`. **Walked to a suggested coal site on 2026-08-13, and it was flat in the way the metric measures and not in the way a base needs**: *"flat surfaces, but smaller flat surfaces at different elevations."* Terraced, not sloped. **Spread is a dispersion statistic and has no notion of shape** — two terraces 3 units apart score the same as one gentle uniform ramp of the same total relief, and the terrace is far worse to build on, because a base needs one *contiguous* patch large enough for the structures, not a low variance. The metric is not wrong, it is answering a different question than the one asked. What it would take: largest connected component within an elevation band, rather than the spread of the whole set. No-build zones remain unmeasurable and are still the other half. |
@@ -476,17 +500,27 @@ scores any model across four populations with the codec-shortcut gate built in.
 
 ## Next
 
-**0. G4 — a counter query that names the attacker answers about fighting the attacker.**
-*"Is Prixter any good against the first tower"* produced a plan for fighting Prixter. The
-target is stated in the same sentence, in the same clause. **This is the confidently-wrong
-Tier 2 card the project says it will not ship**, and Block G scores a decline as the pass,
-so there is no reading where this is acceptable behaviour. The class is otherwise sound —
-16 counter queries in the session, all naming the target, all fine — so this is one
-missing distinction rather than a broken class: *which* named entity is the boss. **A
-decline is a perfectly good fix**; nothing requires it to answer the attacker-framing at
-all. Note the shape before fixing it: an allowlist of preposition patterns would be a
-special case wearing a rule's clothes, and the general rule — *the target is the thing the
-question is aimed at, not the first Pal named* — is the one worth finding.
+~~**0. G4 — a counter query that names the attacker answers about fighting the attacker.**~~
+**FIXED 2026-08-14, unplayed.** *"Is Prixter any good against the first tower"* produced a
+plan for fighting Prixter — the confidently-wrong Tier 2 card the project says it will not
+ship. Root cause was upstream of the fast path, which was already correct: `_COUNTER_CUES`
+deliberately excludes "good against" phrasings (see `routing.py`), so this utterance always
+fell through to the model, and the model correctly had two slots for it — `pals` for a Pal
+named as something to bring, `target` for the boss free-text — but `routing_unified.py`'s
+`unpack()` let the positional `pals` zip set `boss` unconditionally and only fell back to
+`target` when `boss` came out empty. Whenever both slots were filled, the named Pal silently
+out-ranked the boss the sentence actually named. `test_boss_counter_unpacks_the_pal_into_the_boss_slot`
+had codified the wrong precedence as a passing test, using this exact payload.
+
+The general rule (not an allowlist of prepositions, per the note this replaced): **`target`
+decides the boss for `plan_counters` whenever it is filled — `pals` only supplies it when
+`target` is empty.** `target`'s schema description was also broadened so the model fills it
+for an unresolved tower reference ("the first tower"), not only a named leader. An
+unresolved `target` still reaches `counters.plan`, which declines rather than guesses — the
+decline **is** the fix here, not a fallback from one. New regression tests in
+`test_counter_routing.py` reproduce the exact G4 payload at both the `unpack()` and
+end-to-end `Pipeline` levels. **828 tests green.** Not yet played — this is corrected
+against the recorded transcript, not against a live session.
 
 **0a. Cross-check the ledger against the corpus.** The 2026-08-13 session wrote 64 rows to
 `costs.jsonl` and 3 to `log.jsonl` — a factor of 21, on the same session id, in the same
@@ -668,9 +702,130 @@ code change at all. Untested against a real share. Fall back to running the bot 
 accept the degradation if neither is convenient; **do not build a save-shipping agent** until
 a session has shown the degradation is not enough.
 
-**1. Then the three found-and-not-fixed items**, in the roadmap and repeated under the
-session block above: the Q6 narrowing that defers, the `item_source` card title, and Q7
-retrieval diversity. Each is small; each wants its own sweep rather than a ride-along.
+**1. Then the found-and-not-fixed items**, in the roadmap and repeated under the session
+block above: the Q6 narrowing that defers, and Q7 retrieval diversity (closed as a
+non-fix — see the decision below). The `item_source` card title is **FIXED 2026-08-14**,
+alongside the crafting-recipe ingest it depended on. Each remaining one is small and wants
+its own sweep rather than a ride-along.
+
+~~**1a. `item_source`'s MODEL PATH is still capped at the 151-item drop-table enum.**~~
+**DONE 2026-08-14, same session.** Widening `items_named` to the full 1,031-item union
+would have been a **~7x schema increase** paid on every query of every class, so this
+took `technology_lookup`'s shape instead: a new free-text `item_name` slot the
+DISPATCHER resolves (`execution.find_item`, whole-string `SequenceMatcher` against
+`kb.item_sources ∪ kb.recipes`, floor 0.80, decline on a tie — the same three numbers and
+the same tie rule `progression.find` uses for technology names, including a real
+tie case: 94 item groups in this dataset squash to one string once a schematic tier digit
+is stripped, "Laser Rifle Schematic 2/3/4" among them). `items_named`'s enum result
+always wins when both are filled — the opposite asymmetry from `plan_counters`'s `target`,
+because `items_named` IS a validated choice and `item_name` is not.
+
+**A pleasant surprise: whole-string matching closes the fast path's own coverage gap.**
+"The high quality pal oil" resolves at 1.00 here, where the fast path's `Lexicon.rank()`
+lost it to two of its own siblings because of the 3-gram cap — a model's already-extracted
+phrase has no sentence noise to strip, so the simpler whole-string match that the fast
+path's n-gram ranking exists to handle noisy full sentences turns out to be the *better*
+tool for this specific input shape, not a fallback.
+
+**And this is the first router in the project to ever populate `Decline.unrecognized`
+with something real** — see 1c below, which is why this was built in that order. When
+`find_item` cannot place the model's own attempt, that string is captured rather than
+discarded, unlike the fuzzy ranker's top score, which the fast path's own comment warns
+is usually unrelated to what actually confused it. **10 new tests, 873 total green.**
+
+**1d. Replayed against real logged play, not just synthetic prompts — 2026-08-14, two
+steps as proposed.** `tools/eval/replay_sessions.py` reads every `data/sessions/*/log.jsonl`
+row (152 real utterances across 15 sessions) and replays each through today's code.
+
+*Step 1 ($0, fast path only):* of 152, only 45 were ever fast-pathed at all; of those,
+**3 real changes, zero of them item-related**. All three trace to work already landed
+for other reasons (`get_pal_info` absorbing "tell me about X", the ambiguous-coordinate
+decline, a base-siting cue fix) or to this script's own limitation — it replays each
+utterance in isolation with no conversation history, so a follow-up fragment like *"do I
+have one?"* correctly cannot resolve here the way it would with real context. **No fast
+path claimed something it shouldn't have; nothing item-related regressed.**
+
+*Step 2 (real spend, full production stack):* 48 of 152 still reached the model —
+**$0.2783**, close to the $0.22 estimate (average $0.0058/request against the $0.0048
+cached figure the estimate used). 28 changes, again **zero involving `find_item_source`**
+— every real historical item-shaped query (`Cake`, `High Quality Pal Oil`) was already
+inside the 151-item enum and needed no fallback; `item_name` has not fired against real
+data yet because nobody has asked about a recipe-only item yet. The other 28 changes are
+model non-determinism on borderline declines and, again, pre-existing fixes landed
+between when these were logged and today (`lookup_corpus` now answering explanatory
+"tell me about research points" instead of a shopping list, matching the Q6 fix already
+on record) — not anything from today's work.
+
+**Bookkeeping note, found the way this project usually finds them: the first run of the
+replay spent $0.2783 and logged it nowhere.** `score_router.py` already writes eval spend
+to `data/sessions/eval-<date>/costs.jsonl` specifically so the balance stays honest; the
+first version of `replay_sessions.py` didn't call that. Fixed in the script for future
+runs and reconciled retroactively for this one — the exact shape of gap 0a and the M0
+ledger bug both warned about, caught this time before anyone had to notice it from a
+missing button or a wrong total.
+
+**1b. The FAST PATH is a different, separate answer to a related question, and it landed
+2026-08-14.** `item_source` had zero fast-path coverage before this — every query paid
+the full model round trip, exactly the cost `spend.py`'s own comment predicted. A second
+`Lexicon` instance (`build_item_lexicon.py`, 1,031 items — the same union as 1a, but
+ranked, not schema'd) feeds a new `StubRouter._item_call` branch, cue-gated
+(`_DROP_CUES` / `_CRAFT_CUES`) and floored at `ITEM_CONFIDENT = 0.90`, above `PAL_CONFIDENT`
+because item names are disproportionately ordinary English (`Bone`, `Egg`, `Milk`, `Ore`
+at four characters or fewer). Deliberately a SEPARATE lexicon rather than a fourth block
+in `lexicon.json`: 12 of the 18 resources already share a display name with a
+droppable/craftable item, so folding items into the one ranked list every other branch
+trusts would have put an item candidate in competition for the top slots on queries that
+name no item at all.
+
+**The first measurement sweep against the 271 A5 transcripts (1,067 prompts total,
+written + spoken) found two real bugs before either reached production**, which is the
+whole reason this project measures before shipping a branch:
+
+- **A confident Pal reading lost to a coincidental item match.** *"What do I get from
+  Gildra and Fuddler"* ranks both names as real Pals at 1.00 — `_drops_call` correctly
+  defers, it is a two-Pal question with one slot — and the new branch then answered it
+  anyway, because "Gildra" fuzzy-matches "Giga Glider" at **0.95** in the item lexicon, a
+  coincidence of letters. **This is the exact confidently-wrong failure the project
+  refuses to ship, caught by the sweep before anyone asked it in play.** Fixed: `_item_call`
+  now defers whenever `candidates` already contains a confident Pal, regardless of which
+  score is higher — a Pal reading of the same text is stronger, independent evidence than
+  an item lexicon's own ranking.
+- **The fix for that nearly broke real coverage.** A blanket "two confident items defer"
+  guard (mirroring `_drops_call`'s two-Pal guard) fired on *"who drops ancient
+  civilization parts"* — `Ancient Civilization Parts` at 1.00 and `Ancient Civilization
+  Core` at 0.905 right behind it, not a second named item but one item with a
+  similarly-prefixed sibling, because item names share prefixes (`Ancient X`, `High
+  Quality X`) far more than Pal names do. Fixed by keying the guard on the two
+  candidates' matched TEXT SPANS being disjoint, not merely both clearing the floor.
+
+**Measured after both fixes: 0 stolen over all 1,067 prompts** (written and spoken), and
+**10/11 of the batch −1 item prompts claimed on written text** (91%; the miss is a known
+coverage gap — `Lexicon.rank()` caps at 3-grams, so the 4-word "High Quality Pal Oil"
+scores below two of its own 2-word-prefix siblings and correctly declines rather than
+guessing). **7/11 on spoken text** — three of the four spoken misses are STT mangling the
+item name itself before the router ever sees it ("Venom Gland" → "Fennum Gland", "Gold
+Coin" → "cold coins"), the same STT-vs-routing split every other branch here has; the
+fourth is the same n-gram gap. **17 new tests, 857 total green.**
+
+**1c. `Decline.unrecognized` — designed for alias harvesting, never actually populated,
+now is.** Checking whether declines were captured for alias analysis (asked ahead of
+building the free-text item resolver below) found that `capture.py`'s `Utterance.entity`
+is only ever set from a tool call's ARGUMENTS, which are empty on a decline by
+construction — so a decline's row always carried its top candidate's *score* and never
+its *name*. Separately, `Decline.unrecognized` — the field its own docstring says exists
+for "a token the user actually said that we could not place" — turned out to be `None`
+everywhere in the codebase except one deliberate case, where the fast path's own comment
+explains why it stays unset: the top-scoring candidate on a fuzzy-ranker decline is often
+an unrelated word, not the culprit. **Fixed generally, not just for items**: `Utterance`
+gained two new additive fields, `near` (the top candidate regardless of decline/answered)
+and `unrecognized` (the router's own named culprit, when it names one), wired from
+`bot.py`'s single `_answer` call site and locked in by an AST test mirroring the one that
+caught the 2026-08-13 capture/feedback wiring gap. `analyse_session.py` gained
+`named_unmatched()`, a print section, and an `analysis.json` entry alongside the existing
+rephrase proposals — all three empty today, honestly, since no router names its culprit
+yet. The item free-text resolver (see Next) is what will populate it, and unlike the fuzzy
+ranker's case, a model's own written attempt at an item name is a reliable signal, not
+noise. **6 new tests, 863 total green.**
 
 ~~**2. Persist latency.**~~ **Done 2026-08-13 (M4).** `activity.py` kept a one-hour
 in-memory window and wrote nothing, so the 2026-08-12 voice p95 of 6.2s against a 2.5s
@@ -795,6 +950,7 @@ is the same list at a glance, with what the 2026-08-12 session actually did to e
 | **Q7: should a decline fall through to the corpus?** | Not built, deliberately. `general_knowledge` is a class the router may *choose*, not a catch-all. The roadmap calls the fallback "the change that makes the system a chatbot", and it is the largest change to this project's risk posture available — worth your explicit yes rather than my inference. |
 | **Q7: the ceiling is recall, not diversity and not synthesis** — *and the cheap answer measured false* | Today a Tier 3 card quotes the game verbatim, so no model touches the text and ADR-0011's drift failure cannot occur. **2026-08-12 produced the first question that needs two chunks** — *"how do I assign a pal to the breeding farm"* — and this file recorded the fix as **retrieval diversity**, on the grounds that the card already renders a second quote and spent it on a near-duplicate. **Re-measured 2026-08-14: that is wrong.** The `Base` chunk holding the mechanism scores **0.000** on this query — no shared term — and only 3 chunks in 3,259 score above zero at all. Diversity reorders a list that never contained the answer. It joins the module docstring's own `missed` column, where five in-corpus questions asked in player words score 0.34–0.70 inside the band unanswerable questions occupy. **That is the same finding from two directions, and it is the embeddings case**: the defect is *recall*, and neither diversity nor synthesis addresses recall. Synthesis over three copies of one sentence would still not say how to assign a Pal. **Do not spend the diversity work expecting this question to come back answered.** |
 | **Q4: is the computed version enough?** | The roadmap's Q4 was twenty curated sites with prose rationale; what shipped is "what falls inside a base's radius", because the curated version needed invented flatness scores and community prose. If you want the curated half, it needs a source you trust and a way to verify it. |
+| ~~**`item_source`: widen the recipe enum, or match it as free text?**~~ | **DECIDED and BUILT 2026-08-14: free text**, matching `technology_lookup`'s pattern rather than paying the ~7x schema cost of enumerating all 1,031 items. See 1a above. |
 | **Should `pal_info` answer questions it cannot answer?** | Measured 2026-08-12: it absorbs *"how much stamina does Rinjishi have"* and *"is loopmoon worth levelling up"* — questions with no class, where a summary is arguably better than a decline and arguably the wrong-class failure the first play session named. The decline policy was rebalanced on 2026-08-11 toward answering, on the finding that declining an answerable query is also a failure; this is the same trade seen from the other side. **Your call, and the first play session is where it will feel wrong or fine.** *2026-08-12 produced one instance and it is a mild one*: **"how do I unlock Anubis"** routed to `get_pal_info` — an unlock question about a Pal, absorbed because it names one. No feedback button was pressed on it. One data point, pointing the same way the measurement did. |
 | **Set `cost.balance_usd`** — *now safe to* | Spend is logged per query and totalled, but the balance is 0 so nothing is deducted. **Do not set this from a reading taken before 2026-08-12**: the ledger over-reported by 3.8× and would have warned you empty with two thirds of the money left. Fixed and regression-tested; a real session costs about **$0.09**, not $0.33. Put what you actually loaded onto the key in `config.local.toml`. |
 | **Coal coverage** | 552 → 308 clusters. Cave coal is most of Palworld's coal and can no longer be asked for. Accept, or promote the dungeon feature? |
@@ -1094,16 +1250,27 @@ is the same list at a glance, with what the 2026-08-12 session actually did to e
   `source: "gameplay"` so it stays measurable apart from the scripted set. Nothing should
   be promoted into `prompts.json` without a human pass — the scripted corpus's whole value
   is that its expectations are known-correct.
-- **Harvest STT manglings into lexicon aliases** — the measured next move, and **not** a
-  threshold change. The 2026-08-11 branch batch's spoken misses are mostly the lexicon
-  finding the right Pal *first* and the router refusing it just under the 0.85 floor:
-  Vanwyrm 0.71 from "fan worm", Jetragon 0.82 from "jit dragon", Lamball 0.80 from
-  "landball", Mycora 0.83 from "my kora". Sweeping the floor buys 1 hit for 2 wrong
-  entities on the 240 and 4 hits for 3, so it stays where it is — a wrong card is the
-  trade this project refuses. An **alias is surgical where the floor is global**: it
-  raises one true match to 1.0 and loosens nothing else. `score_stt.py` already ends by
-  listing the misses as alias candidates, so the first pass costs no recording at all.
-  Measure before/after on both sets, and note the aliases are one speaker's manglings.
+~~**Harvest STT manglings into lexicon aliases**~~ — **run 2026-08-14.** `harvest_aliases.py
+--condition quiet` scanned 227 recordings and passed all four safety checks on exactly
+**2** candidates: `Direhowl` ← "dara hal", `crude_oil` ← "screwed oil". Applied,
+rebuilt, measured before/after as the entry asked: **Q1 14/18 → 15/18, Q2 unchanged at
+43/49, zero wrong, zero new steals** — one true match raised to 1.0, nothing else
+loosened, exactly the surgical property this entry predicted.
+
+**16 more were held for review, and the review's conclusion is that none of them belong
+in the lexicon.** Read against this project's own stated criteria, every one carries a
+risk the tooling already warns about by name: `Jetragon` ← "dragon" is the *literal*
+cautionary example in `harvest_aliases.py`'s own docstring; `Vanwyrm Cryst` ← "and cryst"
+is the literal example in the same file of a function word turning a real mangling into a
+phrase that matches unrelated sentences; `Faleris` ← "hilarious" and `Mycora` ← "my kora"
+are exactly the "common enough to appear in ordinary speech" shape the corpus is too
+narrow to prove safe. Two more candidates came from real gameplay (`--session
+20260811-191709`): `Bjorn` ← "majoran" and `Gildra` ← "gilderoy", both flagged
+"target inferred from a rephrase, not stated by a prompt" — and `majoran → Bjorn`
+specifically is the exact case this project already got burned by once (see the module
+docstring's own account of the first run accepting it outright). Neither was added.
+**A clean review with nothing accepted is still a completed review** — the corpus was
+read, not skipped. 2 new tests, 879 total green.
 - **STT accuracy on this speaker's actual speech** — still the widest lever, but read the
   entry above first: raw transcript accuracy is a lower bound, not the pipeline's, and
   `stt.py` records that `large-v3` was *less* accurate than `medium.en` (80% vs 88%) and

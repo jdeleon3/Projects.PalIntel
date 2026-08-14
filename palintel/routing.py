@@ -284,6 +284,24 @@ DEFAULT_CUES = "wide"
 # Deliberately narrow, and deliberately disjoint from the location cues - none of these
 # words appears in _CUE_SETS, so the two branches cannot fight over one utterance.
 _DROP_CUES = re.compile(r"\b(drop|drops|dropped|yield|yields|get from|give|gives)\b", re.I)
+# The recipe half of `item_source` - "what does a Cake need" rather than "who drops a
+# Cake". Reused for the SAME tool as `_DROP_CUES` (`find_item_source` now answers both,
+# see execution.find_item_source), so `_item_call` checks this alongside `_DROP_CUES`
+# rather than as a separate branch.
+#
+# Unlike `_DROP_CUES`, this one is NOT disjoint from the location cues - "where do I get"
+# contains `where`, and `_CUE_SETS["wide"]` also carries `i need`. That overlap is safe
+# only because `_item_call` sits ABOVE the location gate in `route()`, the same position
+# `_drops_call` and `_counter_call` hold for the same reason: whichever branch claims the
+# utterance first is the one that answers, and the location gate never gets a turn on
+# anything already claimed here.
+_CRAFT_CUES = re.compile(
+    r"\bwhere (?:do|can) i get\b"
+    r"|\bwhat do i need (?:for|to (?:make|craft))\b"
+    r"|\bhow do i (?:make|craft)\b"
+    r"|\bwhat does it take to (?:make|craft)\b"
+    r"|\bingredients? for\b"
+    r"|\brecipe for\b", re.I)
 # Q5. Deliberately narrow: every word here has to be about *fighting* a named thing,
 # because this branch decides a TIER, not just a tool. A location question answered as
 # a drop question is the wrong fact; a location question answered as a counter plan is
@@ -552,6 +570,24 @@ _TECH_GOAL_CUE = re.compile(rf"\b({_TECH_GOAL_ALT})\b", re.I)
 # questions this branch exists for.
 _ANCIENT_CUE = re.compile(r"\bancient\b", re.I)
 
+# "What tech should I research for my mining pals" - a narrowing by JOB or ELEMENT that
+# `suggest_next_unlock` has no slot for at all. `_TECH_GOAL_WORDS` maps a CATEGORY
+# ("weapon", "armor") to the pak's `tech_goal` enum; a Pal attribute is a different axis
+# the schema was never given a field for, and until this was found the branch silently
+# answered the UNNARROWED list instead - "what tech should I research for my mining
+# pals" returned the same thing as "what should I research next", led by Advanced Arrow,
+# with no sign the filter had been seen and dropped.
+#
+# The fix is `_base_call`'s `weak` flag, one class over: a narrowing the branch
+# recognises but cannot honour must decline rather than silently answer around it.
+# Reuses `_WORK_WORDS` and `_ELEMENT_WORDS` wholesale - they are already the exact
+# vocabulary for "a Pal attribute a player would say out loud" (`pal_search` matches
+# against them today) - rather than inventing a third list that would drift from the
+# other two.
+_UNMAPPABLE_TECH_NARROWING = re.compile(
+    rf"\b({'|'.join(sorted(set(_WORK_WORDS) | set(_ELEMENT_WORDS), key=len, reverse=True))})\b",
+    re.I)
+
 # A coordinate pair the player read off the in-game map: "(185, -475)", "185, -475",
 # "at 185 -475". Both numbers are required and both may be negative.
 #
@@ -757,6 +793,21 @@ BACKSTOP_CONFIDENT = 0.68
 # to the model, which has the sentence context to resolve it (ADR-0016).
 PAL_CONFIDENT = 0.85
 
+# The floor for accepting WHICH item, set ABOVE PAL_CONFIDENT rather than reused from it.
+# 313 Pal names are mostly invented words; 1,031 item names carry `Bone`, `Egg`, `Milk`,
+# `Wool`, `Nail`, `Ruby`, `Bat`, `Coal`, `Ore`, `Cake` and `SMG` at four characters or
+# fewer - ordinary English, the same risk `build_lexicon.py`'s `ALIAS_STOPWORDS` exists
+# to keep out of aliases, except here it is the CANONICAL name itself that is short and
+# common, which cannot be filtered the same way without losing the item outright.
+#
+# **This is a starting point, not a measurement.** No item name has ever been recorded
+# being misheard by this bot - there is no STT-failure corpus to sweep the way
+# PAL_CONFIDENT and BACKSTOP_CONFIDENT were chosen, above, "by where wrong answers begin."
+# The cue gate (`_DROP_CUES` / `_CRAFT_CUES` in `_item_call`) is the primary defence here,
+# the same discipline `_COUNTER_CUES` uses; the floor is the second line, deliberately
+# strict until real transcripts justify loosening it. See tools/eval/score_item_branch.py.
+ITEM_CONFIDENT = 0.90
+
 # Phrasings that refer back to an earlier turn rather than naming their own subject.
 #
 # Deliberately narrow. A false positive here answers a FRESH question with a STALE entity,
@@ -843,7 +894,9 @@ class StubRouter:
                  counterable: set[str] | None = None,
                  attributes: bool = True, info: bool = True,
                  progression: bool = False, base_sites: bool = False,
-                 corpus: "Callable[[str], bool] | None" = None):
+                 corpus: "Callable[[str], bool] | None" = None,
+                 item_lexicon: Lexicon | None = None,
+                 item_floor: float = ITEM_CONFIDENT):
         """`resource_floor` is how well a resource must match to be answered on.
 
         Separate from the Pal guard, which stays at MIN_CONFIDENT, because one constant
@@ -926,6 +979,12 @@ class StubRouter:
         # corpus ground this?", so the branch claims only what it can actually answer
         # instead of preempting the model with a decline. None turns the branch off.
         self._corpus = corpus
+        # item_source's fast path. Ranked against a SEPARATE lexicon (never `lexicon`
+        # above - see that class's own note), so it is gated on the lexicon being handed
+        # in at all rather than on a bool: `item_lexicon=None` and "off" are the same
+        # state, the same way `corpus=None` already works two lines up.
+        self._item_lexicon = item_lexicon
+        self._item_floor = item_floor
         # Width, floor and registered classes are all in the name so they reach
         # `/palintel status` and every routing log line. A fast path that quietly widened,
         # or a backstop quietly answering on weaker matches, would be indistinguishable
@@ -937,7 +996,8 @@ class StubRouter:
                      + ("+info" if info else "")
                      + ("+tech" if progression else "")
                      + ("+bases" if base_sites else "")
-                     + ("+corpus" if corpus is not None else ""))
+                     + ("+corpus" if corpus is not None else "")
+                     + (f"+items@{item_floor:g}" if item_lexicon is not None else ""))
 
     def _subject(self, candidates: list[Candidate]) -> tuple[str, str, str] | None:
         """(tool, slot, canonical) for the subject this utterance names, if any.
@@ -1036,6 +1096,71 @@ class StubRouter:
             return None
         return ToolCall(name="find_pal_drops", args={"pal": top.canonical},
                         rationale=f"drop cue + pal candidate {top}")
+
+    def _item_call(self, utterance: str, candidates: list) -> "ToolCall | None":
+        """`find_item_source` when the utterance clearly asks how to GET a named item -
+        who drops it, or what it takes to craft it.
+
+        Unlike every other branch here, the entity it names is NOT ranked from
+        `candidates` - the Pal/resource/leader list `route()` was handed - but from a
+        second ranking against `self._item_lexicon`, a SEPARATE `Lexicon` instance built
+        by `build_item_lexicon.py` that never contributes to `candidates` in the first
+        place. See that module's docstring for why: item names are disproportionately
+        ordinary English and would pollute the one ranked list every other branch trusts.
+        `candidates` is still consulted, though - see the Pal-defers-item note below.
+
+        Sits directly below `_drops_call` and above the location gate, same tier as
+        counters and drops, for the same reason: `_CRAFT_CUES` overlaps `where` with the
+        location cue set, and being asked first is what keeps that overlap harmless (see
+        `_CRAFT_CUES`'s own note).
+
+        `ITEM_CONFIDENT` is a starting floor, not a measured one - there is no STT-failure
+        corpus for item names yet. The cue gate is the primary defence, same discipline as
+        `_COUNTER_CUES`.
+
+        **A confident Pal reading of the SAME text defers, even at 0.95+.** Found by the
+        first sweep against the A5 corpus: "what do I get from Gildra and Fuddler" ranks
+        both names as real Pals at 1.00 in `candidates`, and `_drops_call` correctly
+        defers - it is a two-Pal question, one slot. `_item_call` used to have no idea
+        that had just happened and answered anyway, because "Gildra" fuzzy-matches "Giga
+        Glider" at 0.95 in the item lexicon - a coincidence of letters, not a real
+        reading. A confident Pal candidate is strong, independent evidence about what
+        this utterance is actually about; an item match that disagrees with it is the one
+        that is probably spurious, not the other way around. Scoped to `pal` only, not
+        `resource` - "what drops paldium fragment" must keep working, and Paldium
+        Fragment ranking as a confident RESOURCE there is correct, not a collision.
+        """
+        if self._item_lexicon is None:
+            return None
+        if not (_DROP_CUES.search(utterance) or _CRAFT_CUES.search(utterance)):
+            return None
+        if any(c.kind == "pal" and c.score >= self._pal_floor for c in candidates):
+            return None
+        ranked = self._item_lexicon.rank(utterance)
+        if not ranked or ranked[0].score < self._item_floor:
+            return None
+        top = ranked[0]
+        # Two distinct confident items is two answers from a tool with one slot - "who
+        # drops bone and leather" - the same guard `_drops_call` applies to two Pals.
+        #
+        # Found by the same sweep as the Pal-defer guard above: "who drops ancient
+        # civilization parts" ranks `Ancient Civilization Parts` at 1.00 and `Ancient
+        # Civilization Core` at 0.905 right behind it - not a second named item, one
+        # item with a similarly-named sibling, because dozens of item names share a
+        # prefix ("Ancient X", "High Quality X", "Advanced X") that Pal names mostly do
+        # not. The two candidates naming genuinely different things ("bone and leather")
+        # match DISJOINT spans of the utterance; two readings of the same span do not,
+        # so requiring disjoint spans is what tells them apart - a family exception in
+        # spirit, the way `_drops_call` treats "Incineram Noct" beside "Incineram", but
+        # keyed on the TEXT matched rather than a Paldeck slot items do not have.
+        second = ranked[1] if len(ranked) > 1 else None
+        if (second and second.score >= self._item_floor
+                and second.canonical != top.canonical
+                and second.matched_text not in top.matched_text
+                and top.matched_text not in second.matched_text):
+            return None
+        return ToolCall(name="find_item_source", args={"item": top.canonical},
+                        rationale=f"item cue + item candidate {top}")
 
     def _info_call(self, utterance: str, candidates: list) -> "ToolCall | None":
         """`get_pal_info` when the utterance asks what a named Pal *is*.
@@ -1349,7 +1474,7 @@ class StubRouter:
                         rationale=f"named technology {tech.name!r} at {score:.2f}")
 
     def _tech_call(self, utterance: str,
-                   candidates: list[Candidate]) -> "ToolCall | None":
+                   candidates: list[Candidate]) -> "ToolCall | Decline | None":
         """`suggest_next_unlock` when the utterance asks what to research.
 
         **The guard is the absence of a named entity**, the same structural argument
@@ -1367,6 +1492,22 @@ class StubRouter:
         decision beyond the one the mount work already made: a `LevelCap` is a gate the
         game states, so reading it is not the uncalibrated judgement that decision
         refused.
+
+        **A narrowing this class cannot map means defer, not drop.** "What tech should I
+        research for my mining pals" names a real filter - the schema simply has no field
+        for it - and answering the unnarrowed list anyway is a stated request silently
+        discarded, the same failure the mount branch found for "which dragons can I ride"
+        losing its element. See `_UNMAPPABLE_TECH_NARROWING`.
+
+        **An explicit `Decline`, not a plain `None`.** `_base_call`'s `weak` flag can
+        return `None` safely because the same condition that trips it (a resource with no
+        placed nodes) also stops the location gate downstream from claiming it - the
+        fallback is safe by construction. A job or element word has no such property:
+        "mining" and "pal" together are exactly what `_attribute_call` is built to claim,
+        and it runs later in `route()`. Falling through here would answer a technology
+        question with a roster of mining Pals - the wrong-class failure this file
+        elsewhere calls worse than a decline, because it looks like an answer. Found by
+        running the fix and reading the new output, not by inspection.
         """
         if not self._progression:
             return None
@@ -1377,6 +1518,17 @@ class StubRouter:
             return None
         if self._subject(candidates) is not None:
             return None
+        if (m := _UNMAPPABLE_TECH_NARROWING.search(body)):
+            # A Decline, not None: this utterance is already confidently a technology
+            # question (both cues matched), and falling through would let
+            # `_attribute_call` claim "mining" + "pal" and answer with a roster instead -
+            # see the docstring note above. Not `needs_restatement` - that flag means
+            # "say the name again", ADR-0013's expired-context case, and this is a
+            # different kind of no: the question was heard fine, this class just has no
+            # way to narrow by it yet.
+            return Decline(
+                reason=f"I can't narrow technology recommendations by {m.group(1)!r} "
+                       "yet - ask what to research next without that filter")
 
         args: dict[str, object] = {}
         if (m := _TECH_GOAL_CUE.search(body)):
@@ -1497,6 +1649,16 @@ class StubRouter:
         drops = self._drops_call(utterance, candidates)
         if drops is not None:
             return drops
+
+        # item_source, directly below drops - "who drops flame organ" and "what does
+        # Vanwyrm drop" share `_DROP_CUES` but rank against different lexicons
+        # (`_item_lexicon` vs `candidates`), so whichever finds a confident top match
+        # answers and the other finds nothing to claim. Above the location gate because
+        # `_CRAFT_CUES` overlaps it (`where do I get` contains `where`) - see that
+        # regex's own note.
+        item = self._item_call(utterance, candidates)
+        if item is not None:
+            return item
 
         # Attribute search goes above the location gate for the third time in a row and
         # for a new reason: "give me an electric pal that is level 60" DOES carry a wide

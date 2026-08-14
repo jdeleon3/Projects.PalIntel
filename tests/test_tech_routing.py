@@ -118,12 +118,40 @@ def test_the_branch_is_off_when_it_was_not_switched_on(kb):
     assert name(call(off, "what should I research next")) != "suggest_next_unlock"
 
 
-def test_a_tech_question_mentioning_a_job_does_not_become_an_attribute_search(router):
-    """The one real collision. "What tech should I research for my mining pals" carries
-    a job word AND the word "pal", so attribute search would claim it and answer a
-    technology question with a roster. The tech branch runs first for that reason."""
-    assert name(call(router, "what tech should I research for my mining pals")) \
-        == "suggest_next_unlock"
+def test_a_narrowing_this_class_cannot_map_declines_rather_than_drops(router):
+    """FIXED 2026-08-14. "What tech should I research for my mining pals" used to answer
+    the UNNARROWED list - Advanced Arrow first, no sign the "mining" filter had been seen
+    and dropped, a stated request silently discarded.
+
+    It cannot simply defer to the next branch either: "mining" + "pal" is exactly what
+    `_attribute_call` is built to claim, and that branch runs later in `route()`. A plain
+    `return None` here reopens that exact collision and answers the technology question
+    with a roster instead - reproduced while building this fix, before it shipped. So the
+    guard returns an explicit `Decline`, which stops `route()` before attribute search
+    ever sees the utterance."""
+    c = call(router, "what tech should I research for my mining pals")
+    assert isinstance(c, Decline)
+    assert "mining" in c.reason
+
+
+@pytest.mark.parametrize("text,word", [
+    ("what tech should I research for my mining pals", "mining"),
+    ("what tech should I unlock for my electric pals", "electric"),
+    ("what should I research for my hauling pals", "hauling"),
+])
+def test_every_unmappable_narrowing_declines_not_just_the_one_example(router, text, word):
+    """Job words (`_WORK_WORDS`) and element words (`_ELEMENT_WORDS`) are the same
+    vocabulary `pal_search` already matches against - reused wholesale rather than
+    writing a third list that could drift from the other two."""
+    c = call(router, text)
+    assert isinstance(c, Decline)
+
+
+def test_a_mappable_goal_still_narrows_correctly(router):
+    """The fix must not turn EVERY tech question into a decline - only the ones naming a
+    filter this class genuinely has no field for. "weapon" is a real `tech_goal` category
+    and must keep answering, not join the new decline."""
+    assert call(router, "what weapon should I research next").args["goal"] == "Weapon"
 
 
 # ------------------------------------------------------------------ the wiring

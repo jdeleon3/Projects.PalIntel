@@ -3479,6 +3479,19 @@ result read against memory instead of against the written expectation is not a m
 and this file exists because of measurements that reversed a conclusion. *Score the row
 against the document, every time, including when the outcome sounds like good news.*
 
+**Fixed 2026-08-14.** The fast path was never the problem — `_COUNTER_CUES` already
+excludes "good against" phrasings, so this utterance always reached the model. The model
+path had the right two slots (`pals` for a Pal offered as attacker, `target` for the boss
+free text) but `routing_unified.py`'s `unpack()` let the positional `pals` zip set `boss`
+unconditionally, falling back to `target` only when `boss` came out empty - so a named Pal
+silently out-ranked the boss the sentence actually stated whenever both were filled. A
+test had codified that precedence as correct, using this exact payload. `target` now wins
+whenever it is filled; an unresolved value ("the first tower") still reaches
+`counters.plan` and declines, which is Block G's pass condition, not a degraded answer.
+See `test_counter_routing.py`'s `test_boss_counter_prefers_target_over_a_named_pal` and
+`test_g4_attacker_framing_declines_end_to_end`. Corrected against the recorded transcript;
+not yet reconfirmed in a live session.
+
 ### Flatness measures dispersion, and a base needs contiguity
 
 The metric is the height spread of every placed actor inside the base radius, calibrated to

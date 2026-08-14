@@ -63,6 +63,25 @@ class Utterance:
     # people asking similar questions look exactly like one person rephrasing, which is
     # the shape `harvest_aliases.py` would read as a correction and learn from.
     who: str = ""
+    # The top-ranked candidate's name, captured on EVERY row - unlike `entity`, which is
+    # only ever set from a tool call's ARGUMENTS and is therefore always empty on a
+    # decline. Separate field rather than widening `entity`'s meaning: `entity` means
+    # "what the system acted on," `near` means "what it came closest to," and a decline
+    # is exactly the row where those two facts differ (there is no former, only the
+    # latter). Added 2026-08-14 alongside the item free-text resolver, whose declines
+    # are the first place this project needs to ask "close to what?" rather than just
+    # "how close?" - `score` alone answered the second question and not the first.
+    near: str | None = None
+    # The specific token the ROUTER said it could not place, when it said so explicitly -
+    # mirrors `Decline.unrecognized`. Deliberately NOT the same thing as `near`: the fast
+    # path's own comment (routing.py) warns that the top-scoring candidate on a decline
+    # is often an unrelated word the ranker happened to match, not the word that actually
+    # defeated it, so that field is left unset there on purpose. A router that names its
+    # own unrecognized token - the item free-text resolver will, because a model's
+    # written attempt at an item name is a much more reliable signal than a fuzzy
+    # ranker's incidental top score - is a stronger claim, and this field is where that
+    # extra confidence is allowed to show up. None everywhere a router did not say.
+    unrecognized: str | None = None
 
     def as_json(self) -> dict:
         d = {k: getattr(self, k) for k in self.__dataclass_fields__}

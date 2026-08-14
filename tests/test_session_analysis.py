@@ -26,9 +26,11 @@ def write_log(tmp_path: Path, rows: list[dict]) -> Path:
     return d
 
 
-def utt(uid, at, heard, outcome="answered", entity=None, path="model"):
+def utt(uid, at, heard, outcome="answered", entity=None, path="model",
+        near=None, unrecognized=None):
     return {"uid": uid, "at": at, "heard": heard, "path": path, "tool": "t",
-            "entity": entity, "outcome": outcome, "label": "auto"}
+            "entity": entity, "outcome": outcome, "label": "auto",
+            "near": near, "unrecognized": unrecognized}
 
 
 # ------------------------------------------------------------------ the fold
@@ -189,6 +191,39 @@ def test_a_misheard_with_no_rephrase_stays_unresolved():
     explained = {p.failed.uid for p in an.rephrases(turns)}
     unresolved = [t for t in turns if t.misheard and t.uid not in explained]
     assert len(unresolved) == 1
+
+
+# --- near / unrecognized, added 2026-08-14 for the item free-text resolver -----------
+
+def test_near_and_unrecognized_fold_into_the_turn(tmp_path):
+    d = write_log(tmp_path, [
+        utt("a", 0, "what do I get from Gildra and Fuddler", outcome="declined",
+            near="Giga Glider", unrecognized="gildra"),
+    ])
+    t = an.load(d)[0]
+    assert t.near == "Giga Glider" and t.unrecognized == "gildra"
+
+
+def test_named_unmatched_finds_only_router_named_declines(tmp_path):
+    """A decline with no `unrecognized` - most of them, today - is not in this list. It
+    is the honest-residue list for `misheard`-with-no-rephrase to have a router-driven
+    twin, not a catch-all for every decline."""
+    d = write_log(tmp_path, [
+        utt("a", 0, "who drops a widget", outcome="declined", unrecognized="widget"),
+        utt("b", 10, "how do I beat Anubis", entity="Anubis"),
+        utt("c", 20, "how do I beat it", outcome="declined"),   # no unrecognized
+    ])
+    named = an.named_unmatched(an.load(d))
+    assert [t.uid for t in named] == ["a"]
+    assert named[0].unrecognized == "widget"
+
+
+def test_named_unmatched_is_empty_when_no_router_names_a_token():
+    """True of every session before the item free-text resolver landed - an empty list
+    here is a correct reading of that, not a detection failure."""
+    if not (SESSION / "log.jsonl").exists():
+        pytest.skip("the reference session is not present")
+    assert an.named_unmatched(an.load(SESSION)) == []
 
 
 # --- coverage: the ledger against the corpus -----------------------------------
