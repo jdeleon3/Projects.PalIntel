@@ -1,7 +1,7 @@
 # openWakeWord training config for the "hey pal" wake word.
 #
 # Run from the pinned piper-sample-generator checkout (see train_hey_pal.md):
-#   python -m openwakeword.train --training_config tools/wakeword/hey_pal.yaml \
+#   python tools/wakeword/train.py --config tools/wakeword/hey_pal.yaml \
 #       --generate_clips --augment_clips --train_model
 #
 # Why this exists at all: none of openWakeWord's six pretrained models fire on

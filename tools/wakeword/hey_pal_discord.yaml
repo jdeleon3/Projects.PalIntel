@@ -19,7 +19,7 @@
 #   python tools/wakeword/prepare_discord_corpus.py --background
 #
 # Then, from the pinned piper-sample-generator checkout (see train.py's shim notes):
-#   python tools/wakeword/train.py --training_config tools/wakeword/hey_pal_discord.yaml \
+#   python tools/wakeword/train.py --config tools/wakeword/hey_pal_discord.yaml \
 #       --augment_clips --train_model
 #
 # **NOT --generate_clips.** The clips already exist: they are the shipping model's corpus
