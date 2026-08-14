@@ -30,7 +30,7 @@ this line.*
 | 2 — Q2 Pal spawns + memory | **Closed 2026-08-10** |
 | Card artwork + drops | **Shipped.** [ADR-0017](Docs/adr/0017-card-artwork-from-game-assets.md) Accepted |
 | 3 — Q5 counters | **Played 2026-08-13 and the most-used class in the session — 16 queries, the heaviest of all 13 — but NOT closed.** It works when the named entity is the target, which is what all 16 tested. **G4 shows it fails when the name is the *attacker***: *"is Prixter any good against the first tower"* produced a plan for **fighting Prixter**, a confident Tier 2 card about the wrong fight, when Block G scores a decline as the pass. 1 of 1 on the discriminating input. Was "Q3 + Q5"; **split 2026-08-11** |
-| **3B — Q3 breeding** | **Unscheduled, and the block moved back inside the repo's reach 2026-08-12.** The save says the Breeding Farm is unlockable **right now** — level 19 met, ForestBoss beaten, 2 of 40 ancient points — and the Egg Incubator is already unlocked. Not a dependency on another player's playthrough; two clicks plus cake production. See below |
+| **3B — Q3 breeding** | **Unblocked and in progress 2026-08-14: breeding is unlocked and the Breeding Farm is BUILT.** What remains is in-game, not in-repo — cake materials, and assigning a Pal to the farm. **Both of those are the two questions this bot answers worst**, and both are already-recorded defects: *"where can I find cakes"* returns a 1% Lovander drop because `item_source` is a drop table and **no crafting recipe is ingested**, and *"how do I assign a pal to the breeding farm"* returns two near-duplicate chunks. `score_breeding.py` still waits on hatched eggs, on Steam buildid **`24467282`** with auto-updates off |
 | Pal search by attribute | **Shipped and PLAYED 2026-08-13.** 10 queries. The first new query class since the roadmap: work-suitability ingest, three-axis filter, card, fast path and model path. **Its data is now verified against the game** — Anubis reads Mining 6 in the Paldeck, which is what the ingested number says |
 | Mount search | **Shipped and PLAYED 2026-08-11.** Landed 19:13, exercised four minutes later — *"which dragons can I ride at level 60"*, *"which swimming mounts are available"*, *"the fastest ground mount at level 60"*, three of the four on the fast path. **Speed ordering confirmed correct by the player.** The unowned set-difference is still unexercised |
 | **Party voice (Discord receive)** | **Restored and PLAYED 2026-08-13**, after months recorded as blocked. 13 spoken questions answered end to end from a voice channel, attributed to the speaking member rather than a configured name — [ADR-0012](Docs/adr/0012-dual-input-channels.md) restored, not replaced. **The blockage was never DAVE**: it decrypts 99.8% of packets, and py-cord 2.8's receive package was the fault. 13 defects fixed in [`PyDiscordDave`](../PyDiscordDave/README.md), two of them this repo's. `mic.py` stays the default and the fallback. Recall still unmeasured — see the backlog entry |
@@ -221,6 +221,21 @@ the logs.
   coordinates **and stated levels**, in `data/`, while `bosses.json` carries `"level": null`
   on every entry. Fourth instance of this project's recurring pattern: the data was there
   and nothing asked.
+- **`DT_ItemRecipeDataTable` is ingested by nothing — 1,414 typed crafting recipes.**
+  *Fifth* instance of the same pattern, found 2026-08-14 while checking why the bot cannot
+  say what a Cake costs. It is extracted into `data/raw/tables/` and no `build_*.py` reads
+  it, so **the project cannot answer "how do I make X" for any of 1,414 items**, and
+  `item_source` answers those questions from the drop table instead — which is why
+  *"where can I find cakes"* returns Lovander at 1%. The table is complete and typed:
+  `Cake` = Flour ×5, Red Berries ×8, Milk ×7, Egg ×8, Honey ×2, and `Flour` = Wheat ×3, so
+  one cake is 15 wheat. **The recipes also resolve to Pals the project already knows**:
+  joined against `ranch_drops.json`, Honey ← Beegarde, Red Berries ← Caprity, Egg ←
+  Chikipi, Milk ← Mozzarina, all four `roster_verified`. A `find_recipe` class is a
+  straight ingest-plus-card with no model in it, and it would have answered the
+  highest-value question of the last two sessions. **Note the provenance split before
+  publishing**: the recipe half is from the pak and Tier 1; the ranch half is
+  community-wiki by that file's own `source_note`, and a card must not present the two as
+  equally sourced.
 
 **One thing the session lost.** `activity.py` keeps latency in a one-hour in-memory window
 and writes nothing, so the **voice p95 of 6.2s against the 2.5s budget** exists only in a
