@@ -500,6 +500,120 @@ scores any model across four populations with the codec-shortcut gate built in.
 
 ## Next
 
+**A local output medium — designed 2026-08-14, built start to finish the same day, all
+6 steps done and tested.** Discord was a hard requirement (`Config.load()` raised
+without a token and a channel id) even though voice input already wasn't -
+`voice.source = "mic"` never touched Discord. Full design:
+[`Docs/local-output-design.md`](Docs/local-output-design.md), decision record:
+[ADR-0018](Docs/adr/0018-local-output-medium.md).
+
+**Done and tested (941 tests green, zero regressions across all of it):**
+- **`palintel/sinks.py` is new** — `OutputSink` (`stage`/`post`/`attach_artwork`),
+  `DiscordSink` (a pure extraction of what `bot._answer` used to do inline: embed
+  rendering, attachments, the feedback buttons all moved here unchanged), and
+  `LocalSink` (writes `data/sessions/<id>/chat.jsonl` and `art/`, append-only, same
+  never-raise discipline `capture.py` holds itself to).
+- **`[output]` config landed** — `medium = "discord" | "local"`, exclusive, plus
+  `poll_ms` / `inbox_poll_ms`. Discord's token/channel are now conditionally required
+  (only under `medium = "discord"`) rather than unconditionally, with values still
+  parsed either way so switching mediums later needs nothing re-entered.
+- **`_answer()` now calls `sink.stage(uid, "routing_started")` before the router call** -
+  the one live progress signal ADR-0018 asks for, a no-op on `DiscordSink` so every
+  existing caller pays nothing for it.
+- **`run_local()` landed as a separate function, not a branch inside `run()`.** `run()`
+  is ~480 lines built entirely around `discord.Client`'s lifecycle — the mic/wake-word
+  listener is even started from inside `on_ready`, a Discord **connection event**, even
+  though audio capture itself never touches Discord. Reshaping that function to also
+  serve a Discord-free path would have been live surgery on a working, heavily-tested
+  entry point; instead `run_local()` duplicates the setup `run()` also does (pipeline,
+  activity log, watcher, heartbeat) and `main()` is the one new dispatcher that reads
+  `cfg.output.medium` once and calls `run_local()` or `run()` — `run()` itself is
+  byte-for-byte unchanged (confirmed by diff). `run_local()` polls
+  `data/sessions/<id>/inbox/*.json` every `inbox_poll_ms`, deletes each file before
+  rendering its answer (a crash mid-answer must not replay the query forever), and
+  writes a heartbeat (`_beat_local`) that reports voice status the same way `beat()`
+  does (`_voice_status`, reused unchanged). **Voice input is wired in, not deferred** —
+  ADR-0018's socket rejection was about a port the bot *listens* on for pending queries
+  (the file-based inbox, revisitable later if that approach has problems), which never
+  had anything to do with the microphone. `_start_voice_local` is `start_voice()`'s
+  Discord-free twin: same transcriber, same activation gates (wake-word-only, overheard
+  media, silence), same `_answer` call — the only difference is delivery, a fresh
+  `LocalSink` per utterance instead of a channel-bound one. `voice.source = "discord"`
+  is rejected at config load when `output.medium = "local"`, since `DiscordListener`
+  needs a live `discord.Client` this process never constructs; `voice.source = "mic"`
+  needs nothing Discord ever provided and combines with local output fine.
+- **Found and fixed along the way**: the internal-error fallback ("Something broke")
+  used to be a raw `channel.send(embed=discord.Embed(...))`, the one delivery path this
+  refactor had not yet closed — Discord-only by construction. Now posts a `Card` through
+  `sink`, which renders on any medium. And `LocalSink.attach_artwork` originally created
+  an empty `art/` directory even when a card carried no image or thumbnail — caught by
+  a test asserting the directory should not exist, fixed before it shipped.
+
+- **Steps 4-5 landed: the console's Chat tab.** `palintel/ui/server.py` gained four
+  routes — `GET /api/chat/current` (resolves Hidden/Live/Read-only/Empty server-side,
+  so the page never has to reconcile `/api/config` and `/api/bot` itself), `GET
+  /api/chat/{session}/history` (rows + the file's byte size), `GET
+  /api/chat/{session}/stream` (SSE tail), `POST /api/chat/{session}/send` (writes
+  `inbox/<uid>.json`). The SSE stream resumes by **`Last-Event-ID`**, not a client-side
+  byte counter - the browser resends whatever `id:` rode with the last event it
+  actually received, automatically, on every reconnect, which is what lets a dropped
+  connection resume without replaying or losing anything. `sources.py` gained
+  `valid_session_id` (a session id is always `\d{8}-\d{6}$` — checked before ANY path
+  join, since `send_chat_query` is the one function here that writes from a
+  caller-supplied value), `chat_history`, `latest_chat_session`, `send_chat_query`, and
+  a `has_chat` flag on `SessionSummary`. `config_edit.py`'s field whitelist grew
+  `output.medium` / `poll_ms` / `inbox_poll_ms`, so the Settings tab can switch a
+  player into local mode without hand-editing TOML. The Chat tab itself
+  (`index.html`/`app.css`/`app.js`) renders `chat.jsonl` as a bubble transcript — cards
+  keep their tier colour as a left rail rather than losing it, a `stage` event becomes
+  a pulsing "thinking…" placeholder that the matching `answer` removes, and the
+  player's own typed message renders the instant the send POST confirms (using the
+  `uid` it returns) rather than waiting for the echo — the ONE deliberate optimism in
+  an otherwise `chat.jsonl`-is-truth design, reconciled onto the same element rather
+  than duplicated once the real `query` row arrives.
+- **Found and fixed along the way**: `chat_history`/`latest_chat_session`/
+  `send_chat_query` originally defaulted `root: Path = SESSIONS` - bound at *def* time,
+  the exact trap `botstate._path()`'s own docstring warns about, which would have made
+  redirecting `sources.SESSIONS` in a test (or anywhere else) silently do nothing.
+  Fixed to resolve at call time before it shipped.
+- **Verified against a live console, not just the automated suite**: `python -m
+  palintel.ui` against a scratch session and a synthetic heartbeat, confirmed in a real
+  browser — the Chat tab appearing/disappearing with `output.medium`, Live ⇄ Read-only
+  following the heartbeat, a typed message going pending → confirmed → answered with
+  the "thinking…" placeholder swapped for the real card, and reconnection resuming
+  cleanly. Caught one thing this way that no unit test would have: the console's own
+  `/api/config` never exposed `output.medium` at all before this pass, since the
+  original config field whitelist predated ADR-0018.
+
+- **Step 6 landed: artwork serving.** `GET /api/sessions/{session}/art/{filename}` -
+  one route rather than the design doc's originally-sketched separate image/thumbnail
+  paths, because `LocalSink.attach_artwork` already emits the exact filenames
+  (`<uid>-image-<index>.jpg`, `<uid>-thumb-<index>.png`) in the `artwork` event's own
+  `images`/`thumbnails` lists, so there was nothing left to reconstruct - the Chat tab
+  just points an `<img>` at whatever name it was handed. `sources.art_path` checks the
+  filename against the actual directory listing rather than joining it blind, same
+  discipline `clip_path` already holds itself to (verified by a traversal-attempt
+  test). A failed image load swaps to a text note rather than a broken-image icon.
+- **Verified in an ISOLATED live console this time**, not the shared `data/`
+  directory - the earlier steps 4-5 verification pass had briefly clobbered
+  `data/bot-state.json` while a real bot was running against it (self-corrected within
+  one heartbeat cycle once the smoke test stopped, and nothing else was touched - see
+  the session's own record of that incident). This pass built a throwaway server
+  pointed entirely at a scratch directory with a fake `Supervisor`, catching one real
+  bug the automated suite alone would not have: the first attempt's hand-typed hex
+  bytes for a "JPEG" transferred over HTTP correctly (200, right content-type, right
+  length) but were not valid enough for a browser to actually decode - the kind of
+  well-formed-and-wrong failure this project is generally careful about. Fixed by
+  generating real images with Pillow instead of hand-rolled bytes.
+
+**Not done.** Nothing - all 6 steps of the local output medium design are built and
+tested, and its two remaining open questions are now closed decisions rather than
+unknowns: single-tab SSE by design (local mode is one player at one machine, §7 — a
+second tab is the same player, not a second one, so broadcast was never a real
+requirement), and an in-flight query silently lost if the bot stops mid-processing is
+an accepted trade-off, no different from a Discord message lost the same way. Both
+recorded in Docs/local-output-design.md §9.
+
 ~~**0. G4 — a counter query that names the attacker answers about fighting the attacker.**~~
 **FIXED 2026-08-14, unplayed.** *"Is Prixter any good against the first tower"* produced a
 plan for fighting Prixter — the confidently-wrong Tier 2 card the project says it will not

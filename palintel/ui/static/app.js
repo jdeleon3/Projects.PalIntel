@@ -64,6 +64,7 @@ document.querySelectorAll(".rail-item").forEach((btn) => {
     $(`#view-${btn.dataset.view}`).classList.add("is-active");
     if (btn.dataset.view === "sessions") loadSessions();
     if (btn.dataset.view === "settings") loadSettings();
+    if (btn.dataset.view === "chat") chatSync();
   });
 });
 
@@ -676,3 +677,245 @@ loadBot();
 /* Slower than the 5s heartbeat: the console is glanced at, not watched, and a tighter
    poll would spend more on rendering than the information is worth. */
 botPoll = setInterval(loadBot, 8000);
+
+/* --- chat -------------------------------------------------------------------------
+ * ADR-0018 / Docs/local-output-design.md §5. Four states, all resolved server-side by
+ * GET /api/chat/current - this module's only job is to render whichever one comes
+ * back and keep the SSE connection in sync with it.
+ *
+ * **No optimistic rendering of the bot's own answer** - `chat.jsonl` is the single
+ * source of truth and the whole point of this tab is that it shows what actually
+ * happened, not what the page assumes will happen next. The one exception is the
+ * player's OWN typed message: `chatSend` renders it the instant the server confirms
+ * the write, using the `uid` that write returns, and the real `query` row that
+ * arrives moments later (once the bot has actually claimed it) reconciles onto that
+ * same element rather than duplicating it - see `chatAppendRow`'s "query" branch.
+ */
+let chatSession = null;
+let chatLive = false;
+let chatEntered = false;   // has chatEnter ever run - distinct from session/live, which
+                            // both start equal to their own "nothing yet" values and
+                            // would otherwise make the very first sync a no-op below
+let chatES = null;
+let chatSeen = new Set();
+
+const tierColour = (n) => "#" + ((n ?? 0) >>> 0).toString(16).padStart(6, "0");
+const chatTime = (epoch) => epoch
+  ? new Date(epoch * 1000).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+  : "";
+
+function chatArtImage(filename, cls) {
+  // A broken file (deleted, unreadable) must read as "missing", never as a broken-image
+  // icon sitting in the middle of an otherwise-correct answer.
+  const img = document.createElement("img");
+  img.className = cls;
+  img.loading = "lazy";
+  img.alt = filename;
+  img.src = `/api/sessions/${encodeURIComponent(chatSession)}/art/`
+    + `${encodeURIComponent(filename)}?token=${encodeURIComponent(TOKEN)}`;
+  img.addEventListener("error", () => {
+    img.replaceWith(el("div", "chat-art-note", `could not load ${filename}`));
+  }, { once: true });
+  return img;
+}
+
+function chatNearBottom(list) {
+  return list.scrollHeight - list.scrollTop - list.clientHeight < 80;
+}
+function chatScrollBottom(list) {
+  list.scrollTop = list.scrollHeight;
+}
+
+function chatAppendRow(list, row) {
+  // De-duplicated by identity, not by content - a reconnect can legitimately resend an
+  // event this tab already rendered (see the `Last-Event-ID` note in server.py), and a
+  // second render of the same `(kind, uid, at)` would show the same turn twice.
+  const key = `${row.kind}:${row.uid}:${row.at}`;
+  if (chatSeen.has(key)) return;
+  chatSeen.add(key);
+
+  const atBottom = chatNearBottom(list);
+  const uid = row.uid;
+
+  if (row.kind === "query") {
+    const pending = list.querySelector(`.chat-pending[data-uid="${CSS.escape(uid)}"]`);
+    if (pending) {
+      // The optimistic bubble already showed this text - just confirm it arrived.
+      pending.classList.remove("chat-pending");
+      pending.querySelector(".chat-meta").textContent = chatTime(row.at);
+    } else {
+      const li = el("div", "chat-msg chat-user");
+      li.dataset.uid = uid;
+      li.append(el("div", "chat-bubble", row.text));
+      li.append(el("div", "chat-meta", chatTime(row.at)));
+      list.append(li);
+    }
+  } else if (row.kind === "stage") {
+    // A transient "thinking…" turn, removed the moment the matching answer lands -
+    // see the "answer" branch below. Idempotent: a duplicate stage event for the same
+    // uid must not stack a second indicator.
+    if (!list.querySelector(`.chat-thinking[data-uid="${CSS.escape(uid)}"]`)) {
+      const li = el("div", "chat-msg chat-bot chat-thinking");
+      li.dataset.uid = uid;
+      li.append(el("div", "chat-bubble chat-bubble-thinking", "thinking…"));
+      list.append(li);
+    }
+  } else if (row.kind === "answer") {
+    list.querySelectorAll(`.chat-thinking[data-uid="${CSS.escape(uid)}"]`)
+      .forEach((n) => n.remove());
+    const li = el("div", "chat-msg chat-bot");
+    li.dataset.uid = uid;
+    for (const card of row.cards || []) {
+      const b = el("div", "chat-bubble chat-card");
+      b.style.setProperty("--tier", tierColour(card.colour));
+      b.append(el("div", "chat-card-title", card.title));
+      const lines = el("div", "chat-card-lines");
+      for (const line of card.lines || []) lines.append(el("p", "", line));
+      b.append(lines);
+      if (card.footer) b.append(el("div", "chat-card-footer", card.footer));
+      li.append(b);
+    }
+    li.append(el("div", "chat-meta", chatTime(row.at)));
+    list.append(li);
+  } else if (row.kind === "artwork") {
+    // The filenames arrive exactly as `LocalSink.attach_artwork` wrote them - nothing
+    // to reconstruct, just point an <img> at the session-scoped route for each one.
+    const host = list.querySelector(`.chat-msg[data-uid="${CSS.escape(uid)}"]`) || list;
+    for (const name of row.images || []) host.append(chatArtImage(name, "chat-art"));
+    for (const name of row.thumbnails || [])
+      host.append(chatArtImage(name, "chat-art chat-art-thumb"));
+  }
+
+  if (atBottom) chatScrollBottom(list);
+}
+
+function chatTeardown() {
+  if (chatES) { chatES.close(); chatES = null; }
+  chatSession = null;
+  chatLive = false;
+  chatEntered = false;   // force the next chatEnter even if the next state coincides
+                          // with these reset values (Empty is session=null, live=false)
+}
+
+function chatSwitchToStatus() {
+  $('.rail-item[data-view="status"]').click();
+}
+
+async function chatEnter(session, live) {
+  chatTeardown();
+  chatSession = session;
+  chatLive = live;
+  chatEntered = true;
+  chatSeen = new Set();
+
+  const list = $("#chat-list");
+  const input = $("#chat-input");
+  const btn = $("#chat-send");
+  const note = $("#chat-note");
+  list.textContent = "";
+
+  if (!session) {
+    // Empty: configured for local, nothing has ever been said in any session yet.
+    list.append(el("div", "empty",
+      live ? "No messages yet. Type below to start."
+           : "No messages yet. Start the bot to begin."));
+    input.disabled = !live;
+    btn.disabled = !live;
+    note.textContent = live ? "" : "start the bot to send a message";
+    return;
+  }
+
+  let hist;
+  try {
+    hist = await api(`/api/chat/${encodeURIComponent(session)}/history`);
+  } catch (e) {
+    list.innerHTML = `<p class="bad">${e.message}</p>`;
+    return;
+  }
+  for (const row of hist.rows) chatAppendRow(list, row);
+  chatScrollBottom(list);
+
+  input.disabled = !live;
+  btn.disabled = !live;
+  note.textContent = live ? "" : "start the bot to send a new message";
+
+  if (live) {
+    // `after=<size>` picks up exactly where the history snapshot above ends - nothing
+    // replayed, nothing missed in the gap between the two requests.
+    chatES = new EventSource(
+      `/api/chat/${encodeURIComponent(session)}/stream?after=${hist.size}`
+      + `&token=${encodeURIComponent(TOKEN)}`);
+    chatES.onmessage = (e) => {
+      try {
+        chatAppendRow($("#chat-list"), JSON.parse(e.data));
+      } catch (err) { /* a torn line mid-write - the next tick sends it whole */ }
+    };
+  }
+}
+
+async function chatSync() {
+  let cur;
+  try {
+    cur = await api("/api/chat/current");
+  } catch (e) {
+    return;  // transient - the next poll tries again
+  }
+
+  const rail = $("#rail-chat");
+  rail.style.display = cur.visible ? "" : "none";
+  if (!cur.visible) {
+    if (rail.classList.contains("is-active")) chatSwitchToStatus();
+    chatTeardown();
+    return;
+  }
+  if (chatEntered && cur.session === chatSession && cur.live === chatLive) return;
+  await chatEnter(cur.session, cur.live);
+}
+
+async function chatSend() {
+  const input = $("#chat-input");
+  const btn = $("#chat-send");
+  const text = input.value.trim();
+  if (!text || !chatSession) return;
+
+  input.disabled = true;
+  btn.disabled = true;
+  let res;
+  try {
+    res = await fetch(`/api/chat/${encodeURIComponent(chatSession)}/send`, {
+      method: "POST",
+      headers: { "X-PalIntel-Token": TOKEN, "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    }).then((r) => r.json());
+  } catch (e) {
+    res = { ok: false, error: e.message };
+  }
+  input.disabled = false;
+  btn.disabled = false;
+
+  if (!res.ok) {
+    $("#chat-note").textContent = res.error || "could not send";
+    return;
+  }
+  input.value = "";
+  $("#chat-note").textContent = "";
+
+  const list = $("#chat-list");
+  const atBottom = chatNearBottom(list);
+  const li = el("div", "chat-msg chat-user chat-pending");
+  li.dataset.uid = res.uid;
+  li.append(el("div", "chat-bubble", text));
+  li.append(el("div", "chat-meta", "sending…"));
+  list.append(li);
+  if (atBottom) chatScrollBottom(list);
+  input.focus();
+}
+
+$("#chat-form").addEventListener("submit", (e) => { e.preventDefault(); chatSend(); });
+
+chatSync();
+/* Tighter than the 8s bot poll: starting or stopping the bot should flip this tab
+   between Live and Read-only promptly, since that transition is the whole point of
+   the state machine and a stale "start the bot" note right after pressing Start would
+   read as broken. */
+setInterval(chatSync, 3000);

@@ -23,7 +23,7 @@ channel - only the input moved.
 from __future__ import annotations
 
 import asyncio
-import io
+import json
 import logging
 import re
 import sys
@@ -34,14 +34,15 @@ from tempfile import TemporaryDirectory
 
 from . import activation, identity
 from .activity import ActivityLog
-from .capture import (FEEDBACK_KINDS, NOTE_LIMIT, UNEXPECTED, SessionCapture,
-                      Utterance)
+from .capture import DEFAULT_ROOT as SESSIONS_ROOT
+from .capture import UNEXPECTED, SessionCapture, Utterance
 from .artwork import Artwork
 from .cards import TIER_DECLINE, Card, recent_card, status_card
 from . import spend as spend_mod
 from .config import Config, ConfigError
 from .knowledge import KnowledgeBase
 from .pipeline import Pipeline, PlayerState, build_router
+from .sinks import DiscordSink, LocalSink, OutputSink, Posted, to_embed
 from .tools import Decline
 
 log = logging.getLogger("palintel.bot")
@@ -50,33 +51,6 @@ try:
     import discord
 except ImportError:  # pragma: no cover
     discord = None
-
-
-def to_embed(card: Card, index: int = 0, *, with_art: bool = True) -> "discord.Embed":
-    embed = discord.Embed(title=card.title,
-                          description="\n".join(card.lines),
-                          color=card.colour)
-    if card.footer:
-        embed.set_footer(text=card.footer)
-    if with_art:
-        names = card.attachments(index)
-        if "image" in names:
-            embed.set_image(url=f"attachment://{names['image']}")
-        if "thumbnail" in names:
-            embed.set_thumbnail(url=f"attachment://{names['thumbnail']}")
-    return embed
-
-
-def art_files(cards_: list[Card]) -> list["discord.File"]:
-    """The attachments the embeds reference, in the order their cards appear."""
-    files = []
-    for i, card in enumerate(cards_):
-        names = card.attachments(i)
-        if card.image is not None:
-            files.append(discord.File(io.BytesIO(card.image), filename=names["image"]))
-        if card.thumbnail is not None:
-            files.append(discord.File(str(card.thumbnail), filename=names["thumbnail"]))
-    return files
 
 
 # `/palintel iam <name>`, with or without the slash. Anchored so it cannot swallow a
@@ -360,95 +334,6 @@ def build_pipeline(cfg: Config) -> Pipeline:
     return Pipeline(kb, build_router(kb, router_config=cfg.router), artwork=artwork)
 
 
-class FeedbackView(discord.ui.View):
-    """Labelling buttons under an answer card.
-
-    **Components, not reactions.** A button row rides in the same `send()` payload at no
-    extra API cost, where six reactions are six REST calls that would have to be deferred
-    behind the answer like `art_post` is. The card is posted once, with its controls.
-
-    Four buttons. Three are diagnoses that each route to a different fix - a mis-heard
-    name is a lexicon problem, a wrong class is a routing problem, and a wrong entity on
-    a clean transcript is neither. The fourth asks for a sentence instead of a diagnosis,
-    and leads the row; see `capture.UNEXPECTED` for why it earned the slot.
-
-    `timeout=None` keeps them live for the session. They do NOT survive a bot restart -
-    persistent views need registering at startup, and this is a testbed control rather
-    than a promise to the player. **That expiry is why `/palintel wrong` exists**: the
-    two defects this session found were both "I acted on the card and the world
-    disagreed", knowable only after travelling, by which time the buttons are long out of
-    view. The message-id join was always retroactive; only the buttons were not.
-    """
-
-    def __init__(self, capture: SessionCapture):
-        super().__init__(timeout=None)
-        for kind, (emoji, label) in FEEDBACK_KINDS.items():
-            self.add_item(_FeedbackButton(capture, kind, emoji, label))
-
-
-class _NoteModal(discord.ui.Modal):
-    """One optional field, asking what was expected instead.
-
-    A modal rather than a follow-up message because it costs nothing until it is opened:
-    the button rides in the card's own `send()` payload, and this is created only on a
-    click. Nothing is required, so a mis-click is one Escape away and never a half-written
-    row in the log.
-
-    **py-cord, not discord.py**, and the two differ here in ways that fail at click time
-    rather than at import: the submit hook is `callback`, not `on_submit`; the field is
-    `InputText`; and the style enum is `InputTextStyle`, since `discord.TextStyle` does
-    not exist in this library at all. Written with py-cord's own names so the mismatch is
-    visible in the source rather than discovered by a player pressing a button.
-    """
-
-    def __init__(self, capture: SessionCapture, message_id: int):
-        super().__init__(title="What did you expect?")
-        self._capture, self._message_id = capture, message_id
-        self._note = discord.ui.InputText(
-            label="What went wrong?",
-            placeholder="e.g. sent me to a level 70 area I can't survive",
-            style=discord.InputTextStyle.paragraph,
-            max_length=NOTE_LIMIT,
-            required=False)
-        self.add_item(self._note)
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        note = self._note.value or ""
-        self._capture.record_feedback(
-            self._message_id, UNEXPECTED,
-            who=getattr(interaction.user, "display_name", None),
-            note=note)
-        log.info("feedback %s on message %s: %r", UNEXPECTED, self._message_id, note[:80])
-        await interaction.response.send_message("Noted - thanks.", ephemeral=True)
-
-
-class _FeedbackButton(discord.ui.Button):
-    def __init__(self, capture: SessionCapture, kind: str, emoji: str, label: str):
-        super().__init__(
-            # The free-text one is the primary action and looks like it.
-            style=(discord.ButtonStyle.primary if kind == UNEXPECTED
-                   else discord.ButtonStyle.secondary),
-            emoji=emoji, label=label)
-        self._capture, self._kind = capture, kind
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        # Keyed by the MESSAGE, not by "the last utterance" - which breaks the moment two
-        # more questions follow, and this is meant to be usable minutes later.
-        if self._kind == UNEXPECTED:
-            # A modal IS the response to the interaction, so nothing is written until the
-            # player submits - and `send_message` must not be called before it.
-            await interaction.response.send_modal(
-                _NoteModal(self._capture, interaction.message.id))
-            return
-        self._capture.record_feedback(
-            interaction.message.id, self._kind,
-            who=getattr(interaction.user, "display_name", None))
-        log.info("feedback %s on message %s", self._kind, interaction.message.id)
-        # Ephemeral: the acknowledgement is for the person who clicked, and a public
-        # "noted" under every corrected card is noise for everyone else.
-        await interaction.response.send_message("Noted - thanks.", ephemeral=True)
-
-
 async def _answer(channel, pipe: Pipeline, text: str, who: str,
                   activity: ActivityLog | None = None, watcher=None,
                   started: float | None = None, channel_kind: str = "text",
@@ -456,7 +341,8 @@ async def _answer(channel, pipe: Pipeline, text: str, who: str,
                   feedback: bool = False,
                   spend: "spend_mod.SpendLog | None" = None,
                   user_id: str | None = None,
-                  bindings: "identity.Bindings | None" = None) -> None:
+                  bindings: "identity.Bindings | None" = None,
+                  sink: "OutputSink | None" = None) -> None:
     """Route `text` and post the cards. Shared by the text and voice paths.
 
     Routing is a network call and transcription is GPU work, so both run in the default
@@ -473,7 +359,18 @@ async def _answer(channel, pipe: Pipeline, text: str, who: str,
     two people apart - so voice follow-ups are shared by whoever is at the mic, and a
     Discord user's typed follow-ups are their own. That is a limitation of the input, not
     a choice: see the multi-speaker item in Phase 2.
+
+    `sink` is where the answer is delivered - `DiscordSink(channel, capture)` when not
+    given, which is every Discord call site (`on_message`, the voice path); `channel` is
+    unused when a caller passes its own `sink` instead, which is how local-mode queries
+    reach here (see `sinks.py` and the inbox poll loop).
     """
+    # Constructed up front, not lazily at the post() call - `sink.stage(...)` fires
+    # before routing even starts, and DiscordSink's own stage() is a no-op, so building
+    # it early costs Discord callers nothing.
+    if sink is None:
+        sink = DiscordSink(channel, capture)
+
     # Read at answer time, not cached at startup: the player moves, and "nearest" is
     # only worth answering against where they are now. The roster and the technology
     # state come off the watcher's own slower cadence - both are already-parsed values
@@ -504,6 +401,10 @@ async def _answer(channel, pipe: Pipeline, text: str, who: str,
         log.info("no player state for %s (%s)", who, why)
 
     loop = asyncio.get_running_loop()
+    # The one live progress signal this project makes (see ADR-0018): not token
+    # streaming, which would misrepresent a computed answer as a generated one, but an
+    # honest "the router call is in flight" marker for a medium that can show it.
+    await sink.stage(uid, "routing_started")
     t_route = time.monotonic()
     try:
         outcome = await loop.run_in_executor(None, pipe.handle, text, state, who)
@@ -513,10 +414,16 @@ async def _answer(channel, pipe: Pipeline, text: str, who: str,
         log.exception("pipeline failed on %r", text)
         if activity is not None:
             activity.record("failed", text[:80])
-        await channel.send(embed=discord.Embed(
-            title="Something broke",
-            description="That query hit an internal error. It's logged.",
-            color=0xC62828))
+        # Through `sink`, not `channel.send` - a `Card` renders on any medium, where a
+        # raw `discord.Embed` only ever worked for one. This used to be Discord-only and
+        # was the one delivery path this refactor had not yet closed.
+        try:
+            await sink.post([Card(title="Something broke",
+                                  lines=["That query hit an internal error. It's "
+                                        "logged."],
+                                  colour=0xC62828)], feedback=False)
+        except Exception:
+            log.exception("could not even post the failure card for %r", text)
         return
 
     route_ms = (time.monotonic() - t_route) * 1000
@@ -594,6 +501,9 @@ async def _answer(channel, pipe: Pipeline, text: str, who: str,
     # One message, several embeds. A query that resolves to a base Pal and its variant
     # has two correct answers; separate messages would let channel traffic interleave
     # and break the pairing that makes them readable.
+    #
+    # **Delivery goes through `sink`**, built at the top of this function - see
+    # `sinks.py` and Docs/local-output-design.md.
     t_post = time.monotonic()
     try:
         # Text first, artwork second. The graded promise is "here are the coordinates",
@@ -603,14 +513,14 @@ async def _answer(channel, pipe: Pipeline, text: str, who: str,
         # already unmet (Docs/00-overview.md §7).
         # The controls ride in this same call when enabled, so they cost nothing on the
         # graded path - unlike reactions, which would be one round trip each.
-        message = await channel.send(
-            embeds=[to_embed(c, i, with_art=False)
-                    for i, c in enumerate(outcome.cards)],
-            **({"view": FeedbackView(capture)} if (feedback and capture) else {}))
-        if capture is not None and uid:
+        posted: Posted = await sink.post(
+            outcome.cards, feedback=bool(feedback and capture))
+        if capture is not None and uid and posted.message_id is not None:
             # After the send, never before: the join key does not exist until Discord
-            # has assigned it, and nothing upstream waits for it.
-            capture.attach_message(uid, message.id)
+            # has assigned it, and nothing upstream waits for it. A sink whose own
+            # record is already keyed by `uid` (Posted.message_id is None) has nothing
+            # to join - see Posted's own docstring.
+            capture.attach_message(uid, posted.message_id)
     except Exception:
         # A card that was built and never delivered used to be counted as "answered",
         # because the count was written before the send. That made the one failure the
@@ -649,13 +559,14 @@ async def _answer(channel, pipe: Pipeline, text: str, who: str,
         # Rendering is CPU work on a 600 px crop - small, but the event loop also drives
         # the microphone, so it goes to the executor like routing and transcription do.
         await loop.run_in_executor(None, outcome.draw)
-        files = art_files(outcome.cards)
     except Exception:
         log.exception("could not render card artwork for %r", text)
         return
 
     render_ms = (time.monotonic() - t_render) * 1000
-    if not files:
+    # Medium-agnostic: "is there anything to attach" is a fact about the cards, not
+    # about `art_files` (a Discord-specific conversion `DiscordSink` now owns).
+    if not any(c.image or c.thumbnail for c in outcome.cards):
         # Planned but nothing drawn: every point fell outside a published map region, or
         # straddled two. Logged rather than silent - from the channel it is invisible,
         # and "the map never appears" needs to be answerable without a debugger.
@@ -668,9 +579,7 @@ async def _answer(channel, pipe: Pipeline, text: str, who: str,
 
     t_post = time.monotonic()
     try:
-        await message.edit(
-            embeds=[to_embed(c, i) for i, c in enumerate(outcome.cards)],
-            files=files)
+        await sink.attach_artwork(posted, outcome.cards)
     except Exception:
         # Not recorded as undelivered: the answer is on the channel and the player can
         # act on it. Only the picture is missing, and the card never claimed one.
@@ -1173,5 +1082,308 @@ def run() -> None:
         botstate.clear()
 
 
+# ============================================================== local (Discord-free)
+#
+# `run()` above is ~480 lines built entirely around `discord.Client`'s lifecycle - the
+# mic/wake-word listener is even started from inside `on_ready`, a Discord CONNECTION
+# EVENT, even though audio capture itself never touches Discord. Reshaping that function
+# to also serve a Discord-free path would be live surgery on a working, heavily-tested
+# entry point, and this project's own history is full of exactly that shape of bug
+# hiding in exactly that kind of code: `counters=True` reaching one stub and not the
+# other for a day, capture wired into voice and not text, party voice dark for months on
+# an unchecked assumption. None of those were logic bugs in a pure function - they were
+# wiring bugs in event-driven startup code with shared mutable state, which is what
+# `run()` is.
+#
+# So this is a SEPARATE function instead, built fresh, and `main()` below is the one
+# place that picks between them. Some setup duplicates what `run()` also does (the
+# pipeline, the activity log, the watcher, the heartbeat) - accepted cost, not an
+# oversight: extracting the shared pieces risks changing the Discord path's behaviour
+# to prove something about a path that does not even exist yet. See ADR-0018 and
+# Docs/local-output-design.md.
+#
+# **Voice input is not out of scope - it was never the thing rejected.** The decision
+# recorded in ADR-0018 was against a socket the bot LISTENS on for pending queries, in
+# favor of the file-based inbox below; that choice is about query delivery and can be
+# revisited if the file-based approach turns out to have problems. It says nothing about
+# the microphone. `voice.source = "mic"` (`mic.py`) is already Discord-independent -
+# `start_voice()` inside `run()` only lives where it does because `on_ready` was a
+# convenient place to start it, not because it needs anything Discord provides. So
+# `_start_voice_local` below wires the same mic path in here directly.
+#
+# `voice.source = "discord"` is different: `DiscordListener` needs a live
+# `discord.Client` to attach a receive sink to, which this process never constructs.
+# That combination is rejected at config load (see `config.py`), not discovered here.
+
+
+async def _start_voice_local(cfg: Config, pipe: Pipeline, activity: ActivityLog,
+                             watcher, bindings: "identity.Bindings",
+                             capture: SessionCapture | None,
+                             spend: "spend_mod.SpendLog | None",
+                             session_dir: Path) -> "object | None":
+    """`start_voice()`'s Discord-free twin - mic only, everything past the wake word
+    is otherwise identical: same transcriber, same activation gates, same `_answer`
+    call. What differs is delivery - a fresh `LocalSink` per utterance instead of a
+    channel-bound one, since there is no persistent channel to post into.
+
+    Returns the running `MicListener` (or `None` if startup failed) so the caller can
+    report its status in the heartbeat, matching `_voice_status`'s own contract.
+    """
+    from .stt import Transcriber
+    from .mic import MicListener
+
+    transcriber = Transcriber(pipe.kb.lexicon)
+    log.info("voice: STT on %s", transcriber.device)
+
+    loop = asyncio.get_running_loop()
+    tmp = TemporaryDirectory(prefix="palintel-voice-")
+
+    async def on_speech(utt, speaker=None) -> None:
+        # `speaker` is always None here - `MicListener` never supplies one, and the
+        # only source that ever would (`voice.source = "discord"`) is rejected at
+        # config load before this function is reached at all.
+        uid = f"{int(time.time() * 1000):x}"
+        who = cfg.voice.speaker or "voice"
+        path = (str(capture.write_wav(uid, utt.pcm) or f"{tmp.name}/{uid}.wav")
+                if capture is not None else f"{tmp.name}/{uid}.wav")
+        if capture is None:
+            with wave.open(path, "wb") as w:
+                w.setnchannels(1)
+                w.setsampwidth(2)
+                w.setframerate(16_000)
+                w.writeframes(utt.pcm)
+
+        t_stt = time.monotonic()
+        text = await loop.run_in_executor(None, transcriber.transcribe, path)
+        stt_ms = (time.monotonic() - t_stt) * 1000
+        log.info("voice: heard %r (%.1fs audio, %.0fms STT, closed on %s)",
+                 text, utt.seconds, stt_ms, utt.reason)
+        activity.timed("stt", stt_ms, f"{utt.seconds:.1f}s audio", who=who)
+        if not text.strip():
+            activity.record("empty", f"{utt.seconds:.1f}s")
+            return
+        if activation.overheard(text):
+            activity.record("empty", f"overheard: {text[:40]!r}")
+            log.info("voice: discarding overheard media audio (%r)", text[:60])
+            return
+        activity.record("heard", text[:80])
+
+        act = activation.detect(text)
+        if activation.bare(act):
+            activity.record("empty", f"wake word only: {text[:40]!r}")
+            log.info("voice: wake word with no query (%r, score %.2f)",
+                     text, act.score)
+            if act.confident:
+                # Same ADR-0004 reasoning as the Discord path: a confident wake match
+                # with nothing after it is the one failure a silent drop would hide.
+                await LocalSink(session_dir, uid).post(
+                    [Card(title="Didn't catch a question",
+                         lines=["I caught my name but not the question."],
+                         colour=TIER_DECLINE)],
+                    feedback=False)
+            return
+
+        await _answer(None, pipe, text, who, activity, watcher, spend=spend,
+                      started=utt.ended_at, channel_kind="voice",
+                      capture=capture, uid=uid, feedback=cfg.capture.feedback,
+                      user_id=None, bindings=bindings,
+                      sink=LocalSink(session_dir, uid))
+
+    def _report(fut) -> None:
+        try:
+            fut.result()
+        except Exception:
+            log.exception("voice: answering failed after the wake word fired")
+            activity.record("failed", "answer raised after transcription")
+
+    def dispatch(utt, speaker=None) -> None:
+        asyncio.run_coroutine_threadsafe(
+            on_speech(utt, speaker), loop).add_done_callback(_report)
+
+    listener_ = MicListener(dispatch, models=list(cfg.voice.models),
+                            threshold=cfg.voice.threshold,
+                            device=cfg.voice.device, log=activity)
+    listener_.start()
+    return listener_
+
+
+async def _poll_inbox(session_dir: Path, pipe: Pipeline, activity: ActivityLog,
+                      watcher, bindings: "identity.Bindings",
+                      capture: SessionCapture | None,
+                      spend: "spend_mod.SpendLog | None", poll_s: float) -> None:
+    """Watches `<session_dir>/inbox/` for queries the console wrote - one file per
+    query, named `<uid>.json`, deleted the moment it is claimed. See
+    Docs/local-output-design.md §3.1: the filename IS the queue, so there is no cursor
+    or offset to maintain, unlike a shared log.
+    """
+    inbox = session_dir / "inbox"
+    while True:
+        try:
+            if inbox.is_dir():
+                # Sorted by write time, not filename - a `uid` is not chronological.
+                pending = sorted(inbox.glob("*.json"), key=lambda p: p.stat().st_mtime)
+                for path in pending:
+                    await _handle_inbox_file(path, session_dir, pipe, activity,
+                                             watcher, bindings, capture, spend)
+        except Exception:
+            # A poll failure must not take the loop down - the next tick tries again,
+            # and a query that keeps failing is still visible in the log line below.
+            log.exception("inbox poll failed")
+        await asyncio.sleep(poll_s)
+
+
+async def _handle_inbox_file(path: Path, session_dir: Path, pipe: Pipeline,
+                             activity: ActivityLog, watcher,
+                             bindings: "identity.Bindings",
+                             capture: SessionCapture | None,
+                             spend: "spend_mod.SpendLog | None") -> None:
+    try:
+        row = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        log.warning("inbox: could not read %s: %s", path, e)
+        path.unlink(missing_ok=True)
+        return
+    # Deleted BEFORE the answer is fully rendered, not after - a crash mid-answer must
+    # not replay the same query forever (Docs/local-output-design.md §3.1, and its own
+    # open question about the narrow window this still leaves).
+    path.unlink(missing_ok=True)
+
+    uid = str(row.get("uid") or path.stem)
+    text = str(row.get("text") or "").strip()
+    if not text:
+        log.warning("inbox: %s carried no text, discarding", path.name)
+        return
+
+    log.info("local query %s: %r", uid, text)
+    sink = LocalSink(session_dir, uid)
+    sink.record_query(text, at=row.get("at"))
+    # `who` is a fixed local identity, not solved per-message - one browser tab, one
+    # machine, one bot. See Docs/local-output-design.md §7.
+    await _answer(None, pipe, text, "local", activity, watcher,
+                 started=time.monotonic(), channel_kind="text",
+                 capture=capture, uid=uid, feedback=False, spend=spend,
+                 user_id=None, bindings=bindings, sink=sink)
+
+
+async def _beat_local(cfg: Config, session_id: str, start_time: float,
+                      activity: ActivityLog, pipe: Pipeline, watcher,
+                      spend: "spend_mod.SpendLog | None",
+                      voice_listener: dict) -> None:
+    """`beat()`'s local-mode twin - see that function's own docstring for why this
+    exists at all: the console cannot see anything this process holds only in memory,
+    including whether it is still alive.
+
+    `voice_listener` is the same boxed-dict pattern `run()` uses (`listener["mic"]`) -
+    `_start_voice_local` fills it in once the mic is actually running, and this reads
+    whatever is there on every tick rather than freezing the value from before startup.
+    """
+    from . import botstate
+
+    while True:
+        try:
+            botstate.write({
+                "started_at": start_time,
+                "uptime": time.monotonic() - activity.started,
+                "session": session_id,
+                "router": pipe.router.name,
+                "output": "local",
+                "voice": _voice_status(cfg, voice_listener["mic"]),
+                "save": watcher.describe() if watcher else "not configured",
+                "world": (watcher.world.world_id
+                          if watcher and watcher.world else None),
+                "counts": activity.counts(),
+                "spend_usd": spend.total if spend else 0.0,
+            })
+        except Exception:
+            log.exception("heartbeat failed")
+        await asyncio.sleep(botstate.BEAT_SECONDS)
+
+
+async def _run_local_async(cfg: Config, pipe: Pipeline, session_id: str,
+                           start_time: float, activity: ActivityLog, watcher,
+                           bindings: "identity.Bindings",
+                           capture: SessionCapture | None,
+                           spend: "spend_mod.SpendLog | None",
+                           session_dir: Path) -> None:
+    poll_s = cfg.output.inbox_poll_ms / 1000
+    log.info("local mode: watching %s every %dms", session_dir / "inbox",
+             cfg.output.inbox_poll_ms)
+
+    voice_listener = {"mic": None}
+    if cfg.voice.enabled:
+        try:
+            voice_listener["mic"] = await _start_voice_local(
+                cfg, pipe, activity, watcher, bindings, capture, spend, session_dir)
+        except Exception:
+            # Voice failing must not take the text path down with it - matches
+            # `run()`'s own guard around `start_voice()`.
+            log.exception("voice startup failed - continuing text-only")
+
+    # All three loop forever (or, for voice, run on their own thread); `gather`
+    # returning at all means one of the two tasks below raised past its own
+    # try/except, which is the signal a bug got through rather than routine.
+    await asyncio.gather(
+        _poll_inbox(session_dir, pipe, activity, watcher, bindings, capture, spend,
+                   poll_s),
+        _beat_local(cfg, session_id, start_time, activity, pipe, watcher, spend,
+                   voice_listener),
+    )
+
+
+def run_local() -> None:
+    """Entry point for `output.medium = "local"`. No `discord.Client` is ever
+    constructed - see the module-level note above for why this is a separate function
+    rather than a branch inside `run()`.
+    """
+    logging.basicConfig(level=logging.INFO,
+                        format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+    try:
+        cfg = Config.load()
+    except ConfigError as e:
+        sys.exit(f"config error: {e}")
+
+    pipe = build_pipeline(cfg)
+    session_id = time.strftime("%Y%m%d-%H%M%S")
+    start_time = time.time()
+    activity = ActivityLog(session=session_id)
+    watcher = _build_watcher(cfg)
+    bindings = identity.Bindings()
+    log.info("config: %s", cfg.redacted())
+    log.info("loaded: %s", pipe.kb.summary())
+
+    # `chat.jsonl` / `inbox/` live under the session directory regardless of whether
+    # gameplay CAPTURE is on - that flag is about voice-clip privacy (off by default);
+    # the local Chat tab's own history is not optional the way a recorded clip is, so
+    # it is not gated on the same switch.
+    session_dir = SESSIONS_ROOT / session_id
+    capture = SessionCapture(session=session_id) if cfg.capture.enabled else None
+    spend = spend_mod.SpendLog(session_id) if cfg.cost.enabled else None
+
+    try:
+        asyncio.run(_run_local_async(cfg, pipe, session_id, start_time, activity,
+                                     watcher, bindings, capture, spend, session_dir))
+    finally:
+        from . import botstate
+        botstate.clear()
+
+
+def main() -> None:
+    """The one entry point `python -m palintel.bot` reaches, whether launched directly
+    or by the console's `Supervisor` (same subprocess command either way). Reads config
+    once to decide which medium to start, then hands off completely - `run()` and
+    `run_local()` each load it again themselves, which costs a local file read and
+    buys each function staying fully self-contained.
+    """
+    try:
+        cfg = Config.load()
+    except ConfigError as e:
+        sys.exit(f"config error: {e}")
+    if cfg.output.medium == "local":
+        run_local()
+    else:
+        run()
+
+
 if __name__ == "__main__":
-    run()
+    main()

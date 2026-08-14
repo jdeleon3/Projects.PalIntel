@@ -49,6 +49,19 @@ class Field:
 # **The whitelist IS the security boundary.** `discord.token` is deliberately absent and
 # must stay absent: adding it here would send a credential to a browser.
 FIELDS: tuple[Field, ...] = (
+    Field("output", "medium", "choice", "Output medium",
+          "`discord` posts into a channel; `local` writes to this machine's own Chat "
+          "tab and needs no Discord account at all — see ADR-0018. The bot reads this "
+          "at startup, same as everything else here: switching it takes a restart.",
+          choices=("discord", "local")),
+    Field("output", "poll_ms", "int", "Console poll (ms)",
+          "How often this console tails the Chat tab's event log for new messages. "
+          "Lower feels snappier and costs more file reads; a guess, not a measurement."),
+    Field("output", "inbox_poll_ms", "int", "Bot poll (ms)",
+          "How often the bot checks for a newly typed message, in local mode. This is "
+          "the gap a player actually notices — between pressing enter and anything "
+          "happening at all."),
+
     Field("discord", "channel_id", "int", "Text channel",
           "Where the bot listens and posts. Right-click the channel → Copy Channel ID."),
     Field("discord", "listen_mode", "choice", "Listen mode",

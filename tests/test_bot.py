@@ -72,6 +72,80 @@ def test_rejects_unknown_listen_mode(tmp_path):
         Config.load(p)
 
 
+# --------------------------------------------------------- [output], ADR-0018
+
+def test_output_defaults_to_discord_and_keeps_the_old_requirements(tmp_path, monkeypatch):
+    """No [output] section at all - every config written before this landed - must
+    behave exactly as it always did: discord medium, credentials required."""
+    monkeypatch.delenv("PALINTEL_DISCORD_TOKEN", raising=False)
+    p = _write(tmp_path, '[discord]\ntoken = ""\nchannel_id = 123\n')
+    with pytest.raises(ConfigError, match="token"):
+        Config.load(p)
+
+
+def test_local_medium_needs_no_discord_credentials(tmp_path, monkeypatch):
+    """The whole point of ADR-0018: a player with no Discord account can run this."""
+    monkeypatch.delenv("PALINTEL_DISCORD_TOKEN", raising=False)
+    monkeypatch.delenv("PALINTEL_CHANNEL_ID", raising=False)
+    p = _write(tmp_path, '[output]\nmedium = "local"\n')
+    cfg = Config.load(p)
+    assert cfg.output.medium == "local"
+    assert cfg.discord.token == "" and cfg.discord.channel_id == 0
+
+
+def test_local_medium_still_parses_discord_fields_if_present(tmp_path):
+    """Switching back to discord later should not need credentials re-entered - values
+    already in the file are kept, only the REQUIREMENT is conditional."""
+    p = _write(tmp_path,
+               '[output]\nmedium = "local"\n[discord]\ntoken = "abc"\nchannel_id = 7\n')
+    cfg = Config.load(p)
+    assert cfg.discord.token == "abc" and cfg.discord.channel_id == 7
+
+
+def test_rejects_unknown_output_medium(tmp_path):
+    p = _write(tmp_path, '[output]\nmedium = "carrier-pigeon"\n')
+    with pytest.raises(ConfigError, match="medium"):
+        Config.load(p)
+
+
+@pytest.mark.parametrize("field_name", ["poll_ms", "inbox_poll_ms"])
+def test_rejects_a_non_positive_poll_interval(tmp_path, field_name):
+    p = _write(tmp_path, f'[output]\nmedium = "local"\n{field_name} = 0\n')
+    with pytest.raises(ConfigError, match=field_name):
+        Config.load(p)
+
+
+def test_poll_intervals_are_configurable(tmp_path):
+    p = _write(tmp_path,
+               '[output]\nmedium = "local"\npoll_ms = 750\ninbox_poll_ms = 50\n')
+    cfg = Config.load(p)
+    assert cfg.output.poll_ms == 750 and cfg.output.inbox_poll_ms == 50
+
+
+def test_redacted_reports_the_output_medium(tmp_path):
+    p = _write(tmp_path, '[output]\nmedium = "local"\npoll_ms = 500\n')
+    assert "local" in Config.load(p).redacted()["output"]
+
+
+def test_rejects_discord_voice_under_local_medium(tmp_path):
+    """`DiscordListener` needs a live `discord.Client` to attach a receive sink to -
+    something `run_local()` never constructs. Caught at load, not at voice startup."""
+    p = _write(tmp_path, '[output]\nmedium = "local"\n'
+                         '[voice]\nenabled = true\nsource = "discord"\nchannel_id = 5\n')
+    with pytest.raises(ConfigError, match="voice.source"):
+        Config.load(p)
+
+
+def test_mic_voice_is_fine_under_local_medium(tmp_path, monkeypatch):
+    """The combination ADR-0018 actually enables - `voice.source = "mic"` never touched
+    Discord in the first place."""
+    monkeypatch.delenv("PALINTEL_DISCORD_TOKEN", raising=False)
+    monkeypatch.delenv("PALINTEL_CHANNEL_ID", raising=False)
+    p = _write(tmp_path, '[output]\nmedium = "local"\n[voice]\nenabled = true\n')
+    cfg = Config.load(p)
+    assert cfg.output.medium == "local" and cfg.voice.source == "mic"
+
+
 def test_dotenv_is_loaded_and_real_env_wins(tmp_path, monkeypatch):
     """A key in .env must reach os.environ, and an exported one must beat it.
 
