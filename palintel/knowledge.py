@@ -102,12 +102,12 @@ class Lexicon:
         # tower with the field alpha - but the pair is what a card says out loud.
         self._leader_pal: dict[str, str] = {}
 
-        for p in data["pals"]:
+        for p in data.get("pals", []):
             surfaces = [p["canonical"].lower(), *(a.lower() for a in p["aliases"])]
             self._forms[p["canonical"]] = ("pal", [(s, squash(s)) for s in surfaces])
             if p.get("zukan_index") is not None:
                 self._family[p["canonical"]] = p["zukan_index"]
-        for r in data["resources"]:
+        for r in data.get("resources", []):
             surfaces = [r["canonical"].replace("_", " ").lower(),
                         *(a.lower() for a in r["aliases"])]
             self._forms[r["canonical"]] = ("resource", [(s, squash(s)) for s in surfaces])
@@ -122,6 +122,21 @@ class Lexicon:
                                               [(s, squash(s)) for s in surfaces])
             self._leader_pal[lead["canonical"]] = lead["pal"]
 
+        # Optional, and always loaded from a SEPARATE file in practice (see
+        # build_item_lexicon.py) - never merged into lexicon.json itself. Item names are
+        # disproportionately ordinary English (Bone, Wood, Egg) and 12 of the 18
+        # resources share a display name with a droppable/craftable item (Coal, Ore,
+        # Red Berries...), so folding them into the SAME ranked list this class already
+        # produces for Pals and resources would mean an item candidate competes for the
+        # top-10 slots on every query, including ones that name no item at all - the
+        # exact pollution `item_source` was kept out of the lexicon to avoid in the
+        # first place (see build_pal_drops.py). A second `Lexicon` instance over a
+        # file that carries ONLY `items` keeps that ranking, and its risk, contained to
+        # the one fast-path branch that asks for it.
+        for it in data.get("items", []):
+            surfaces = [it["canonical"].lower(), *(a.lower() for a in it["aliases"])]
+            self._forms[it["canonical"]] = ("item", [(s, squash(s)) for s in surfaces])
+
         self._phonetic = {c: phonetic(c) for c in self._forms}
 
     @property
@@ -133,6 +148,9 @@ class Lexicon:
 
     def resources(self) -> list[str]:
         return sorted(c for c, (k, _) in self._forms.items() if k == "resource")
+
+    def item_names(self) -> list[str]:
+        return sorted(c for c, (k, _) in self._forms.items() if k == "item")
 
     def leaders(self) -> list[str]:
         """The eight tower leaders. Deliberately absent from `pals()`, which generates
@@ -298,6 +316,33 @@ class Dropper:
 
     def amount(self) -> str:
         return str(self.low) if self.low == self.high else f"{self.low}-{self.high}"
+
+
+@dataclass(frozen=True)
+class Ingredient:
+    """One material a recipe consumes, and how much."""
+    item: str
+    count: int
+
+
+@dataclass(frozen=True)
+class Recipe:
+    """One way to craft an item, from `DT_ItemRecipeDataTable`.
+
+    Tier 1, unlike `Ranch`: every field here is stated by the pak, not inferred or joined
+    from a community source. See `tools/ingest/build_recipes.py` for why some products
+    have none (upgrade-tier rows with no display name of their own) and why some have
+    several (breaking down a higher Sphere tier is a second way to get a Paldium
+    Fragment).
+    """
+    product_count: int
+    materials: list[Ingredient]
+    work_amount: float
+    # A schematic item id gating this recipe, when the table names one. Raw, not resolved
+    # to a display name or a source - see the ingest module docstring for why publishing
+    # a requirement without saying where to get it would repeat the defect this dataset
+    # exists to fix.
+    unlock_item_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -626,6 +671,11 @@ class PalAttributes:
 class KnowledgeBase:
     game_version: str
     lexicon: Lexicon
+    # A SECOND, separate Lexicon over item names, for the item_source fast path alone -
+    # see build_item_lexicon.py. None when item_lexicon.json is absent, which turns that
+    # one fast-path branch off and leaves item_source answering exactly as it did before
+    # (model path only). Never merged into `lexicon` itself; see that class's own note.
+    item_lexicon: Lexicon | None = None
     nodes: list[ResourceNode] = field(default_factory=list)
     spawns: list[SpawnArea] = field(default_factory=list)
     # Pals the game knows but the overworld never places: tower pairs, raid bosses, the
@@ -654,6 +704,11 @@ class KnowledgeBase:
     # name no item at all. They live in the tool enum, where the router reaches for them
     # only when the sentence is asking where something comes from.
     item_sources: dict[str, list[Dropper]] = field(default_factory=dict)
+    # Item -> every recipe that produces it, cheapest first. Empty when recipes.json is
+    # absent, which is normal - `find_item_source` falls back to the drop table alone,
+    # exactly what it did before this dataset existed. See build_recipes.py: this is the
+    # fix for "where can I find cakes" answering a 1% Lovander drop instead of the recipe.
+    recipes: dict[str, list["Recipe"]] = field(default_factory=dict)
     # Pal -> ranch output. Empty when the dataset is absent, which is normal: it has its
     # own ingest step and the answer is complete without it.
     ranch: dict[str, Ranch] = field(default_factory=dict)
@@ -689,6 +744,12 @@ class KnowledgeBase:
     def load(cls, version: str = "1.0.2", root: Path | None = None) -> "KnowledgeBase":
         base = (root or REPO) / "data" / version
         lexicon = Lexicon(base / "lexicon.json")
+
+        # Optional and separate from `lexicon` above - see build_item_lexicon.py and the
+        # note on Lexicon's own `items` loading for why it is a second file rather than a
+        # third block in lexicon.json.
+        item_lexicon_path = base / "item_lexicon.json"
+        item_lexicon = Lexicon(item_lexicon_path) if item_lexicon_path.exists() else None
 
         raw = json.loads((base / "resource_nodes.json").read_text(encoding="utf-8"))
         nodes = []
@@ -734,6 +795,20 @@ class KnowledgeBase:
                                        min_level=d.get("min_level", 0))
                                for d in ds]
                          for pal, ds in drop_raw.get("by_pal", {}).items()}
+
+        # Optional, same shape as pal_drops above: a checkout that has not run
+        # build_recipes.py still answers item_source, just from the drop table alone.
+        recipes: dict[str, list[Recipe]] = {}
+        recipe_path = base / "recipes.json"
+        if recipe_path.exists():
+            recipe_raw = json.loads(recipe_path.read_text(encoding="utf-8"))
+            recipes = {item: [Recipe(
+                product_count=r["product_count"],
+                materials=[Ingredient(item=m["item"], count=m["count"])
+                          for m in r["materials"]],
+                work_amount=r["work_amount"],
+                unlock_item_id=r.get("unlock_item_id"))
+                for r in rs] for item, rs in recipe_raw.get("by_item", {}).items()}
 
         ranch: dict[str, Ranch] = {}
         ranch_source = ""
@@ -792,12 +867,13 @@ class KnowledgeBase:
                                   raw_f.get("resource_deciles", {}).items()},
             )
 
-        return cls(game_version=raw["game_version"], lexicon=lexicon, nodes=nodes,
+        return cls(game_version=raw["game_version"], lexicon=lexicon,
+                   item_lexicon=item_lexicon, nodes=nodes,
                    spawns=spawns,
                    provided_resources=frozenset(raw.get("provided_resources", ())),
                    pals_without_areas=frozenset(spawn_raw["pals_without_areas"]),
                    droppers=droppers, pal_drops=pal_drops,
-                   item_sources=item_sources, ranch=ranch,
+                   item_sources=item_sources, recipes=recipes, ranch=ranch,
                    ranch_source=ranch_source,
                    attributes=attributes, jobs=jobs, mounts=mounts,
                    base_radius=base_radius, base_features=base_features)

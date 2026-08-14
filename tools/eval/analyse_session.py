@@ -99,6 +99,14 @@ class Turn:
     tool: str | None
     entity: str | None
     outcome: str
+    # What the top candidate was, whether or not it was acted on - see
+    # `capture.Utterance.near`'s own note. Distinct from `entity`, which is only ever
+    # set on an ANSWERED turn.
+    near: str | None = None
+    # The router's own named culprit on a decline, when it named one - see
+    # `capture.Utterance.unrecognized`. A stronger claim than `near`: this is the
+    # router SAYING what defeated it, not this file guessing from a score.
+    unrecognized: str | None = None
     feedback: list[str] = field(default_factory=list)
     # What the player typed into the `Not what I expected` modal, or replied with via
     # `/palintel wrong`. Worth more per row than anything else in this file and the only
@@ -139,7 +147,8 @@ def load(session_dir: Path) -> list[Turn]:
 
     turns = {r["uid"]: Turn(uid=r["uid"], at=r.get("at", 0.0), heard=r.get("heard", ""),
                             path=r.get("path", ""), tool=r.get("tool"),
-                            entity=r.get("entity"), outcome=r.get("outcome", ""))
+                            entity=r.get("entity"), outcome=r.get("outcome", ""),
+                            near=r.get("near"), unrecognized=r.get("unrecognized"))
              for r in rows if "heard" in r}
     # message_id -> uid, which is how a button press minutes later finds its clip.
     by_message = {r["message_id"]: r["uid"] for r in rows
@@ -172,6 +181,19 @@ def orphan_notes(session_dir: Path) -> list[dict]:
 
 def similarity(a: Turn, b: Turn) -> float:
     return SequenceMatcher(None, squash(a.heard), squash(b.heard)).ratio()
+
+
+def named_unmatched(turns: list[Turn]) -> list[Turn]:
+    """Declines where the ROUTER itself named the token it could not place.
+
+    Same honest-residue shape as the `misheard`-with-no-rephrase list in `main`, and the
+    same reason: this file knows a token went unplaced, not what it should have meant, so
+    `expected: null` is the only correct output. Unlike that list, this one needs no
+    rephrase and no human button - the router said so directly, in `Decline.unrecognized`
+    - which is new as of the item free-text resolver (2026-08-14). Most routers still
+    leave this unset, and an empty result here is a true reading of that, not a bug.
+    """
+    return [t for t in turns if t.unrecognized]
 
 
 def failure_runs(turns: list[Turn]) -> list[list[Turn]]:
@@ -356,7 +378,11 @@ def main() -> None:
     for run in runs:
         head = run[0]
         mark = "  [human: misheard]" if any(t.misheard for t in run) else ""
-        print(f"  x{len(run)}  {head.heard[:58]!r}{mark}")
+        # `near` is a hint, not a claim - it is whatever scored highest, and the fast
+        # path's own comment (routing.py) warns that can be an unrelated word. Shown so
+        # a reviewer has somewhere to start, not because it is trustworthy on its own.
+        hint = f"  (near: {head.near})" if head.near else ""
+        print(f"  x{len(run)}  {head.heard[:58]!r}{mark}{hint}")
         for t in run[1:]:
             print(f"       then {t.heard[:54]!r}")
 
@@ -381,6 +407,14 @@ def main() -> None:
         for t in unexplained:
             print(f"  {t.heard[:66]!r}")
         print("  (expected: null - a run of failures does not say what was meant)")
+
+    named = named_unmatched(turns)
+    if named:
+        print(f"\nrouter-named unrecognized tokens: {len(named)}")
+        for t in named:
+            print(f"  {t.unrecognized!r}  (from {t.heard[:50]!r})")
+        print("  (expected: null - the router said what it could not place, not what "
+              "was meant)")
 
     if not args.write:
         print("\n(pass --write to emit analysis.json for harvest_aliases.py)")
@@ -413,7 +447,15 @@ def main() -> None:
         "unresolved": [
             {"id": f"{chosen.parent.name}:{t.uid}", "boosted_text": t.heard,
              "expected": None, "source": "gameplay", "evidence": "human: misheard"}
-            for t in unexplained],
+            for t in unexplained] + [
+            # The router's own named culprit - see the print section above. `surface`
+            # carries the specific token rather than the whole utterance, same shape a
+            # rephrase proposal's `surface` gives, so a future consumer does not have to
+            # re-derive it from `boosted_text`.
+            {"id": f"{chosen.parent.name}:{t.uid}", "boosted_text": t.heard,
+             "expected": None, "surface": t.unrecognized, "source": "gameplay",
+             "evidence": "router: unrecognized"}
+            for t in named],
     }, indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"\n-> {out}")
 

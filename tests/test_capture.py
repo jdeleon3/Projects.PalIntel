@@ -135,3 +135,48 @@ def test_a_note_survives_a_card_no_clip_claims(tmp_path: Path):
     assert read_session(c.dir / "log.jsonl") == []
     assert [r["note"] for r in read_feedback(c.dir / "log.jsonl")] \
         == ["typed query, no clip"]
+
+
+# --- near / unrecognized, added 2026-08-14 for the item free-text resolver ------------
+
+def test_near_and_unrecognized_default_to_none():
+    """A row from a router that never names either must not fabricate one - `None` is
+    the honest reading, and most routers still leave both unset."""
+    d = utt(near=None, unrecognized=None).as_json()
+    assert d["near"] is None and d["unrecognized"] is None
+
+
+def test_near_and_unrecognized_round_trip(tmp_path):
+    """Additive fields: an old reader that has never heard of `near` still gets every
+    other column unchanged, which is the whole point of adding a field rather than
+    repurposing `entity`."""
+    c = cap(tmp_path)
+    c.record(utt(entity=None, near="Giga Glider", unrecognized="gildra",
+                 outcome="declined"))
+    row = read_session(c.log_path)[0]
+    assert row["entity"] is None
+    assert row["near"] == "Giga Glider"
+    assert row["unrecognized"] == "gildra"
+
+
+def test_answer_populates_near_and_unrecognized():
+    """Read off the source, the same technique `test_text_capture.py` uses for the
+    capture/feedback wiring defect: the risk is an ABSENT keyword, which a call that
+    only ever exercises the answered path would not catch either."""
+    import ast
+
+    bot = Path(__file__).resolve().parents[1] / "palintel" / "bot.py"
+    tree = ast.parse(bot.read_text(encoding="utf-8"))
+    calls = []
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) \
+                and node.name == "_answer":
+            for call in ast.walk(node):
+                if isinstance(call, ast.Call) \
+                        and getattr(call.func, "id", None) == "Utterance":
+                    calls.append(call)
+    assert calls, "no Utterance( call inside _answer - has it been renamed?"
+    for call in calls:
+        kw = {k.arg for k in call.keywords if k.arg}
+        assert "near" in kw, "top candidate is not being captured on a decline"
+        assert "unrecognized" in kw, "the router's own named culprit is not captured"

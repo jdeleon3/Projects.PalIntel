@@ -540,6 +540,16 @@ python tools/ingest/build_pal_drops.py --version 1.0.2
 dotnet run --project tools/extract/PakExtract -- ranch
 python tools/ingest/build_ranch.py --version 1.0.2
 
+# Crafting recipes - the "what does a Cake need" fix. Needs the `tables` extract for
+# DT_ItemRecipeDataTable; optional, and its absence turns the recipe half of item_source
+# off, leaving it exactly as it behaved before this dataset existed (drop table only).
+python tools/ingest/build_recipes.py --version 1.0.2
+
+# A SECOND lexicon, over item names only - the item_source fast path. Reads
+# pal_drops.json and recipes.json above, so run it after both. Optional; its absence
+# turns the fast-path branch off and item_source still works via the model path.
+python tools/ingest/build_item_lexicon.py --version 1.0.2
+
 # Work suitability, for Pal search by attribute. Needs the `tables` extract for the job
 # labels; optional, and its absence turns that one query class off (section 3.2b).
 python tools/ingest/build_work.py --version 1.0.2

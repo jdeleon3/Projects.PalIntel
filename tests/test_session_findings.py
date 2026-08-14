@@ -149,6 +149,11 @@ def test_the_job_can_trail_the_subject(pipe):
     ("Hey pal tell me about Lening", "Lyleen"),
     ("Hey pal, tell me about Leneen", "Lyleen"),
     ("Hey pal where can I find Celine?", "Selyne"),
+    # 2026-08-14, harvest_aliases.py --condition quiet: the surface form the corrector
+    # already matched on, taken from data rather than invented. Recovered exactly one Q1
+    # hit on the 271 A5 transcripts, zero wrong, zero new steals.
+    ("Hey pal, where can I find some dara hal?", "Direhowl"),
+    ("Hey pal, where's the nearest screwed oil?", "crude_oil"),
 ])
 def test_aliases_harvested_from_unscripted_speech(kb: KnowledgeBase, mangled, pal):
     """The first aliases in this project taken from real play rather than from prompts

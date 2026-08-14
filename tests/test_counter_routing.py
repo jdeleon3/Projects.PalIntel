@@ -204,13 +204,40 @@ def test_the_model_can_choose_the_counter_class():
 
 
 def test_boss_counter_unpacks_the_pal_into_the_boss_slot():
-    """The boss arrives resolved through the `pals` enum. `unpack` never reads the
-    verbatim `target` slot, so wiring it there would have produced an empty call."""
+    """With no target, the boss arrives resolved through the `pals` enum."""
     name, args = unpack("answer_query", {"query_class": "boss_counter",
                                          "pals": ["Anubis"], "resources": [],
-                                         "items_named": [], "target": "the first tower"})
+                                         "items_named": [], "target": None})
     assert name == "plan_counters"
     assert args["boss"] == "Anubis"
+
+
+def test_boss_counter_prefers_target_over_a_named_pal():
+    """G4, 2026-08-14: "is Prixter any good against the first tower" is pals=["Prixter"]
+    AND target="the first tower" - Prixter is the Pal you would BRING, not the boss.
+    `unpack` used to let the positional `pals` zip win regardless, producing a confident
+    plan for fighting Prixter. `target` must win whenever it is filled, not only when
+    `pals` came back empty - this is the exact payload that reproduced the bug."""
+    name, args = unpack("answer_query", {"query_class": "boss_counter",
+                                         "pals": ["Prixter"], "resources": [],
+                                         "items_named": [], "target": "the first tower"})
+    assert name == "plan_counters"
+    assert args["boss"] == "the first tower"
+    assert args["boss"] != "Prixter"
+
+
+def test_g4_attacker_framing_declines_end_to_end(kb):
+    """The full round trip: an "against the first tower" call, unpacked, dispatched. It
+    must decline - not answer about Prixter, and not raise - because "the first tower"
+    names no boss `counters.plan` has a row for. A confident card here is the failure
+    Block G tests for; a decline is the pass."""
+    _, args = unpack("answer_query", {"query_class": "boss_counter", "pals": ["Prixter"],
+                                      "resources": [], "items_named": [],
+                                      "target": "the first tower"})
+    p = Pipeline(kb, _FixedRouter(ToolCall("plan_counters", args)))
+    out = p.handle("is Prixter any good against the first tower", PlayerState())
+    assert isinstance(out.call, Decline)
+    assert "Prixter" not in out.call.reason
 
 
 def test_a_counter_class_naming_no_pal_yields_no_boss_and_declines(kb):

@@ -6,10 +6,12 @@ unit-testable. This is where every factual value in a Tier 1 card originates.
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass, field
+from difflib import SequenceMatcher
 
 from .knowledge import (Dropper, KnowledgeBase, Mount, PalAttributes, PalDrop,
-                        Ranch, ResourceNode, SpawnArea)
+                        Ranch, Recipe, ResourceNode, SpawnArea, squash)
 
 
 @dataclass(frozen=True)
@@ -276,30 +278,129 @@ class ItemSourceResult:
     alpha_only: list[Dropper]
     high_level: list[Dropper]
     known: bool
+    # Populated when the item has a crafting recipe, cheapest first - see build_recipes.py.
+    # This is the fix for the recorded "where can I find cakes" defect: `known` used to
+    # mean only "the drop table has a row", so a 1%-Lovander drop was the whole answer for
+    # an item that is actually crafted. A card must lead with this when it is non-empty.
+    recipes: list[Recipe] = field(default_factory=list)
+    # material item -> (ranch Pal, roster_verified), for the first recipe's ingredients
+    # only. A weaker-sourced fact than the recipe itself - see `_ranch_producer` - so it
+    # is kept separate rather than folded into `Recipe`, which is pak-stated throughout.
+    ranch_hints: dict[str, tuple[str, bool]] = field(default_factory=dict)
 
     @property
     def total(self) -> int:
         return len(self.ordinary) + len(self.alpha_only) + len(self.high_level)
 
+    @property
+    def craftable(self) -> bool:
+        return bool(self.recipes)
+
+
+# How well a phrase must match an item's name to be acted on. The same shape and the
+# same reasoning as `progression.NAME_MATCH`: this only ever runs on the model's OWN
+# free-text `item_name` slot - never on a full, noisy sentence - so it can afford a
+# high bar and a whole-string match rather than the fast path's n-gram ranking against
+# `Lexicon`. That difference is a feature here, not a shortcut: `Lexicon.rank()` caps at
+# 3-grams and loses "High Quality Pal Oil" to its own shorter siblings (measured building
+# the fast path, 2026-08-14); a model's already-extracted phrase has no sentence noise to
+# strip, so whole-string `SequenceMatcher` covers it cleanly.
+ITEM_NAME_MATCH = 0.80
+
+# Words that carry no part of an item's name and are in the way of matching one, same
+# list `progression.find` strips for technology names.
+_LEADING_ARTICLE = re.compile(r"^(?:the|a|an|my|some)\s+", re.I)
+
+
+def find_item(query: str, kb: KnowledgeBase) -> tuple[str, float] | None:
+    """The item a free-text phrase names, with how well it matched. None below the floor.
+
+    The free-text half of `item_source` - see `routing_unified.py`'s `item_name` slot.
+    `items_named`'s enum already covers items with drop data at zero resolution risk;
+    this exists for the ~780 recipe-only items that enum leaves out, and for the same
+    reason `technology_lookup` matches 588 names as free text rather than paying an enum
+    for them: schema tokens are a cost paid on every query of every class, and most item
+    names are ordinary English that would make an enum this size expensive twice over.
+
+    Matched against the SAME universe the item lexicon fast path uses - the union of
+    `kb.item_sources` and `kb.recipes` keys - so the two paths can never disagree about
+    what counts as a real item.
+    """
+    wanted = squash(_LEADING_ARTICLE.sub("", query.strip()))
+    if not wanted:
+        return None
+    names = set(kb.item_sources) | set(kb.recipes)
+    if not names:
+        return None
+    scored = sorted(
+        ((name, round(SequenceMatcher(None, wanted, squash(name)).ratio(), 3))
+         for name in names),
+        key=lambda s: (-s[1], s[0]))
+    best = scored[0]
+    if best[1] < ITEM_NAME_MATCH:
+        return None
+    # Two plausible readings and nothing to separate them is a decline, the same rule
+    # `progression.find` applies and for the same reason: the answer is a card, and a
+    # card cannot ask which one you meant.
+    if len(scored) > 1 and scored[1][1] >= best[1] - 0.02:
+        return None
+    return best
+
+
+def _ranch_producer(kb: KnowledgeBase, item: str) -> tuple[str, bool] | None:
+    """The first Pal whose ranch output includes `item`, and whether that fact is
+    roster-verified - the join the roadmap named for exactly this card: Honey<-Beegarde,
+    Red Berries<-Caprity, Egg<-Chikipi, Milk<-Mozzarina. Computed here rather than
+    precomputed on the KnowledgeBase because `kb.ranch` is small (tens of entries) and
+    nothing else needs it reversed.
+
+    Deliberately a WEAKER claim than the recipe itself: `Ranch`'s own docstring records
+    that this mapping is community-wiki, not pak-extracted, so a card must attribute it
+    separately rather than presenting an ingredient's source with the same confidence as
+    the recipe that names it.
+    """
+    for pal, r in kb.ranch.items():
+        for d in r.drops:
+            if d.item == item:
+                return pal, r.verified
+    return None
+
 
 def find_item_source(kb: KnowledgeBase, item: str) -> ItemSourceResult:
-    """Which Pals drop a named item.
+    """Which Pals drop a named item, AND how to craft it when it can be.
 
-    The mirror of `find_pal_drops`, split the same three ways and for the same reason: 78
-    Pals drop Leather from an ordinary encounter, while Ancient Civilization Parts comes
-    only from alphas. A single ranked list would send a player after a field boss without
-    saying so.
+    The drop half is the mirror of `find_pal_drops`, split the same three ways and for the
+    same reason: 78 Pals drop Leather from an ordinary encounter, while Ancient
+    Civilization Parts comes only from alphas. A single ranked list would send a player
+    after a field boss without saying so.
+
+    The recipe half exists because a drop table cannot say "crafted" - `item_source`
+    named itself after the drop table's own `by_item` view, and for a crafted item that
+    view is true and useless (Cake: a 1% Lovander drop, when the real answer is Flour,
+    Red Berries, Milk, Egg and Honey at a Cooking Pot). Both can be populated at once -
+    Leather both drops AND has no recipe here, and nothing stops an item having both a
+    craft and a drop - so a card decides which to lead with, not this function.
     """
     sources = kb.item_sources.get(item)
-    if sources is None:
+    recipes = kb.recipes.get(item, [])
+    if sources is None and not recipes:
         return ItemSourceResult(item=item, ordinary=[], alpha_only=[], high_level=[],
-                                known=False)
+                                known=False, recipes=[])
+    sources = sources or []
+    hints: dict[str, tuple[str, bool]] = {}
+    if recipes:
+        for ing in recipes[0].materials:
+            producer = _ranch_producer(kb, ing.item)
+            if producer is not None:
+                hints[ing.item] = producer
     return ItemSourceResult(
         item=item,
         ordinary=[d for d in sources if not d.alpha_only and not d.min_level],
         alpha_only=[d for d in sources if d.alpha_only and not d.min_level],
         high_level=[d for d in sources if d.min_level],
         known=True,
+        recipes=recipes,
+        ranch_hints=hints,
     )
 
 

@@ -20,6 +20,12 @@ tower as an invented entity. The per-class `evaluate_counter` takes `target` as 
 text precisely so the router does not have to resolve a tower to a species, and dropping
 that distinction measured the schema rather than the router. It is kept here.
 
+**And when both slots are filled, `target` decides the boss - `pals` never does, for
+`plan_counters`.** The same shape reached production anyway (G4, 2026-08-14): "is
+Prixter any good against the first tower" is a Pal being offered as the ATTACKER, not
+named as the boss, and `unpack` was letting the positional `pals` zip win regardless of
+what `target` said. Fixed by making `target` override rather than merely fall back.
+
 **Slots are 0..n arrays, not nullable enums.** `pal_spawn_schema`'s docstring already
 found the landmine: strict tool use expresses an optional parameter as a nullable type
 that is still `required`, and that has no clean form for an enum. An array with zero
@@ -62,7 +68,9 @@ CLASS_HELP: dict[str, str] = {
     "resource_location": "where to find, mine or farm a resource (coal, ore, quartz)",
     "pal_location": "where to find, catch or encounter a Pal species",
     "pal_drops": "what items a Pal yields when defeated or captured",
-    "item_source": "which Pals drop a named item (Flame Organ, Leather, Bone)",
+    "item_source": "which Pals drop a named item, OR what a named item is crafted from "
+                   "(Flame Organ, Leather, Bone, Cake). Fill `items_named` when the item "
+                   "is one of those, `item_name` verbatim for any other crafted item",
     "breeding_combo": "which parent Pals breed to produce a target Pal",
     "breeding_pair": "what two named Pals produce when bred together",
     "pal_info": "a summary of ONE named Pal - \"tell me about X\", \"who is X\", "
@@ -180,16 +188,38 @@ def unified_schema(resources: list[str], pals: list[str],
                         "The item the question asks the SOURCE of - \"who drops Flame "
                         "Organ\". Empty otherwise. Many of these are ordinary English "
                         "words (Arrow, Bone, Leather); only fill this when the player is "
-                        "asking where an item comes from."
+                        "asking where an item comes from. Covers items with drop data "
+                        "only - for a CRAFTED item not in this list (a recipe with no "
+                        "drop source), use `item_name` instead."
+                    ),
+                },
+                "item_name": {
+                    "type": ["string", "null"],
+                    "description": (
+                        "item_source only: the item's name VERBATIM as spoken, for a "
+                        "crafted item that is NOT in `items_named`'s enum - \"what do I "
+                        "need for a Mega Sphere\" is item_name=\"Mega Sphere\" if Mega "
+                        "Sphere has no drop data. Not resolved here; matched by the "
+                        "dispatcher, the same way `technology` is matched against 588 "
+                        "names with no enum. Leave null when the item IS in "
+                        "`items_named` - that enum is the validated choice and wins."
                     ),
                 },
                 "target": {
                     "type": ["string", "null"],
                     "description": (
-                        "The boss or tower the question names, VERBATIM as spoken - "
-                        "not resolved to a Pal name. Use it for a tower LEADER, who is "
-                        "a person and not a species: \"how do I beat Victor\" is "
-                        "target=\"Victor\" with pals empty. Null when none is named."
+                        "boss_counter: WHAT IS BEING FOUGHT, verbatim as spoken - not "
+                        "resolved to a Pal name. Fill it for a tower LEADER, who is a "
+                        "person and not a species (\"how do I beat Victor\" is "
+                        "target=\"Victor\", pals empty), AND for a tower or boss named "
+                        "without a species (\"the first tower\", \"the tower boss\"). "
+                        "A Pal named as something the player would BRING or USE, rather "
+                        "than as the thing being fought, still goes in `pals` - but "
+                        "target is what decides the boss: \"is Prixter any good against "
+                        "the first tower\" is pals=[\"Prixter\"] AND "
+                        "target=\"the first tower\", never target=\"Prixter\". Null only "
+                        "when no boss or tower is named at all, in which case the sole "
+                        "named Pal is read as the boss (\"how do I beat Anubis\")."
                     ),
                 },
                 "max_player_level": {
@@ -304,9 +334,9 @@ def unified_schema(resources: list[str], pals: list[str],
                     ),
                 },
             },
-            "required": ["query_class", "pals", "resources", "items_named", "target",
-                         "max_player_level", "pal_elements", "pal_work", "pal_level",
-                         "mount_query", "mount_medium", "mount_unlock_level",
+            "required": ["query_class", "pals", "resources", "items_named", "item_name",
+                         "target", "max_player_level", "pal_elements", "pal_work",
+                         "pal_level", "mount_query", "mount_medium", "mount_unlock_level",
                          "mount_unowned", "tech_goal", "tech_ancient_only",
                          "own_base", "technology"],
             "additionalProperties": False,
@@ -325,15 +355,22 @@ _ARGS: dict[str, tuple[str, ...]] = {
     "get_pal_info": ("pal",),
     "compare_pals": ("pal_a", "pal_b"),
     # The boss arrives through the `pals` enum when it IS a Pal, and through the verbatim
-    # `target` slot when it is not - see the fallback in `unpack`. Adding the eight tower
-    # leaders to the Pal enum was the alternative and it is worse twice over: Victor is
-    # not a species and would become selectable as one by every other class, and the enum
-    # is the single largest thing in the request (~2,630 tokens) that this whole module
-    # exists to stop duplicating.
+    # `target` slot when it is not - see `unpack`, which now makes `target` WIN whenever
+    # it is filled. Adding the eight tower leaders to the Pal enum was the alternative and
+    # it is worse twice over: Victor is not a species and would become selectable as one
+    # by every other class, and the enum is the single largest thing in the request
+    # (~2,630 tokens) that this whole module exists to stop duplicating.
     #
     # Either way the dispatcher does the resolving, which is what lets an unnamed tower
     # ("the first tower") decline honestly instead of being guessed at: counters.plan
     # raises on a target it has no row for.
+    #
+    # G4, 2026-08-14: "is Prixter any good against the first tower" filled pals=["Prixter"]
+    # and (once the schema was taught to) target="the first tower" - and the zip below
+    # handed `boss` to Prixter regardless, because it runs before `target` is even
+    # consulted and nothing has overridden it since. A named Pal is not the boss merely
+    # for being the only Pal in the sentence; `target` is the slot that says what is being
+    # FOUGHT, and it must out-rank a Pal that arrived for an unrelated reason.
     "plan_counters": ("boss",),
     # Nothing positional: its three slots are all its own and all optional, so `unpack`
     # fills them by name below rather than by zipping the shared entity lists. The whole
@@ -390,11 +427,17 @@ def unpack(name: str, args: dict[str, Any]) -> tuple[str, dict[str, Any]]:
     if len(named_pals) > 1 and _ARGS[tool] == ("pal",):
         out["pals"] = named_pals
 
-    # A counter target that is not a Pal - one of the eight tower leaders. Only when the
-    # resolved slots produced nothing, so a question naming both a leader and a species
-    # keeps the species: the enum is constrained and the free string is not, and between
-    # a validated value and an unvalidated one the validated one wins.
-    if tool == "plan_counters" and not out.get("boss") and args.get("target"):
+    # `target` names WHAT IS BEING FOUGHT and wins over `pals` whenever it is filled -
+    # never only as a fallback for an empty boss slot. The zip above already put the
+    # first named Pal into `boss` unconditionally, which is right for "how do I beat
+    # Anubis" (target null, pals=["Anubis"]) and wrong for "is Prixter any good against
+    # the first tower" (target="the first tower", pals=["Prixter"]): Prixter is the Pal
+    # the player would BRING, not the boss, and letting `pals` win there is exactly the
+    # G4 failure - a confident plan for fighting the wrong thing. `target` is free text,
+    # so an unresolved value ("the first tower") still reaches `counters.plan` and
+    # declines rather than guesses; that decline is the correct answer to this question,
+    # not a degraded one. See test_counter_routing.py for the discriminating case.
+    if tool == "plan_counters" and args.get("target"):
         out["boss"] = args["target"]
 
     if tool == "find_pals_by_attribute":
@@ -434,6 +477,16 @@ def unpack(name: str, args: dict[str, Any]) -> tuple[str, dict[str, Any]]:
                 out["player_level"] = out.pop("level")
     if tool == "find_technology" and args.get("technology"):
         out["technology"] = args["technology"]
+
+    # `items_named`'s enum result (already in `out["item"]` via the zip above) always
+    # wins when present - it is validated against the game's own data, `item_name` is
+    # not. Carried through only as a fallback, same asymmetry `find_technology` has
+    # between an id lookup and a name match: a guaranteed-valid answer beats an unvalidated
+    # one whenever both are available, never the other way around (contrast `plan_counters`
+    # ' `target`, which wins over `pals` precisely because THAT enum result is not
+    # guaranteed to be the boss - see the G4 note above).
+    if tool == "find_item_source" and not out.get("item") and args.get("item_name"):
+        out["item_name"] = args["item_name"]
 
     if tool == "rate_base_site":
         if args.get("own_base"):

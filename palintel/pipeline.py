@@ -260,12 +260,12 @@ def build_router(kb: KnowledgeBase, prefer: str = "auto",
     fast = StubRouter(kb.lexicon, locatable, cues=cfg.cues,
                       counters=bool(counterable), counterable=counterable,
                       progression=tech_available, base_sites=bases_available,
-                      corpus=grounds)
+                      corpus=grounds, item_lexicon=kb.item_lexicon)
     backstop = StubRouter(kb.lexicon, locatable, cues="wide",
                           resource_floor=BACKSTOP_CONFIDENT,
                           counters=bool(counterable), counterable=counterable,
                           progression=tech_available, base_sites=bases_available,
-                          corpus=grounds)
+                          corpus=grounds, item_lexicon=kb.item_lexicon)
 
     def wrapped(primary):
         """Wrap a hosted router with the backstop, and the fast path if enabled.
@@ -509,11 +509,33 @@ class Pipeline:
 
         if call.name == "find_item_source":
             item = call.args.get("item")
+            score = 1.0
+            # `items_named`'s enum result always wins when present - see
+            # routing_unified.py's note on why. `item_name` is the free-text fallback
+            # for the ~780 recipe-only items the enum leaves out, resolved on THIS side
+            # of the boundary, the same shape `find_technology` already uses.
+            if not item and call.args.get("item_name"):
+                found = execution.find_item(call.args["item_name"], self.kb)
+                item, score = found if found else (None, 0.0)
+                if item is None:
+                    log.info("find_item_source: %r did not resolve to a known item",
+                             call.args["item_name"])
+                    return self._decline(
+                        Decline(reason="I don't know an item by that name",
+                               # The router's own named culprit - see capture.py's
+                               # `Utterance.unrecognized`. This is the first place that
+                               # field is ever actually populated: a model's own
+                               # written attempt at an item name is a reliable signal,
+                               # unlike the fuzzy ranker's top score, which the fast
+                               # path's own comment warns is often unrelated.
+                               unrecognized=call.args["item_name"]),
+                        candidates)
             if not item:
                 log.warning("router called %s with no item: %s", call.name, call.args)
                 return self._decline(Decline(reason="no item identified"), candidates)
             result = execution.find_item_source(self.kb, item)
-            log.info("find_item_source(%s) -> %d sources", item, result.total)
+            log.info("find_item_source(%s) -> %d sources (match %.2f)", item,
+                     result.total, score)
             self._remember(who, call, {"item": item}, f"{result.total} sources",
                            enabled=remember)
             return Outcome([cards.item_source_card(result)], call, candidates)

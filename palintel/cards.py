@@ -621,19 +621,47 @@ def drops_card(result: DropsResult) -> Card:
                 colour=TIER_FACT)
 
 
-def item_source_card(result: ItemSourceResult) -> Card:
-    """Which Pals drop a named item, ordinary encounters first.
+def _recipe_lines(result: ItemSourceResult) -> list[str]:
+    """The materials for the cheapest recipe, plus how many other recipes exist.
 
-    78 Pals drop Leather and one drops a Cloth Outfit Schematic. The cap matters more
-    here than on any other card, and so does the ordering: the reader wants the easiest
-    source, not an exhaustive index.
+    Leads the card whenever a recipe is known - see the module note above
+    `find_item_source`: a drop table cannot say "crafted", and answering a crafted item
+    from `by_item` alone is the "Cake comes from a 1% Lovander drop" defect this exists to
+    fix. `ranch_hints` is printed inline per ingredient rather than as its own section,
+    because it is a fact about the INGREDIENT, not about the Cake - and it carries its own
+    `(unofficial)` mark since `Ranch` is community-sourced, unlike the recipe around it.
+    """
+    recipe = result.recipes[0]
+    parts = []
+    for ing in recipe.materials:
+        hint = result.ranch_hints.get(ing.item)
+        tag = f" _(or ranch a {hint[0]}{'' if hint[1] else ', unverified'})_" if hint else ""
+        parts.append(f"**{ing.item}** x{ing.count}{tag}")
+    lines = [", ".join(parts)]
+    extra = len(result.recipes) - 1
+    if extra > 0:
+        # Only the cheapest recipe's materials are shown - see the docstring. The count
+        # still says there is more, same reasoning as MAX_DROPPERS' "+N more" elsewhere:
+        # a shortcut is not a claim that no other way exists.
+        lines.append(f"_+{extra} other way{'s' if extra != 1 else ''} to make this_")
+    return lines
+
+
+def item_source_card(result: ItemSourceResult) -> Card:
+    """How to get a named item - crafted first, dropped second.
+
+    The two halves answer different questions and neither implies the other: Leather
+    drops from 78 Pals and has no recipe here, Cake has a recipe and (truly, uselessly)
+    also drops from Lovander at 1%. When both exist, the recipe leads because it is the
+    reliable route - a drop rate under 100% is a farm, a recipe is a shopping list - and
+    the drops still get a line rather than disappearing, since an item that both drops
+    AND is crafted is a real case (see `find_item_source`'s docstring) and hiding the
+    cheaper of two answers would be its own kind of wrong.
     """
     if not result.known:
-        return Card(title=f"No drop data for {result.item}",
-                    lines=["Nothing in my data drops that."], colour=TIER_DECLINE)
-    if not result.total:
-        return Card(title=f"Nothing drops {result.item}",
-                    lines=[f"No Pal yields **{result.item}**."], colour=TIER_DECLINE)
+        return Card(title=f"No source data for {result.item}",
+                    lines=["Nothing in my data drops or crafts that."],
+                    colour=TIER_DECLINE)
 
     def block(rows: list) -> list[str]:
         shown = rows[:MAX_DROPPERS]
@@ -644,6 +672,27 @@ def item_source_card(result: ItemSourceResult) -> Card:
         if rest > 0:
             out.append(f"_+{rest} more_")
         return out
+
+    if result.craftable:
+        lines = _recipe_lines(result)
+        if result.total:
+            # Present but secondary - see the docstring. Collapsed to one line regardless
+            # of band, because the recipe is already the headline and a full three-way
+            # drop breakdown here would bury it.
+            best = (result.ordinary or result.alpha_only or result.high_level)[:MAX_DROPPERS]
+            named = ", ".join(f"**{d.pal}** ({d.amount()}{', alpha' if d.alpha_only else ''})"
+                              for d in best)
+            lines += ["", f"Also drops from: {named}"]
+        return Card(title=f"{result.item} is crafted from", lines=lines,
+                    footer=f"{len(result.recipes)} recipe"
+                           f"{'s' if len(result.recipes) != 1 else ''}",
+                    colour=TIER_FACT)
+
+    if not result.total:
+        return Card(title=f"Nothing drops {result.item}",
+                    lines=[f"No Pal yields **{result.item}**, and nothing in my data "
+                           "crafts it either."],
+                    colour=TIER_DECLINE)
 
     lines = block(result.ordinary) if result.ordinary else [
         "_No ordinary encounter drops this._"]

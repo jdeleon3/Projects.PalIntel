@@ -563,6 +563,15 @@ async def _answer(channel, pipe: Pipeline, text: str, who: str,
                     or args.get("item")),
             score=round(top.score, 3) if top else None,
             outcome="declined" if declined else "answered",
+            # What it came closest to, captured whether or not it was acted on - see
+            # `Utterance.near`'s own note on why this is a separate field from `entity`
+            # rather than a fallback value for it.
+            near=top.canonical if top else None,
+            # The router's own named culprit, when it named one - see `Utterance
+            # .unrecognized`'s own note. `Decline` carries this on every path; most
+            # routers still leave it unset, and that is a fact about them, not about
+            # capture.
+            unrecognized=(outcome.call.unrecognized if declined else None),
             # Without this a party session is one corpus with several voices in it, and
             # two people asking similar questions look exactly like one person rephrasing
             # - which is the shape the alias harvester reads as a correction.
