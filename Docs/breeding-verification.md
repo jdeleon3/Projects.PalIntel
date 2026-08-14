@@ -8,16 +8,7 @@ This sheet exists because **no community source can validate this model.** Every
 
 ---
 
-## Before anything: two preconditions, and both have to hold
-
-**1. The tester must have breeding unlocked.** Stated first because it is the one that
-actually bit. A second player was lined up to run this sheet on 2026-08-11 and did not
-have the Breeding Farm — the sheet said "any player on the right build can run this",
-which is true about the *game* and says nothing about how far along a given save is. Check
-this before checking anything else, because it is the cheaper question and it disqualifies
-faster.
-
-**2. The version must match.**
+## Before anything: the version must match
 
 These predictions were computed from a pak dated **2026-07-30**, Steam buildid **`24467282`**.
 
@@ -25,9 +16,9 @@ Breeding ranks are rebalanced between patches — that is the most likely reason
 
 Steam → right-click Palworld → Properties → Updates → the build id is listed there; or read `buildid` in `steamapps/appmanifest_1623730.acf`. Turn off automatic updates for the duration, or a patch mid-session silently splits the results into two datasets.
 
-Nothing else is needed: no save file, no bot, no Discord. Breeding mechanics are global, so the results are about the game rather than about a save — which is what makes this delegable at all.
+**3. The tester has to be able to catch the parents.** Added 2026-08-14, after the first tester with breeding unlocked reported catching nothing above ~60. Every Pal below carries its Paldeck number and its **lowest wild spawn level** — `#171B Eidrolon Ignis (lv 75)` — so this is now checkable per row instead of discovered halfway down the sheet. The letter matters: a variant shares the base Pal's number, so `#171` Eidrolon and `#171B` Eidrolon Ignis are different Pals in one Paldeck slot. `(bred only)` marks a Pal with no wild spawn at all. Alpha encounters are excluded from the level, since an alpha is not how you obtain a breeding parent.
 
-**But delegable is not free.** The two preconditions above are a narrower funnel than "anyone on the right build" reads as: the tester needs a playthrough with the Breeding Farm unlocked *and* an install that has not auto-updated past `24467282`. Handing this to someone else does not remove the dependency, it moves it to a different save. Confirm both with the tester before generating a sheet for them — a refreshed sheet is cheap and a wasted session is not.
+Nothing else is needed: no save file, no bot, no Discord. Breeding mechanics are global, so any player on the right build can run this — the results are about the game, not about a save.
 
 ---
 
@@ -37,18 +28,18 @@ Both rounding conventions agree here and no exception applies, so these are the 
 
 | Parent A | Parent B | Predicted child | Actual |
 |---|---|---|---|
-| Eidrolon Ignis | Jormuntide Ignis | **Ophydia** |  |
-| Jormuntide Ignis | Tetroise Primo | **Ophydia** |  |
-| Tetroise Primo | Knocklem Ignis | **Ophydia** |  |
-| Knocklem Ignis | Whalaska Ignis | **Renjishi** |  |
-| Ophydia | Cryolinx Terra | **Flaracle** |  |
-| Dualith Noct | Flaracle | **Eidrolon** |  |
-| Knocklem | Blazamut | **Eidrolon** |  |
-| Solenne | Starryon Primo | **Flaracle** |  |
-| Renjishi | Elgrove Cryst | **Flaracle** |  |
-| Eidrolon | Pierdon Cryst | **Flaracle** |  |
-| Whalaska Ignis | Cryolinx Terra | **Azurmane** |  |
-| Flaracle | Astegon | **Azurmane** |  |
+| #171B Eidrolon Ignis (lv 75) | #121B Jormuntide Ignis (lv 40) | **#175 Ophydia (lv 80)** |  |
+| #121B Jormuntide Ignis (lv 40) | #142B Tetroise Primo (lv 76) | **#175 Ophydia (lv 80)** |  |
+| #142B Tetroise Primo (lv 76) | #159B Knocklem Ignis (lv 65) | **#175 Ophydia (lv 80)** |  |
+| #159B Knocklem Ignis (lv 65) | #151B Whalaska Ignis (lv 71) | **#183 Renjishi (lv 80)** |  |
+| #175 Ophydia (lv 80) | #132B Cryolinx Terra (lv 48) | **#174 Flaracle (lv 75)** |  |
+| #138B Dualith Noct (lv 75) | #174 Flaracle (lv 75) | **#171 Eidrolon (lv 80)** |  |
+| #159 Knocklem (lv 55) | #137 Blazamut (lv 40) | **#171 Eidrolon (lv 80)** |  |
+| #182 Solenne (lv 76) | #130B Starryon Primo (lv 74) | **#174 Flaracle (lv 75)** |  |
+| #183 Renjishi (lv 80) | #081B Elgrove Cryst (lv 75) | **#174 Flaracle (lv 75)** |  |
+| #171 Eidrolon (lv 80) | #131B Pierdon Cryst (lv 68) | **#174 Flaracle (lv 75)** |  |
+| #151B Whalaska Ignis (lv 71) | #132B Cryolinx Terra (lv 48) | **#161 Azurmane (lv 63)** |  |
+| #174 Flaracle (lv 75) | #158 Astegon (lv 40) | **#161 Azurmane (lv 63)** |  |
 
 ## Block 2 — the rounding convention (highest value rows here)
 
@@ -67,16 +58,16 @@ In each row the average lands nearest the **skipped** Pal. The model says the eg
 
 | Parent A | Parent B | Nearest by rank (skipped) | Predicted child | Actual |
 |---|---|---|---|---|
-| Eidrolon Ignis | Jormuntide Ignis | _Eidrolon Ignis_ | **Ophydia** |  |
-| Eidrolon Ignis | Tetroise Primo | _Jormuntide Ignis_ | **Ophydia** |  |
-| Eidrolon Ignis | Dualith Noct | _Tetroise Primo_ | **Ophydia** |  |
-| Eidrolon Ignis | Solenne | _Knocklem Ignis_ | **Ophydia** |  |
-| Eidrolon Ignis | Whalaska Ignis | _Dualith Noct_ | **Knocklem** |  |
-| Eidrolon Ignis | Blazamut | _Celesdir Noct_ | **Solenne** |  |
-| Eidrolon Ignis | Univolt Cryst | _Whalaska Ignis_ | **Eidrolon** |  |
-| Eidrolon Ignis | Warsect Terra | _Moldron Cryst_ | **Flaracle** |  |
-| Eidrolon Ignis | Gildane | _Starryon Primo_ | **Azurmane** |  |
-| Eidrolon Ignis | Suzaku Aqua | _Elgrove Cryst_ | **Azurmane** |  |
+| #171B Eidrolon Ignis (lv 75) | #121B Jormuntide Ignis (lv 40) | _#171B Eidrolon Ignis (lv 75)_ | **#175 Ophydia (lv 80)** |  |
+| #171B Eidrolon Ignis (lv 75) | #142B Tetroise Primo (lv 76) | _#121B Jormuntide Ignis (lv 40)_ | **#175 Ophydia (lv 80)** |  |
+| #171B Eidrolon Ignis (lv 75) | #138B Dualith Noct (lv 75) | _#142B Tetroise Primo (lv 76)_ | **#175 Ophydia (lv 80)** |  |
+| #171B Eidrolon Ignis (lv 75) | #182 Solenne (lv 76) | _#159B Knocklem Ignis (lv 65)_ | **#175 Ophydia (lv 80)** |  |
+| #171B Eidrolon Ignis (lv 75) | #151B Whalaska Ignis (lv 71) | _#138B Dualith Noct (lv 75)_ | **#159 Knocklem (lv 55)** |  |
+| #171B Eidrolon Ignis (lv 75) | #137 Blazamut (lv 40) | _#157B Celesdir Noct (bred only)_ | **#182 Solenne (lv 76)** |  |
+| #171B Eidrolon Ignis (lv 75) | #054B Univolt Cryst (lv 75) | _#151B Whalaska Ignis (lv 71)_ | **#171 Eidrolon (lv 80)** |  |
+| #171B Eidrolon Ignis (lv 75) | #113B Warsect Terra (lv 52) | _#105B Moldron Cryst (bred only)_ | **#174 Flaracle (lv 75)** |  |
+| #171B Eidrolon Ignis (lv 75) | #154 Gildane (lv 48) | _#130B Starryon Primo (lv 74)_ | **#161 Azurmane (lv 63)** |  |
+| #171B Eidrolon Ignis (lv 75) | #122B Suzaku Aqua (lv 68) | _#081B Elgrove Cryst (lv 75)_ | **#161 Azurmane (lv 63)** |  |
 
 ## Block 4 — the exception table
 
@@ -84,16 +75,16 @@ In each row the average lands nearest the **skipped** Pal. The model says the eg
 
 | Parent A | Parent B | Predicted child | Actual |
 |---|---|---|---|
-| Kitsun | Nyafia | **Kitsun Noct** |  |
-| Kitsun Noct | Celesdir | **Celesdir Noct** |  |
-| Incineram | Maraith | **Incineram Noct** |  |
-| Caprity | Tarantriss | **Caprity Noct** |  |
-| Vanwyrm | Foxcicle | **Vanwyrm Cryst** |  |
-| Smokie | Munchill | **Smokie Cryst** |  |
-| Azurobe | Frostplume | **Azurobe Cryst** |  |
-| Azurmane | Fenglope | **Fenglope Lux** |  |
-| Prunelia | Needoll | **Needoll Noct** |  |
-| Fuack | Flambelle | **Fuack Ignis** |  |
+| #111 Kitsun (lv 28) | #143 Nyafia (lv 50) | **#111B Kitsun Noct (lv 61)** |  |
+| #111B Kitsun Noct (lv 61) | #157 Celesdir (lv 54) | **#157B Celesdir Noct (bred only)** |  |
+| #091 Incineram (lv 27) | #117 Maraith (lv 36) | **#091B Incineram Noct (lv 37)** |  |
+| #034 Caprity (lv 8) | #071 Tarantriss (lv 30) | **#034B Caprity Noct (lv 50)** |  |
+| #064 Vanwyrm (lv 10) | #095 Foxcicle (lv 24) | **#064B Vanwyrm Cryst (lv 22)** |  |
+| #149 Smokie (lv 50) | #086 Munchill (lv 10) | **#149B Smokie Cryst (lv 62)** |  |
+| #041 Azurobe (lv 18) | #114 Frostplume (lv 65) | **#041B Azurobe Cryst (lv 50)** |  |
+| #161 Azurmane (lv 63) | #083 Fenglope (lv 34) | **#083B Fenglope Lux (lv 57)** |  |
+| #147 Prunelia (lv 50) | #100 Needoll (lv 31) | **#100B Needoll Noct (lv 33)** |  |
+| #005 Fuack (lv 3) | #025 Flambelle (lv 4) | **#005B Fuack Ignis (lv 32)** |  |
 
 ### Self-pairs — two claims in one
 
@@ -103,14 +94,14 @@ _99 of the 258 exception rows are omitted, on two grounds. Some name a Pal with 
 
 | Parent A | Parent B | Predicted child | Actual |
 |---|---|---|---|
-| Kitsun Noct | Kitsun Noct | **Kitsun Noct** |  |
-| Incineram Noct | Incineram Noct | **Incineram Noct** |  |
-| Mau Cryst | Mau Cryst | **Mau Cryst** |  |
-| Caprity Noct | Caprity Noct | **Caprity Noct** |  |
-| Vanwyrm Cryst | Vanwyrm Cryst | **Vanwyrm Cryst** |  |
-| Shadowbeak | Shadowbeak | **Shadowbeak** |  |
-| Smokie Cryst | Smokie Cryst | **Smokie Cryst** |  |
-| Azurobe Cryst | Azurobe Cryst | **Azurobe Cryst** |  |
+| #111B Kitsun Noct (lv 61) | #111B Kitsun Noct (lv 61) | **#111B Kitsun Noct (lv 61)** |  |
+| #091B Incineram Noct (lv 37) | #091B Incineram Noct (lv 37) | **#091B Incineram Noct (lv 37)** |  |
+| #027B Mau Cryst (lv 30) | #027B Mau Cryst (lv 30) | **#027B Mau Cryst (lv 30)** |  |
+| #034B Caprity Noct (lv 50) | #034B Caprity Noct (lv 50) | **#034B Caprity Noct (lv 50)** |  |
+| #064B Vanwyrm Cryst (lv 22) | #064B Vanwyrm Cryst (lv 22) | **#064B Vanwyrm Cryst (lv 22)** |  |
+| #189 Shadowbeak (lv 40) | #189 Shadowbeak (lv 40) | **#189 Shadowbeak (lv 40)** |  |
+| #149B Smokie Cryst (lv 62) | #149B Smokie Cryst (lv 62) | **#149B Smokie Cryst (lv 62)** |  |
+| #041B Azurobe Cryst (lv 50) | #041B Azurobe Cryst (lv 50) | **#041B Azurobe Cryst (lv 50)** |  |
 
 ---
 
@@ -118,9 +109,9 @@ _99 of the 258 exception rows are omitted, on two grounds. Some name a Pal with 
 
 Fill the **Actual** column with what hatched. A wrong prediction is worth more than a right one and should be recorded verbatim rather than corrected — if a pattern is going to show up, it will show up in the misses.
 
-Priority if there is not time for all of it: **Block 1, then Block 3, then Block 4.** Block 1 decides whether the model works at all — a failure there stops the sheet. Block 3 tests the rule we derived ourselves, which is the likeliest of the three to be wrong. Block 4 refines the exception table.
+Priority **if you can catch the parents**: Block 1, then Block 2. Block 1 decides whether the model works at all and Block 2 settles a question nothing else can.
 
-*This line used to say "Block 1, then Block 2", written before Block 2 was closed. Block 2 costs no eggs at all — all 260 ranks are multiples of 10, so the two rounding conventions are the same function on this dataset and no pair can separate them. A tester following the old priority would have spent a session on a question that was already answered.*
+**If your highest catch is around level 60, start with Block 4 instead.** That is not a preference, it is what the levels above say: 14 of Block 1's 19 Pals spawn only above level 60 and three of them (Eidrolon, Renjishi, Ophydia) are level 80, while Block 4 runs from level 3 and has just 4 Pals above 60. **Block 1 asks an endgame roster for the block it calls the cheapest.** A refuted exception row is worth less than a refuted baseline row, and it is worth infinitely more than a baseline row nobody can attempt.
 
 Then run `python tools/eval/score_breeding.py --version 1.0.2` with the results to close the ADR-0008 gate, and move the ADR from Provisional to Accepted — or to the `TableBasedBreedingModel` fallback it already names.
 
