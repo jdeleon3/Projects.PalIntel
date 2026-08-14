@@ -317,6 +317,57 @@ them mined out, so some were confirmed by position rather than by a deposit bein
 a property of this base's placement, not something the project models against. The further
 markers on each card were walked too, outside the base, with deposits standing there.
 
+### A second wake-word model, and the ensemble that made it worth having
+
+**2026-08-13. Trained, measured, nearly discarded on a wrong reading, and shipped.**
+
+Voice receive moved to Discord, and `hey_pal` was trained on synthetic TTS and validated
+against 240 recordings from the **local microphone**. Putting those same 236 recordings
+through a 64 kbps Opus round trip and changing nothing else drops recall from **92.4% to
+86.9%** — 21 clips fall below the 0.1 firing threshold. Paired and causal.
+
+`hey_pal_discord` was trained on exactly that path: the same 30k positives **and** 30k
+adversarial negatives, both round-tripped, so "codec artifacts" could not become a free
+predictor of the positive class.
+
+**Compared head to head it loses, and that reading was wrong.**
+
+| population | `hey_pal` | `hey_pal_discord` | **both** |
+|---|---|---|---|
+| mic | 92.4% | 91.5% | **94.5%** |
+| mic → opus | 86.9% | 84.3% | **89.4%** |
+| false positives on codec'd noise | 0.027% | 0.016% | **0.027%** |
+
+Head to head the difference is noise — McNemar on the paired mic→opus results gives 12
+disagreements one way and 6 the other, p = 0.24 — and on that basis it was written up as
+"does not ship". **That compared them as alternatives when the architecture runs them as an
+ensemble**, which is what `voice.models` being a list has always been for: the highest
+score wins, so adding a model can only make the gate more sensitive and can never suppress
+a firing the previous set would have made.
+
+Read that way the models are complementary rather than competing — they fail on *different*
+clips. Together they recover **6 codec-path clips neither `hey_pal` alone catches**, and
+the false-positive rate is **identical to `hey_pal` alone**: the new model's rare firings
+land on frames the old one already fires on, so the extra sensitivity is free. With both
+loaded on codec'd audio, `hey_pal_discord` wins **29 of 37** firings — it is more confident
+on most clips while missing a few different ones.
+
+`SOURCE_MODELS` therefore gives the Discord source both and the microphone `hey_pal` alone.
+
+**What corrected it was a field report, not a measurement**: real use said `hey_pal` was not
+firing over Discord at all. That is the *unconditional* recall none of the offline
+populations could reach — captured clips exist only because the wake word fired, so
+"92.9% of clips that fired, fired" is circular, and the misses left no trace anywhere.
+
+**Still unmeasured, and it is the one that matters:** nobody has read a script through a
+live Discord client with the misses recorded. Everything above is simulated or
+selection-biased. The ensemble is live now specifically so that reading can be taken.
+
+**Also delivered:** the Discord path is simulatable offline with py-cord's own libopus
+(`tools/wakeword/discord_path.py`) — the same library and version the bot links, which is
+what made a paired measurement possible at all — and `tools/wakeword/compare_paths.py`
+scores any model across four populations with the codec-shortcut gate built in.
+
 ### Known-uncalibrated
 
 - ~~**Player level is permanently `None`**~~ — **wrong for the host, corrected 2026-08-13.**
@@ -1030,11 +1081,41 @@ is the same list at a glance, with what the 2026-08-12 session actually did to e
 
   **What remains. None of it is transport:**
 
-  - **Wake-word recall has no number.** Fires scattered 0.10-0.95, and misses never reach
-    the log at all, which is why it *feels* worse than the log looks. The one improvement
-    measured (floor 0.11 → 0.34) is **confounded**: the microphone changed from desk to
-    headset in the same session and input level roughly doubled. A clean A/B needs the
-    same mic on both arms. **Do not retrain anything before that number exists.**
+  - **Wake-word recall over Discord is measurably worse than over the mic, and that is
+    the trade.** Measured 2026-08-13 with one voice, one room and the *same* headset at
+    48kHz on both arms — only the source differs:
+
+    | source | fires | scores | mean |
+    |---|---|---|---|
+    | `mic.py` | 6 of 6 | 0.92 · 0.90 · 0.88 · 0.74 · 0.62 · 0.18 | **0.71** |
+    | `discord_voice.py` | 2 of several | 0.48 · 0.14 | **0.31** |
+
+    **Nothing in the transport explains it**: every arm ran `discard=0`, `sink_dropped=0`,
+    `opus_errors<=1`. Delivery is not the constraint, and `PyDiscordDave` cannot recover
+    this — it is the channel, not the plumbing.
+
+    An offline Opus round trip scored **0.957 against a 0.951 mic baseline**, i.e. no cost
+    at all, and was wrong: it used py-cord's default encoder rather than Discord's real
+    settings (lower bitrate, its own VAD gating, DTX). Recorded because the harness is
+    still useful as a **lower bound** and should not be trusted as a measurement.
+
+    An earlier apparent improvement (floor 0.11 → 0.34) was **confounded** by a mic change
+    mid-session and does not survive a controlled re-run. The `tick()`-driven detector
+    reset is kept on correctness grounds — the stale splice across a transmission gap is
+    real and `WakeWord.reset` exists for it — **not** because it measurably improved
+    recall. It did not.
+
+    **Do not retrain before deciding whether that trade is worth paying.** Retraining on
+    Opus-degraded audio is the obvious lever, but party voice and per-speaker attribution
+    are what Discord buys and the mic cannot provide at all.
+  - **Discord's noise suppression must stay off.** Krisp takes the peak wake score from
+    **0.94 to 0.10** while input level *rises* — it is not attenuating, it removes the
+    spectral detail `hey_pal` keys on. Measured, decisive, and cheap to get wrong: it looks
+    like an obvious thing to enable on a noisy mic.
+  - **Background noise costs throughput, not detection.** A noisy room holds Discord's
+    voice gate open and quadruples packet rate (2745 vs ~600), which once overflowed the
+    sink queue and shed 48 frames. Fixed upstream by sizing that queue for memory rather
+    than latency; the noise itself never hurt the wake word.
   - **Wake score does not predict transcription quality.** 0.95 produced *"PayPal…
     Forks"*; 0.20 and 0.24 produced flawless transcriptions. It is not a proxy for audio
     quality, and treating it as one sent a session down a wrong path.

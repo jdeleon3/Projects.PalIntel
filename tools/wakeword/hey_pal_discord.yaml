@@ -26,6 +26,30 @@
 # put through the codec. Regenerating would produce different TTS samples and make the two
 # models incomparable, which is the whole point of reusing them.
 
+# ------------------------------------------------------------------------------------
+# RESULT, 2026-08-13: SHIPPED, AS HALF OF AN ENSEMBLE.
+#
+#     population   hey_pal   hey_pal_discord   BOTH
+#     mic           92.4%     91.5%            94.5%
+#     mic->opus     86.9%     84.3%            89.4%
+#     false pos    0.027%    0.016%            0.027%   <- gate: no shortcut, no cost
+#
+# Head to head it does not beat hey_pal - McNemar on the paired mic->opus results is 12
+# disagreements one way and 6 the other, p = 0.24 - and it was very nearly discarded on
+# that basis. **That compared them as alternatives when they run as an ensemble.** The
+# highest score wins, so adding a model can only make the gate more sensitive, and these
+# two fail on DIFFERENT clips: together they recover 6 codec-path clips neither catches
+# alone, at a false-positive rate identical to hey_pal by itself.
+#
+# With both loaded on codec'd audio, this model wins 29 of 37 firings - more confident on
+# most clips while missing a few different ones, which is exactly the shape that makes an
+# ensemble worth more than either half.
+#
+# What is NOT established: a live recording pass through a real Discord client with the
+# misses recorded. Every number here is simulated or selection-biased. Krisp and AGC run
+# on the sending client and are not simulated at all, and may be the larger effect.
+# ------------------------------------------------------------------------------------
+
 model_name: hey_pal_discord
 target_phrase:
   - hey pal
