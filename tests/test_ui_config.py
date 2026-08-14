@@ -196,3 +196,26 @@ def test_a_bad_type_is_named(cfg):
 def test_a_choice_outside_the_set_is_refused(cfg):
     res = config_edit.write({"router.cues": "widest"}, cfg)
     assert res["ok"] is False and "widest" in res["error"]
+
+
+# --- output medium (ADR-0018) ---------------------------------------------------
+
+def test_output_medium_is_readable_even_when_the_section_is_absent(cfg):
+    """`[output]` is absent from `BASE` - the field must still show up, with a value
+    the frontend can use to decide the Chat tab is Hidden."""
+    d = config_edit.read(cfg)
+    field = next(f for f in d["fields"] if f["section"] == "output" and f["key"] == "medium")
+    assert field["kind"] == "choice" and set(field["choices"]) == {"discord", "local"}
+
+
+def test_output_medium_can_be_switched_to_local(cfg):
+    res = config_edit.write({"output.medium": "local"}, cfg)
+    assert res["ok"]
+    assert 'medium = \'local\'' in cfg.read_text(encoding="utf-8")
+
+
+def test_output_poll_intervals_are_editable_ints(cfg):
+    res = config_edit.write({"output.poll_ms": 500, "output.inbox_poll_ms": 75}, cfg)
+    assert res["ok"] and res["changed"] == 2
+    text = cfg.read_text(encoding="utf-8")
+    assert "poll_ms = 500" in text and "inbox_poll_ms = 75" in text

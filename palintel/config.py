@@ -237,6 +237,28 @@ class CaptureConfig:
 
 
 @dataclass(frozen=True)
+class OutputConfig:
+    """Where an answer goes. See [ADR-0018](../Docs/adr/0018-local-output-medium.md) and
+    [Docs/local-output-design.md](../Docs/local-output-design.md).
+
+    **Exclusive, not a list.** `"discord"` (the default, unchanged behaviour) or
+    `"local"` - a Chat tab in the console (`palintel.ui`) instead of a Discord channel.
+    Never both: a player watching a local chat page while someone else reads the same
+    answers in Discord is two sources of truth for "what did it say," which is exactly
+    the kind of split signal this project refuses elsewhere.
+
+    `poll_ms` / `inbox_poll_ms` govern the local medium only - how often the console
+    tails the live event file, and how often the bot polls for a newly submitted query.
+    Both are guesses, not measurements (see the design doc §9), which is the whole
+    reason they are config rather than a constant: a session that finds either laggy
+    needs no code change to say so.
+    """
+    medium: str = "discord"     # discord | local
+    poll_ms: int = 300
+    inbox_poll_ms: int = 150
+
+
+@dataclass(frozen=True)
 class CostConfig:
     """The prepaid balance, and when to start warning about it.
 
@@ -263,6 +285,7 @@ class Config:
     cards: CardsConfig = field(default_factory=CardsConfig)
     capture: CaptureConfig = field(default_factory=CaptureConfig)
     cost: CostConfig = field(default_factory=CostConfig)
+    output: OutputConfig = field(default_factory=OutputConfig)
     data_version: str = "1.0.2"
     save_dir: Path | None = None
 
@@ -280,14 +303,29 @@ class Config:
                 f"No config at {path} and PALINTEL_DISCORD_TOKEN is unset.\n"
                 f"  copy config.example.toml config.local.toml   and fill it in.")
 
+        o = raw.get("output", {}) or {}
+        medium = o.get("medium", "discord")
+        if medium not in ("discord", "local"):
+            raise ConfigError(f"output.medium must be discord|local, got {medium!r}")
+        for name, val in (("poll_ms", o.get("poll_ms", 300)),
+                          ("inbox_poll_ms", o.get("inbox_poll_ms", 150))):
+            if int(val) <= 0:
+                raise ConfigError(f"output.{name} must be a positive number of "
+                                  f"milliseconds, got {val!r}")
+
         d = raw.get("discord", {})
         token = os.environ.get("PALINTEL_DISCORD_TOKEN", d.get("token", "")).strip()
         channel = int(os.environ.get("PALINTEL_CHANNEL_ID", d.get("channel_id", 0)))
 
-        if not token:
-            raise ConfigError("discord.token is empty - see config.example.toml")
-        if not channel:
-            raise ConfigError("discord.channel_id is 0 - see Docs/discord-setup.md")
+        # **Conditionally required, not unconditionally.** `output.medium = "local"` is
+        # the whole reason this project can run without Discord at all - see ADR-0018.
+        # Values are still PARSED either way, so switching back to `discord` later does
+        # not need credentials re-entered if they were already sitting in the file.
+        if medium == "discord":
+            if not token:
+                raise ConfigError("discord.token is empty - see config.example.toml")
+            if not channel:
+                raise ConfigError("discord.channel_id is 0 - see Docs/discord-setup.md")
 
         mode = d.get("listen_mode", "any")
         if mode not in ("any", "prefix", "mention"):
@@ -309,6 +347,15 @@ class Config:
                 "voice.source = 'discord' needs voice.channel_id - the id of a VOICE "
                 "channel, not the text one. A text id here connects to nothing and the "
                 "bot simply never hears anything.")
+        if medium == "local" and source == "discord":
+            # `DiscordListener` needs a live `discord.Client` to attach a voice receive
+            # sink to - something `run_local()` never constructs (see ADR-0018). This is
+            # a different constraint from the mic, which needs nothing Discord provides:
+            # `output.medium = "local"` and `voice.source = "mic"` combine fine.
+            raise ConfigError(
+                "voice.source = 'discord' needs output.medium = 'discord' - a local "
+                "run never connects to Discord at all, so there is no voice channel to "
+                "listen in. Set voice.source = 'mic' for local voice input.")
         # Explicit wins. Unset, the default follows the SOURCE - see `default_models`.
         models = tuple(v.get("models") or default_models(source))
         device = v.get("device")
@@ -343,6 +390,9 @@ class Config:
             cost=CostConfig(enabled=bool(cst.get("enabled", True)),
                             balance_usd=float(cst.get("balance_usd", 0.0)),
                             warn_below_usd=float(cst.get("warn_below_usd", 2.0))),
+            output=OutputConfig(medium=medium,
+                                poll_ms=int(o.get("poll_ms", 300)),
+                                inbox_poll_ms=int(o.get("inbox_poll_ms", 150))),
             data_version=os.environ.get(
                 "PALINTEL_DATA_VERSION", (raw.get("data", {}) or {}).get("version", "1.0.2")),
             save_dir=Path(save) if save else None,
@@ -352,6 +402,9 @@ class Config:
         """Safe to log or print - never exposes the token."""
         t = self.discord.token
         return {
+            "output": (self.output.medium if self.output.medium == "discord"
+                       else f"local (poll {self.output.poll_ms}ms / "
+                            f"inbox {self.output.inbox_poll_ms}ms)"),
             "token": f"{t[:6]}...{t[-4:]} ({len(t)} chars)" if t else "(unset)",
             "channel_id": self.discord.channel_id,
             "listen_mode": self.discord.listen_mode,

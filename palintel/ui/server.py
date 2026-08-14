@@ -18,9 +18,11 @@ a token the page must send explicitly is not.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import mimetypes
 import secrets
+import time
 from pathlib import Path
 
 from aiohttp import web
@@ -104,6 +106,134 @@ async def api_clip(request: web.Request) -> web.Response:
     if path is None:
         raise web.HTTPNotFound()
     return web.Response(body=path.read_bytes(), content_type="audio/wav")
+
+
+async def api_art(request: web.Request) -> web.Response:
+    """Step 6 (§3.3): the artwork `LocalSink.attach_artwork` wrote, by the exact
+    filename an `artwork` chat.jsonl event already carries in `images`/`thumbnails`."""
+    path = sources.art_path(request.match_info["session"], request.match_info["filename"])
+    if path is None:
+        raise web.HTTPNotFound()
+    ctype, _ = mimetypes.guess_type(str(path))
+    return web.Response(body=path.read_bytes(), content_type=ctype or "application/octet-stream")
+
+
+def _output_poll_s() -> float:
+    """How often to tail `chat.jsonl` - `output.poll_ms` from the loaded config, or the
+    documented default if config cannot even be loaded. A broken config must not break
+    the console that exists to fix it - see `config_edit.py`'s own reasoning."""
+    try:
+        from ..config import Config
+
+        return Config.load().output.poll_ms / 1000
+    except Exception:
+        return 0.3
+
+
+async def api_chat_current(request: web.Request) -> web.Response:
+    """Which session the Chat tab should show, and whether it can be typed into - the
+    four states in Docs/local-output-design.md §5, resolved server-side so the page
+    does not have to reconcile `/api/config` and `/api/bot` itself.
+
+    `visible` comes from the CONFIG file's `output.medium`, not from whether a local
+    bot happens to be running right now - Hidden must hold even when nothing is
+    running at all, since there is nothing else to ask.
+    """
+    try:
+        from ..config import Config
+
+        medium = Config.load().output.medium
+    except Exception:
+        medium = "discord"          # Config's own default when nothing else is known
+    if medium != "local":
+        return _json({"visible": False})
+
+    state = request.app["supervisor"].status()
+    # `state["output"] == "local"` is how a LOCAL heartbeat is told apart from a
+    # Discord one - only `_beat_local` ever writes that key (see bot.py).
+    if state.get("running") and state.get("output") == "local" and state.get("session"):
+        return _json({"visible": True, "live": True, "session": state["session"]})
+    return _json({"visible": True, "live": False,
+                 "session": sources.latest_chat_session()})
+
+
+async def api_chat_history(request: web.Request) -> web.Response:
+    session = request.match_info["session"]
+    if not sources.valid_session_id(session):
+        return _json({"error": "not a valid session id"}, status=404)
+    return _json(sources.chat_history(session))
+
+
+async def api_chat_send(request: web.Request) -> web.Response:
+    session = request.match_info["session"]
+    try:
+        payload = await request.json()
+    except Exception:
+        return _json({"ok": False, "error": "expected JSON"}, status=400)
+    text = str((payload or {}).get("text", "")) if isinstance(payload, dict) else ""
+    result = sources.send_chat_query(session, text)
+    return _json(result, status=200 if result.get("ok") else 400)
+
+
+async def api_chat_stream(request: web.Request) -> web.StreamResponse:
+    """SSE tail of `chat.jsonl` - new lines only, from `after` (bytes) onward.
+
+    **`Last-Event-ID` over the `after` query param on reconnect.** EventSource resends
+    whatever `id:` field rode with the last event it actually delivered, automatically,
+    on every reconnect - which is exactly the byte offset this loop needs to resume from
+    without replaying or losing anything across a dropped connection. `after` only seeds
+    the FIRST connection, where there is no prior event to resend an id from yet.
+    """
+    session = request.match_info["session"]
+    if not sources.valid_session_id(session):
+        raise web.HTTPNotFound()
+
+    resume = request.headers.get("Last-Event-ID")
+    if resume is None:
+        resume = request.query.get("after", "0")
+    try:
+        pos = max(0, int(resume))
+    except ValueError:
+        pos = 0
+
+    poll_s = _output_poll_s()
+    path = sources.SESSIONS / session / "chat.jsonl"
+
+    resp = web.StreamResponse(headers={"Content-Type": "text/event-stream",
+                                       "Cache-Control": "no-store",
+                                       "X-Accel-Buffering": "no"})
+    await resp.prepare(request)
+
+    last_ping = time.monotonic()
+    try:
+        while True:
+            if path.exists():
+                size = path.stat().st_size
+                if size > pos:
+                    with path.open("rb") as f:
+                        f.seek(pos)
+                        chunk = f.read()
+                    text = chunk.decode("utf-8", errors="replace")
+                    # Only complete lines - a line still being written (no trailing \n
+                    # yet) is held back for the next tick, same discipline
+                    # `sources._read_jsonl` already applies to a torn last line.
+                    complete, _, _tail = text.rpartition("\n")
+                    if complete:
+                        for line in complete.split("\n"):
+                            pos += len(line.encode("utf-8")) + 1  # +1 for the \n
+                            if line.strip():
+                                await resp.write(
+                                    f"id: {pos}\ndata: {line}\n\n".encode("utf-8"))
+            now = time.monotonic()
+            if now - last_ping > 15:
+                # Keeps an idle connection (a Chat tab open with nobody talking) from
+                # being reaped by a proxy or the browser's own idle timeout.
+                await resp.write(b": ping\n\n")
+                last_ping = now
+            await asyncio.sleep(poll_s)
+    except (ConnectionResetError, ConnectionAbortedError, asyncio.CancelledError):
+        pass
+    return resp
 
 
 async def api_save(request: web.Request) -> web.Response:
@@ -203,6 +333,11 @@ def build_app(token: str, port: int, save_dir: Path | None = None) -> web.Applic
         web.get("/api/sessions", api_sessions),
         web.get("/api/sessions/{session}", api_session),
         web.get("/api/sessions/{session}/clip/{uid}", api_clip),
+        web.get("/api/sessions/{session}/art/{filename}", api_art),
+        web.get("/api/chat/current", api_chat_current),
+        web.get("/api/chat/{session}/history", api_chat_history),
+        web.get("/api/chat/{session}/stream", api_chat_stream),
+        web.post("/api/chat/{session}/send", api_chat_send),
         web.get("/api/config", api_config),
         web.post("/api/config", api_config_write),
         web.get("/api/bot", api_bot),

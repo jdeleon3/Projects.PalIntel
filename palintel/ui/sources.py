@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import statistics
 import time
 from dataclasses import dataclass, field
@@ -90,6 +91,7 @@ class SessionSummary:
     usd: float
     clips: int
     has_latency: bool
+    has_chat: bool
 
 
 def _session_started(session: str, rows: list[dict]) -> float:
@@ -132,6 +134,7 @@ def list_sessions(root: Path = SESSIONS) -> list[SessionSummary]:
             usd=sum(c.get("usd", 0.0) for c in charges),
             clips=len(list(d.glob("*.wav"))),
             has_latency=(d / "latency.jsonl").exists(),
+            has_chat=(d / "chat.jsonl").exists(),
         ))
     return out
 
@@ -193,6 +196,100 @@ def clip_path(session: str, uid: str, root: Path = SESSIONS) -> Path | None:
         return None
     for p in d.glob("*.wav"):
         if p.stem == uid:
+            return p
+    return None
+
+
+# --- chat (Chat tab, ADR-0018) --------------------------------------------------
+
+# A session id is always `time.strftime("%Y%m%d-%H%M%S")` (`bot.run()` and
+# `bot.run_local()` both mint it the same way) - never taken from a request unchecked.
+# Every function below that turns a `session` string into a path checks this first, so a
+# crafted id cannot walk out of `data/sessions/` the way a bare `root / session` would
+# let it. `send_query` below is the one that WRITES a file from this value, which makes
+# the check load-bearing rather than defensive dressing.
+_SESSION_ID = re.compile(r"^\d{8}-\d{6}$")
+
+
+def valid_session_id(session: str) -> bool:
+    return bool(_SESSION_ID.match(session))
+
+
+def chat_history(session: str, root: Path | None = None) -> dict[str, Any]:
+    """Everything in `chat.jsonl` so far, plus the byte size it was read at.
+
+    The size is not decoration - the Chat tab opens its SSE stream with `?after=<size>`
+    so the live tail picks up exactly where this snapshot ends, with nothing replayed
+    and nothing missed in between the two requests.
+
+    `root` defaults to the CURRENT value of `sources.SESSIONS`, read at call time rather
+    than bound into the signature - the same trap `botstate._path()` was written to
+    avoid: a default bound at def time makes redirecting `sources.SESSIONS` (as a test
+    does) silently do nothing.
+    """
+    root = SESSIONS if root is None else root
+    if not valid_session_id(session):
+        return {"rows": [], "size": 0}
+    path = root / session / "chat.jsonl"
+    if not path.exists():
+        return {"rows": [], "size": 0}
+    return {"rows": _read_jsonl(path), "size": path.stat().st_size}
+
+
+def latest_chat_session(root: Path | None = None) -> str | None:
+    """The most recent session with a `chat.jsonl`, for the Chat tab's Read-only state -
+    the bot is not running to say which session is "current", so this falls back to the
+    same "newest first" ordering `list_sessions` already uses."""
+    root = SESSIONS if root is None else root
+    if not root.exists():
+        return None
+    for d in sorted(root.iterdir(), reverse=True):
+        if d.is_dir() and valid_session_id(d.name) and (d / "chat.jsonl").exists():
+            return d.name
+    return None
+
+
+def send_chat_query(session: str, text: str, root: Path | None = None) -> dict[str, Any]:
+    """Write `inbox/<uid>.json` - the console's half of the query-delivery contract
+    `bot._handle_inbox_file` reads. The `query` row in `chat.jsonl` is NOT written here:
+    that is the bot's job, once it actually claims the file (see `LocalSink.record_query`),
+    which is what lets the Chat tab tell "sent" from "the bot saw it" apart at all.
+    """
+    root = SESSIONS if root is None else root
+    if not valid_session_id(session):
+        return {"ok": False, "error": "not a valid session id"}
+    text = (text or "").strip()
+    if not text:
+        return {"ok": False, "error": "empty message"}
+    uid = f"{int(time.time() * 1000):x}"
+    inbox = root / session / "inbox"
+    try:
+        inbox.mkdir(parents=True, exist_ok=True)
+        (inbox / f"{uid}.json").write_text(
+            json.dumps({"uid": uid, "text": text, "at": time.time()}), encoding="utf-8")
+    except OSError as e:
+        return {"ok": False, "error": f"could not write: {e}"}
+    return {"ok": True, "uid": uid}
+
+
+def art_path(session: str, filename: str, root: Path | None = None) -> Path | None:
+    """One artwork file `LocalSink.attach_artwork` wrote under `art/` (step 6, §3.3) -
+    `<uid>-image-<index>.jpg` or `<uid>-thumb-<index>.png`, exactly as it appears in the
+    `artwork` event's own `images`/`thumbnails` lists, so the Chat tab never has to
+    reconstruct a filename itself.
+
+    Checked against the actual directory listing rather than joined blind - same
+    discipline `clip_path` already holds itself to, and load-bearing here rather than
+    defensive dressing: `filename` comes straight from a request path.
+    """
+    root = SESSIONS if root is None else root
+    if not valid_session_id(session):
+        return None
+    d = root / session / "art"
+    if not d.is_dir():
+        return None
+    for p in d.iterdir():
+        if p.is_file() and p.name == filename:
             return p
     return None
 

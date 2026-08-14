@@ -56,9 +56,12 @@
     <button class="rail-item" data-view="settings" type="button">
       <span class="rail-key">03</span><span class="rail-text">Settings</span>
     </button>
-    <div class="rail-foot">
-      <span class="rail-note dim">process control<br>arrives next</span>
-    </div>
+    <!-- Hidden until /api/chat/current says output.medium = "local" - see chatSync().
+         Discord users never see an id "04" tab for a feature they cannot use. -->
+    <button class="rail-item" data-view="chat" id="rail-chat" type="button"
+            style="display:none">
+      <span class="rail-key">04</span><span class="rail-text">Chat</span>
+    </button>
   </nav>
 
   <main class="stage">
@@ -148,6 +151,24 @@
         </div>
       </div>
       <div id="cfg-form"><p class="loading">reading config…</p></div>
+    </section>
+
+    <!-- ------------------------------------------------------------------- CHAT -->
+    <!-- Four states, per Docs/local-output-design.md §5 - all driven by chatSync()
+         polling /api/chat/current. This markup covers Live/Read-only/Empty; Hidden is
+         the rail button above simply not being shown. -->
+    <section class="view" id="view-chat">
+      <div class="chat-wrap">
+        <div class="chat-list" id="chat-list">
+          <p class="loading">reading…</p>
+        </div>
+        <form class="chat-form" id="chat-form">
+          <input type="text" id="chat-input" class="chat-input"
+                 placeholder="Ask a question…" autocomplete="off" disabled>
+          <button class="btn" id="chat-send" type="submit" disabled>Send</button>
+        </form>
+        <p class="chat-note" id="chat-note"></p>
+      </div>
     </section>
 
   </main>

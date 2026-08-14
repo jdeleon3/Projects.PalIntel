@@ -656,3 +656,191 @@ input[readonly] { color: var(--muted); background: #0a0806; }
 @media (max-width: 900px) {
   .transport-ctl { order: 9; flex: 1 1 100%; border-right: 0; padding: 8px var(--pad); }
 }
+
+/* -------------------------------------------------------------------------- chat */
+/* ADR-0018. A message list is the one view here read top-to-bottom rather than
+   scanned, so it borrows the transcript idiom instead of the panel grid - but the
+   bubbles are square-cornered and the tier colours are `cards.py`'s own, so it still
+   reads as the same instrument rather than a different app bolted on. */
+
+.chat-wrap {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 58px - 2 * var(--pad));
+  background: linear-gradient(180deg, var(--panel-lift), var(--panel));
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  overflow: hidden;
+}
+
+.chat-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--pad);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.chat-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: min(70ch, 82%);
+  animation: rise .3s cubic-bezier(.2,.7,.3,1) both;
+}
+.chat-user { align-self: flex-end; align-items: flex-end; }
+.chat-bot  { align-self: flex-start; align-items: flex-start; }
+
+.chat-bubble {
+  padding: 9px 13px;
+  border-radius: var(--r);
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+.chat-user .chat-bubble {
+  background: var(--amber-soft);
+  border: 1px solid var(--amber);
+  color: var(--ink);
+}
+.chat-user.chat-pending .chat-bubble {
+  border-style: dashed;
+  opacity: .7;
+}
+.chat-bot .chat-bubble {
+  background: var(--panel-lift);
+  border: 1px solid var(--line-bright);
+}
+
+/* A card, not a plain bubble - the same object the bot renders as an embed, given a
+   left rail in its OWN tier colour rather than the accent, because in this project a
+   colour is a claim about how much the number can be trusted (see cards.py).
+   Two grid columns, matching Discord's own embed layout: title/lines/footer run down
+   the first, a thumbnail (when there is one) sits top-right spanning the title+lines
+   rows in the second, and the main image - added later, once artwork actually exists,
+   see chatAppendRow's "artwork" branch - spans both columns below everything. */
+.chat-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  column-gap: 12px;
+  border-left: 3px solid var(--tier, var(--line-bright));
+  padding-left: 11px;
+}
+.chat-card + .chat-card { margin-top: 8px; }
+.chat-card-title {
+  grid-column: 1;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 3px;
+}
+.chat-card-lines { grid-column: 1; }
+.chat-card-lines p { margin: 3px 0; color: var(--ink-dim); }
+.chat-card-lines p:first-child { margin-top: 0; }
+.chat-card-lines p:last-child { margin-bottom: 0; }
+.chat-card-lines code {
+  padding: 1px 4px;
+  background: #0c0a07;
+  border: 1px solid var(--line-bright);
+  border-radius: 2px;
+  font-size: 12px;
+}
+.chat-card-lines em { color: var(--ink-dim); font-style: italic; }
+.chat-card-footer {
+  grid-column: 1 / -1;
+  margin-top: 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.chat-meta {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .06em;
+  color: var(--muted);
+  padding: 0 3px;
+}
+
+.chat-bubble-thinking {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: .08em;
+}
+.chat-bubble-thinking::before {
+  content: "";
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--amber);
+  box-shadow: 0 0 0 3px var(--amber-soft);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.chat-art-note {
+  margin-top: 4px;
+  padding-left: 11px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* Step 6 (§3.3). Square corners, matching every other surface in this instrument - a
+   rounded photo would be the one soft shape on the page.
+
+   Placement matches Discord's own embed layout, not just the pixels: the main image
+   spans both of `.chat-card`'s grid columns below the body (Discord puts it at the
+   bottom of the embed), and the thumbnail lives in the second column, sized to sit
+   beside the title the way Discord's own top-right thumbnail does - independent of
+   where `chatAppendRow` happened to insert it in the DOM. */
+.chat-art {
+  grid-column: 1 / -1;
+  display: block;
+  margin-top: 8px;
+  max-width: 100%;
+  max-height: 280px;
+  border: 1px solid var(--line-bright);
+  border-radius: var(--r);
+}
+.chat-art-thumb {
+  grid-column: 2;
+  grid-row: 1 / 3;
+  align-self: start;
+  width: 64px;
+  height: 64px;
+  max-height: none;
+  object-fit: cover;
+  margin-top: 0;
+}
+
+.chat-form {
+  display: flex;
+  gap: 10px;
+  padding: 12px var(--pad);
+  border-top: 1px solid var(--line);
+  background: var(--ground-lift);
+}
+/* `#chat-input` beats the shared `input[type="text"]` rule's max-width on specificity
+   alone - no `!important` needed to let the box actually fill the row. */
+#chat-input {
+  flex: 1 1 auto;
+  max-width: none;
+}
+.chat-form .btn { flex: 0 0 auto; }
+
+.chat-note {
+  margin: 0 var(--pad) 12px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+@media (max-width: 720px) {
+  .chat-wrap { height: calc(100vh - 58px - 120px); }
+  .chat-msg { max-width: 92%; }
+}

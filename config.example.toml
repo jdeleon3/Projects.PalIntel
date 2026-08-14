@@ -8,13 +8,32 @@
 # Every value can also come from the environment, which wins over the file:
 #   PALINTEL_DISCORD_TOKEN, PALINTEL_CHANNEL_ID, PALINTEL_DATA_VERSION
 
+[output]
+# Where an answer goes. "discord" (below) or "local" - a Chat tab in the console
+# (`python -m palintel.ui`) instead of a Discord channel, for a player who does not
+# have or does not want Discord. Exclusive, never both at once - see ADR-0018.
+#
+# "local" needs no [discord] section filled in at all: token/channel_id below are only
+# required when medium = "discord".
+medium = "discord"
+
+# How often the console tails the local chat feed, and how often the bot polls for a
+# newly typed query, in milliseconds. Local medium only - meaningless under "discord",
+# which delivers directly with no polling anywhere. Both are starting guesses, not
+# measurements; lower them if replies feel laggy, raise them if that matters more than
+# responsiveness (a background/idle install, for instance).
+poll_ms = 300
+inbox_poll_ms = 150
+
 [discord]
 # Bot token from https://discord.com/developers/applications -> your app -> Bot.
 # Treat it like a password. Anyone holding it controls the bot.
+# Only required when [output] medium = "discord".
 token = ""
 
 # Channel the bot listens in and posts to. Enable Developer Mode in Discord
 # (Settings -> Advanced), then right-click the channel -> Copy Channel ID.
+# Only required when [output] medium = "discord".
 channel_id = 0
 
 # How to address the bot in that channel:
