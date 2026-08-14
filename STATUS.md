@@ -211,12 +211,29 @@ the logs.
   from — Lovander | 1 | 1%"*, true and useless: cake is crafted, and the player needed it
   for breeding. High Quality Pal Oil returned 41 correct sources. The class is a **drop
   table** and the card title says "comes from". A title and a footer, not a dataset.
-- **Q7 retrieval picks near-duplicate chunks.** *"How do I assign a pal to the breeding
-  farm"* returned the Breeding Farm help guide (0.90) and, as its second quote, the Breeding
-  Farm *structure* text — two chunks restating the goal, when the corpus's `Base` chunk
-  holds the actual mechanism ("interacting with the Palbox allows you to summon Pals to your
-  base"). **The card already renders a second quote**, so this is diversity in retrieval and
-  not the synthesis question below.
+- ~~**Q7 retrieval picks near-duplicate chunks — fix it with diversity.**~~ **Re-measured
+  2026-08-14, and the prescription does not survive it.** The observation was right: *"how
+  do I assign a pal to the breeding farm"* returns the Breeding Farm help guide and the
+  Breeding Farm *structure* text, both restating the goal. Three things then killed the
+  proposed fix:
+  1. **The mechanism chunk scores 0.000.** `help_guide:Help_14` ("Base") shares *no term*
+     with the query — it says "summon Pals to your base", never "assign", "breeding" or
+     "farm". **Exactly 3 of 3,259 chunks score above zero**, and all three are the same
+     sentence. Reranking a 3-item list cannot reach a chunk at 0.0, so diversity was never
+     able to answer this question.
+  2. **There is no population.** Across `score_corpus.py`'s 33 questions, 10 return a
+     second passage and **0 are near-duplicates**. The breeding question is one instance,
+     and it is not in the eval set.
+  3. **No threshold separates it.** The offending pair scores Jaccard **0.23** on term
+     overlap — while *"how does the breeding farm work"* (0.23) and *"what is the global
+     palbox"* (0.33) are pairs worth keeping. **Lexical similarity cannot detect lexical
+     retrieval's own redundancy**, for the same reason it cannot find the paraphrased
+     chunk: the duplication is semantic.
+
+  The redundancy is real but structural — the game states one object across a Help guide
+  entry, a `Structure` description and a `Technology` description, so the honest signal is
+  **same title across sections**, not prose overlap. That is worth doing on its own merits
+  and **must not be sold as fixing this question**. See the decision below.
 - **`data/all_boss_landmarks.csv` is ingested by nothing.** 159 boss placements with world
   coordinates **and stated levels**, in `data/`, while `bosses.json` carries `"level": null`
   on every entry. Fourth instance of this project's recurring pattern: the data was there
@@ -776,7 +793,7 @@ is the same list at a glance, with what the 2026-08-12 session actually did to e
 | **Q7: does a robots.txt naming ClaudeBot settle it?** | [`Docs/corpus-sources.md`](Docs/corpus-sources.md) registers 16 community sources for the strategy/consensus layer the pak cannot supply. **Two of the three best carry a CC licence that permits reuse and a robots.txt that names ClaudeBot and forbids it** — `palworld.wiki.gg` (CC BY-SA 4.0) and `palworldgame.wiki`, with Game8 blocking GPTBot. Licence and stated wishes point opposite ways and only you can pick. Answering this once removes or restores the three highest-coverage sources; nothing else about a community corpus can be sequenced first. Nothing has been ingested. |
 | **Q7: embeddings, or leave it lexical?** | The lexical baseline answers questions asked in the game's own words and cannot answer paraphrases — measured, and the two bands overlap so no threshold separates them. Embeddings would fix that and cost a new local dependency (sentence-transformers, ~2GB, but the GPU is already there for STT) or a network call per query, which ADR-0003 argues against. **Play first**: the misses in your phrasing are the evidence, and the baseline exists so the comparison is a measurement rather than an assumption. |
 | **Q7: should a decline fall through to the corpus?** | Not built, deliberately. `general_knowledge` is a class the router may *choose*, not a catch-all. The roadmap calls the fallback "the change that makes the system a chatbot", and it is the largest change to this project's risk posture available — worth your explicit yes rather than my inference. |
-| **Q7: synthesis, or keep quoting?** — *and play showed the cheaper answer first* | Today a Tier 3 card quotes the game verbatim, so no model touches the text and ADR-0011's drift failure cannot occur. **2026-08-12 produced the first question that needs two chunks** — *"how do I assign a pal to the breeding farm"*, where the Breeding Farm guide restates the goal and the `Base` chunk holds the mechanism. But the card **already renders a second quote**, and it spent that slot on a near-duplicate. So the measured need is **retrieval diversity**, which costs no model at all, and synthesis remains unshown. Try diversity first; if it still cannot answer, that is the evidence for synthesis. |
+| **Q7: the ceiling is recall, not diversity and not synthesis** — *and the cheap answer measured false* | Today a Tier 3 card quotes the game verbatim, so no model touches the text and ADR-0011's drift failure cannot occur. **2026-08-12 produced the first question that needs two chunks** — *"how do I assign a pal to the breeding farm"* — and this file recorded the fix as **retrieval diversity**, on the grounds that the card already renders a second quote and spent it on a near-duplicate. **Re-measured 2026-08-14: that is wrong.** The `Base` chunk holding the mechanism scores **0.000** on this query — no shared term — and only 3 chunks in 3,259 score above zero at all. Diversity reorders a list that never contained the answer. It joins the module docstring's own `missed` column, where five in-corpus questions asked in player words score 0.34–0.70 inside the band unanswerable questions occupy. **That is the same finding from two directions, and it is the embeddings case**: the defect is *recall*, and neither diversity nor synthesis addresses recall. Synthesis over three copies of one sentence would still not say how to assign a Pal. **Do not spend the diversity work expecting this question to come back answered.** |
 | **Q4: is the computed version enough?** | The roadmap's Q4 was twenty curated sites with prose rationale; what shipped is "what falls inside a base's radius", because the curated version needed invented flatness scores and community prose. If you want the curated half, it needs a source you trust and a way to verify it. |
 | **Should `pal_info` answer questions it cannot answer?** | Measured 2026-08-12: it absorbs *"how much stamina does Rinjishi have"* and *"is loopmoon worth levelling up"* — questions with no class, where a summary is arguably better than a decline and arguably the wrong-class failure the first play session named. The decline policy was rebalanced on 2026-08-11 toward answering, on the finding that declining an answerable query is also a failure; this is the same trade seen from the other side. **Your call, and the first play session is where it will feel wrong or fine.** *2026-08-12 produced one instance and it is a mild one*: **"how do I unlock Anubis"** routed to `get_pal_info` — an unlock question about a Pal, absorbed because it names one. No feedback button was pressed on it. One data point, pointing the same way the measurement did. |
 | **Set `cost.balance_usd`** — *now safe to* | Spend is logged per query and totalled, but the balance is 0 so nothing is deducted. **Do not set this from a reading taken before 2026-08-12**: the ledger over-reported by 3.8× and would have warned you empty with two thirds of the money left. Fixed and regression-tested; a real session costs about **$0.09**, not $0.33. Put what you actually loaded onto the key in `config.local.toml`. |
